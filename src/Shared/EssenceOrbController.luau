@@ -101,8 +101,14 @@ local NEVER_DEPLETED_UPGRADE_ID = "core_resilience"
 -- BASE ORB STATS (level-0 values, before any upgrades) -- tune to taste
 -- =========================================================================
 
-local BASE_MAX_HP = 100
-local BASE_REGEN_RATE = 2 -- HP regenerated per second
+-- Raised from 100/2 (was ~12 clicks then 1 click per 4s forever, with zero
+-- in-game explanation of why -- new players were hitting a hard, unexplained
+-- wall about 15-20 seconds into their first session). Still a real resource
+-- players will want orb_vitality/orb_regen upgrades to grow, just a more
+-- forgiving starting point while they're learning the game and not yet
+-- invested. Paired with an in-tutorial explanation of the mechanic.
+local BASE_MAX_HP = 150
+local BASE_REGEN_RATE = 3.5 -- HP regenerated per second
 local BASE_SHOT_HP_COST = 8 -- HP spent per normal shot
 local MIN_SHOT_HP_COST = 1 -- fracture_efficiency can never reduce a shot below this
 local TRICKLE_SHOT_COOLDOWN = 1.2 -- seconds between free "trickle" shots while depleted

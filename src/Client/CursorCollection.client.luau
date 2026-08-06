@@ -274,12 +274,12 @@ local function CollectEffect(orb)
 	if orb:GetAttribute("OrbType") == "Shadow Essence" then
 		local discovered = player:GetAttribute("ShadowEssenceDiscovered") or false
 		if not discovered then
-			newDiscovery:Fire(orb:GetAttribute("OrbType"),GetEssences.Essences[orb:GetAttribute("OrbType")])
+			newDiscovery:Fire(orb:GetAttribute("OrbType"), GetEssences.GetOddsText(orb:GetAttribute("OrbType")))
 		end
 	elseif orb:GetAttribute("OrbType") == "Earth Essence" then
 		local discovered = player:GetAttribute("EarthEssenceDiscovered") or false
 		if not discovered then
-			newDiscovery:Fire(orb:GetAttribute("OrbType"),GetEssences.Essences[orb:GetAttribute("OrbType")])
+			newDiscovery:Fire(orb:GetAttribute("OrbType"), GetEssences.GetOddsText(orb:GetAttribute("OrbType")))
 		end
 	end
 	if orb:FindFirstChild("Shadow") then
@@ -387,7 +387,7 @@ local function CollectEffect(orb)
 	end)
 end
 local function watch(obj)
-	if player:GetAttribute(1907677938) and false then
+	if player:GetAttribute(1907677938) then
 		task.wait(.3)
 		CollectEffect(obj)
 	else

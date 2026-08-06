@@ -472,12 +472,20 @@ local function startOrbCollectDemo(targetFrame, screenGui)
 	return cleanup
 end
 
+-- Order matters: teach the actual thing the player needs to do (click,
+-- hover, collect, watch the energy bar) FIRST, before any menu tour --
+-- previously Shop was step 1, so a first-time player's very first guided
+-- instruction was a Robux upsell before they'd played at all, and the
+-- energy-bar mechanic that gates clicking was never explained anywhere.
 local TUTORIAL_STEPS = {
 	{
-		Frame = ShopPopup,
-		Emoji = "💎",
-		Text = "Check out the SHOP for awesome boosts and exclusive goodies using Robux!",
-		Extra = nil,
+		Frame = LargeOrbFrame,
+		Emoji = "🌀",
+		Text = "Collect Orbs By Clicking the giant orb and <font color='#FFFF00'><b><i>hovering</i></b></font> over its drops! Watch the <font color='#FF5A5A'><b>energy bar</b></font> under the orb -- it refills on its own, so just give it a moment if it runs low!",
+		Extra = function(step, ctx)
+			local cleanup = startOrbCollectDemo(step.Frame, ctx.ScreenGui)
+			ctx.SetCleanup(cleanup)
+		end,
 	},
 	{
 		Frame = UpgradesPopup,
@@ -498,13 +506,10 @@ local TUTORIAL_STEPS = {
 		Extra = nil,
 	},
 	{
-		Frame = LargeOrbFrame,
-		Emoji = "🌀",
-		Text = "Collect Orbs By Clicking the giant orb and <font color='#FFFF00'><b><i>hovering</i></b></font> over its drops!",
-		Extra = function(step, ctx)
-			local cleanup = startOrbCollectDemo(step.Frame, ctx.ScreenGui)
-			ctx.SetCleanup(cleanup)
-		end,
+		Frame = ShopPopup,
+		Emoji = "💎",
+		Text = "Check out the SHOP for awesome boosts and exclusive goodies using Robux!",
+		Extra = nil,
 	},
 }
 

@@ -156,7 +156,6 @@ local milestones = rbF:WaitForChild("Milestones"):WaitForChild("Frame")
 local function rebirthUpdates()
 	print(player:GetAttribute("Rebirths"))
 	local RebirthData = RebirthModule.GetRebirthInfo({rebirthCount = player:GetAttribute("Rebirths"),essence = Earthessence:GetAttribute("Quantity")},player)
-	
 	rbD.Text = "Rebirth "..player:GetAttribute("Rebirths")
 
 	CS:FindFirstChild("CurrentMultiplier"):FindFirstChild("Value").Text = RebirthData.currentMultiplier
@@ -245,7 +244,6 @@ end
 
 openPopup = function(name)
 	local popup = popups[name]
-	print(popups,name)
 	if not popup then return end
 	if currentOpen == name then return end
 	if currentOpen then
@@ -275,7 +273,6 @@ end)
 	
 backdrop.Activated:Connect(function()
 	if currentOpen then
-		print('fucg')
 		closePopup(currentOpen)
 	end
 end)

@@ -1455,13 +1455,19 @@ Lifecycle:track(task.spawn(function()
 	local total = math.max(#assets, 1)
 	local loaded = 0
 
-	for _, asset in ipairs(assets) do
-		if not Lifecycle.active then return end
-		pcall(function()
-			ContentProvider:PreloadAsync({ asset })
+	-- Batched into a single PreloadAsync call (was one call per descendant,
+	-- serially -- much slower on low-end/mobile devices, and this loading
+	-- screen is the very first thing every new player waits through). The
+	-- per-asset callback still drives the same progressive loading bar.
+	local ok = pcall(function()
+		ContentProvider:PreloadAsync(assets, function()
+			loaded += 1
+			realProgress = loaded / total
 		end)
-		loaded += 1
-		realProgress = loaded / total
+	end)
+
+	if not ok then
+		realProgress = 1
 	end
 
 	loadingComplete = true

@@ -48,7 +48,13 @@ function EssenceMultiplier.CalculateMultiplier(plr, gold, crit)
 		multiplier *= 1 + plr:GetAttribute("essence_convergence")
 	end
 	
-	multiplier *= plr:GetAttribute("ShadowEssence")^.2
+	-- Shadow Essence holdings give a synergy bonus that grows with stockpile
+	-- size, but must never zero out the base multiplier for players who
+	-- haven't collected any Shadow Essence yet (0^.2 == 0, which was
+	-- silently zeroing every single essence reward in the game for every
+	-- new player). +1 keeps this a neutral 1x at zero and growing from there.
+	local shadowEssence = plr:GetAttribute("ShadowEssence") or 0
+	multiplier *= (shadowEssence + 1)^.2
 	return multiplier
 end
 

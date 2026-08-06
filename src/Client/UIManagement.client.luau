@@ -113,17 +113,20 @@ local ShadowEssenceDisplayText= ShadowEssenceDisplay:WaitForChild("Value")
 
 EarthEssenceDisplayText.Text = formatNumber(EarthEsseceleaderstat:GetAttribute("Quantity"))
 
-EarthEsseceleaderstat.Changed:Connect(function()
+EarthEsseceleaderstat:GetAttributeChangedSignal("Quantity"):Connect(function()
 	EarthEssenceDisplayText.Text = formatNumber(EarthEsseceleaderstat:GetAttribute("Quantity"))
 end)
 
 ShadowEssenceDisplayText.Text = formatNumber(ShadowEssenceleaderstat:GetAttribute("Quantity"))
 
-ShadowEssenceleaderstat.Changed:Connect(function()
+ShadowEssenceleaderstat:GetAttributeChangedSignal("Quantity"):Connect(function()
 	ShadowEssenceDisplayText.Text = formatNumber(ShadowEssenceleaderstat:GetAttribute("Quantity"))
 end)
 
 local UpdateTimer = Left:WaitForChild("UpdateTimer")
+-- Internal refresh countdown, not something a player needs to see ("Next
+-- Update: 43s" reads like debug output, not part of the game).
+UpdateTimer.Visible = false
 
 local updateValue = 60
 
