@@ -97,7 +97,29 @@ local DefaultPlayerData = {
 	},
 	
 	Upgrades = {},
-	
+
+	-- Daily streak / daily quest state, driven by ProgressionService.
+	-- Quest progress is stored by SLOT INDEX (1..QuestsPerDay) rather than
+	-- by quest id on purpose: the save merge in PlayerDataHandler only
+	-- overwrites keys present in the new data, so fixed slots that are
+	-- rewritten every day can't leave stale per-quest-id progress sitting
+	-- in the DataStore to be picked up later when a quest rotates back in.
+	Progression = {
+		LastClaimDay = 0,        -- UTC day number of the last daily claim
+		Streak = 0,
+		BestStreak = 0,
+		QuestDay = 0,            -- UTC day number the current quests are for
+		QuestRebirths = 0,       -- rebirth count when those quests were rolled
+		QuestProgress = { 0, 0, 0 },
+		QuestClaimed = { false, false, false },
+		TotalQuestsCompleted = 0,
+		TotalDailiesClaimed = 0,
+		-- [CODE] = true for each promo code already redeemed. Keyed by
+		-- code string on purpose -- these entries should persist forever
+		-- so a code can never be redeemed twice.
+		RedeemedCodes = {},
+	},
+
 	Settings = {
 		["Music"] = true,
 		["SFX"] = true,

@@ -35,12 +35,19 @@ module.GetRandomEssence = function(plr)
 	local roll = math.random() * total
 
 	local cumulative = 0
+	local lastEssence = nil
 	for essence, weight in pairs(module.Essences) do
 		cumulative += weight
+		lastEssence = essence
 		if roll <= cumulative then
 			return essence
 		end
 	end
+
+	-- Floating point can leave `roll` a hair above the final cumulative
+	-- total, which would otherwise fall out of the loop and return nil --
+	-- callers treat this as an orb type, so it must always return one.
+	return lastEssence
 end
 
 return module
