@@ -1,0 +1,402 @@
+local DataStoreService = game:GetService("DataStoreService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ServerStorage = game:GetService("ServerStorage")
+local market = game:GetService("MarketplaceService")
+local EPMService = require(game:GetService("ServerScriptService"):WaitForChild("EPMService"))
+-- ======
+-- Format
+-- ======
+
+local ABBREVIATIONS = {
+	"", "K", "M", "B", "T", "Qd", "Qn", "Sx", "Sp", "Oc", "No"
+}
+
+local function formatNumber(value: number): string
+	local absValue = math.abs(value)
+	if absValue < 1000 then
+		return tostring(value)
+	end
+
+	local index = math.floor(math.log10(absValue) / 3)
+	if index >= #ABBREVIATIONS then
+		index = #ABBREVIATIONS - 1
+	end
+
+	local shortValue = value / (10 ^ (index * 3))
+	local formatted = string.format("%.2f", shortValue)
+	formatted = string.gsub(formatted, "%.?0+$", "")
+
+	return formatted .. ABBREVIATIONS[index + 1]
+end
+
+local essenceMulti = require(game:GetService("ReplicatedStorage"):WaitForChild("EssenceMultiplier"))
+
+-- ============================================================
+-- CONFIG
+-- ============================================================
+local DATASTORE_NAME = "PlayerData_v1" 
+local AUTOSAVE_INTERVAL = 120 
+local MAX_RETRIES = 5
+local RETRY_BACKOFF = 2 
+
+local playerDataStore = DataStoreService:GetDataStore(DATASTORE_NAME)
+local templateModule = ServerStorage:WaitForChild("DefaultPlayerData")
+
+-- ============================================================
+-- INTERNAL STATE
+-- ============================================================
+local sessionStartTime = {} 
+local saveLocks = {}        
+
+-- ============================================================
+-- RETRY WRAPPER
+-- ============================================================
+local function withRetries(fn, ...)
+	local args = { ... }
+	local lastErr
+
+	for attempt = 1, MAX_RETRIES do
+		local ok, result = pcall(fn, table.unpack(args))
+		if ok then
+			return true, result
+		end
+
+		lastErr = result
+		warn(("PlayerDataHandler: attempt %d/%d failed: %s"):format(attempt, MAX_RETRIES, tostring(result)))
+
+		if attempt < MAX_RETRIES then
+			task.wait(RETRY_BACKOFF * attempt)
+		end
+	end
+
+	return false, lastErr
+end
+
+-- ============================================================
+-- MERGE
+-- ============================================================
+local function applySavedData(target, saved)
+	for key, savedValue in pairs(saved) do
+		if type(savedValue) == "table" and type(target[key]) == "table" then
+			applySavedData(target[key], savedValue)
+		else
+			target[key] = savedValue
+		end
+	end
+end
+
+-- ============================================================
+-- LOAD
+-- ============================================================
+local BS = game:GetService("BadgeService")
+local RP = game:GetService("ReplicatedStorage")
+local function loadPlayerData(player)
+	local clone = templateModule:Clone()
+	clone.Name = "PlayerData"
+	clone.Parent = player
+
+	local playerFolder = Instance.new("Folder")
+	playerFolder.Name = player.UserId
+	playerFolder.Parent = RP:WaitForChild("PlayerOrbs")
+
+	local health = Instance.new("IntValue")
+	health.Name = "Health"
+	health.Value = 100
+	health.Parent = playerFolder
+
+	local maxHealth = Instance.new("IntValue")
+	maxHealth.Name = "MaxHealth"
+	maxHealth.Value = 100
+	maxHealth.Parent = playerFolder
+
+	local data = require(clone) 
+
+	local key = "Player_" .. player.UserId
+	local success, result = withRetries(function()
+		return playerDataStore:GetAsync(key)
+	end)
+
+	if success and result then
+		applySavedData(data, result)
+	elseif not success then
+		warn("PlayerDataHandler: failed to load data for " .. player.Name .. " after retries.")
+	end
+
+	-- OFFLINE HARVEST LOGIC REMOVED HERE --
+
+	local leaderstats = Instance.new("Folder")
+	leaderstats.Name = "leaderstats"
+	leaderstats.Parent = player
+
+	local EarthEssence = Instance.new("StringValue")
+	EarthEssence.Name = "Earth Essence"
+
+	EarthEssence.Value = formatNumber(data.Essences.EarthEssence.Quantity)
+	EarthEssence:SetAttribute("Quantity", data.Essences.EarthEssence.Quantity)
+	EarthEssence.Parent = leaderstats
+	
+	local ShadowEssence = Instance.new("StringValue")
+	ShadowEssence.Name = "Shadow Essence"
+
+	ShadowEssence.Value = formatNumber(data.Essences["Shadow Essence"].Quantity)
+	ShadowEssence:SetAttribute("Quantity", data.Essences["Shadow Essence"].Quantity)
+	ShadowEssence.Parent = leaderstats
+
+	player:SetAttribute("ShadowEssence", data.Essences["Shadow Essence"].Quantity)
+	player:SetAttribute("EarthEssence", data.Essences.EarthEssence.Quantity)
+	
+	player:SetAttribute("ShadowEssenceDiscovered", data.Essences["Shadow Essence"].Discovered)
+	player:SetAttribute("EarthEssenceDiscovered", data.Essences.EarthEssence.Discovered)
+	
+	EarthEssence.AttributeChanged:Connect(function(attribute)
+		if attribute == "Quantity" then
+			data.Essences.EarthEssence.Quantity = EarthEssence:GetAttribute("Quantity")
+			
+			if not player:GetAttribute("4008378896042305") and data.Essences.EarthEssence.Quantity >= 500 then
+				player:SetAttribute("4008378896042305", true)
+				data.Badges[4008378896042305] = true
+				BS:AwardBadgeAsync(player.UserId,4008378896042305)
+			end
+			
+			if not player:GetAttribute("1189564550645111") and data.Essences.EarthEssence.Quantity >= 100000 then
+				player:SetAttribute("1189564550645111", true)
+				data.Badges[1189564550645111] = true
+				BS:AwardBadgeAsync(player.UserId,1189564550645111)
+			end
+			
+			if not player:GetAttribute("4077164450257078") and data.Essences.EarthEssence.Quantity >= 1000000 then
+				player:SetAttribute("4077164450257078", true)
+				data.Badges[4077164450257078] = true
+				BS:AwardBadgeAsync(player.UserId,4077164450257078)
+			end
+			
+			EarthEssence.Value = formatNumber(data.Essences.EarthEssence.Quantity)
+
+			if data.Essences.EarthEssence.Discovered == false then
+				player:SetAttribute("EarthEssenceDiscovered",true)
+				data.Essences.EarthEssence.Discovered = true
+
+				local V = player:FindFirstChild(data.Essences.EarthEssence.DisplayName)
+				if V then V.Value = true end
+
+				local HighestDiscovered = nil
+				local previousRarity = -1
+				local discoveries = 0 
+
+				for essenceName, values in pairs(data.Essences) do
+					if values.Discovered then
+						discoveries += 1
+						if values.Rarity > previousRarity then
+							previousRarity = values.Rarity
+							HighestDiscovered = values.DisplayName
+						end
+					end
+				end
+
+				if HighestDiscovered then
+					data.RarestEssence = HighestDiscovered
+					data.UniqueEssences = discoveries
+				end
+			end
+		end
+	end)
+	
+	ShadowEssence.AttributeChanged:Connect(function(attribute)
+		if attribute == "Quantity" then
+			data.Essences["Shadow Essence"].Quantity = ShadowEssence:GetAttribute("Quantity")
+			player:SetAttribute("ShadowEssence", ShadowEssence:GetAttribute("Quantity"))
+			ShadowEssence.Value = formatNumber(data.Essences["Shadow Essence"].Quantity)
+
+			if data.Essences["Shadow Essence"].Discovered == false then
+				player:SetAttribute("ShadowEssenceDiscovered",true)
+				data.Essences["Shadow Essence"].Discovered = true
+
+				local V = player:FindFirstChild(data.Essences["Shadow Essence"].DisplayName)
+				if V then V.Value = true end
+
+				local HighestDiscovered = nil
+				local previousRarity = -1
+				local discoveries = 0 
+
+				for essenceName, values in pairs(data.Essences) do
+					if values.Discovered then
+						discoveries += 1
+						if values.Rarity > previousRarity then
+							previousRarity = values.Rarity
+							HighestDiscovered = values.DisplayName
+						end
+					end
+				end
+
+				if HighestDiscovered then
+					data.RarestEssence = HighestDiscovered
+					data.UniqueEssences = discoveries
+				end
+			end
+		end
+	end)
+	
+	for value, activated in pairs(data.HollowedMilestones) do
+		player:SetAttribute(value,activated)
+	end
+	
+	local rarestEssence = Instance.new("StringValue")
+	rarestEssence.Name = "Rarest Essence"
+	rarestEssence.Value = data.RarestEssence or ""
+	rarestEssence.Parent = leaderstats
+
+	local rebirths = Instance.new("IntValue")
+	rebirths.Name = "Rebirths"
+	rebirths.Value = data.Rebirths or 0
+	rebirths.Parent = leaderstats
+
+	for _, value in pairs(data.Essences) do
+		local discovered = value.Discovered
+		local V = Instance.new("BoolValue")
+		V.Value = discovered
+		V.Name = value.DisplayName
+		V.Parent = player
+	end
+
+	for name, value in pairs(data.Settings) do
+		player:SetAttribute(string.gsub(name, "%s", ""), value)
+	end
+
+	for id, owned in pairs(data.Gamepasses) do
+		player:SetAttribute(tonumber(id), owned.Owned)
+	end
+	
+	player:SetAttribute("Rebirths", data.Rebirths)
+	player:SetAttribute("SeenTutorial", data.SeenTutorial)
+	
+	for name, level in pairs(data.Upgrades) do
+		player:SetAttribute(name, level)
+	end
+	
+	for ID, has in pairs(data.Badges) do
+		player:SetAttribute(ID, has)
+	end
+	
+	if not player:GetAttribute("1219109424164715") then
+		player:SetAttribute("1219109424164715", true)
+		BS:AwardBadgeAsync(player.UserId,1219109424164715)
+	end
+	
+	local SE = {}
+	local savedEPM = {}
+	
+	for essence, dict in pairs(data.Essences) do
+		SE[essence] = dict.Quantity
+		local temp = dict.savedEPM
+		if not temp or temp == 0 then 
+			temp = 50
+		end
+		savedEPM[essence] = temp
+	end
+
+	EPMService.ActiveSessions[player.UserId] = {
+		JoinTime = os.time(),
+		StartingEssences = SE,
+		SavedEPM = savedEPM
+	}
+	sessionStartTime[player.UserId] = os.clock()
+end
+
+-- ============================================================
+-- SAVE
+-- ============================================================
+local function savePlayerData(player, isFinalSave)
+	local clone = player:FindFirstChild("PlayerData")
+	if not clone then return end 
+
+	local userId = player.UserId
+	if saveLocks[userId] then return end
+	saveLocks[userId] = true
+
+	local data = require(clone) 
+
+	local session = EPMService.ActiveSessions[player.UserId]
+	local EPMs = {}
+	if session then
+		EPMs = EPMService.getEPM(player)
+	end	
+
+	if EPMs then
+		for essence, EPM in pairs(EPMs) do
+			if data.Essences[essence] then
+				data.Essences[essence].savedEPM = EPM
+			end
+		end
+	end
+
+	data.LastLeaveTime = os.time()
+
+	if sessionStartTime[userId] then
+		data.PlayTime = (data.PlayTime or 0) + (os.clock() - sessionStartTime[userId])
+		sessionStartTime[userId] = os.clock()
+	end
+
+	local key = "Player_" .. userId
+	local success, err = withRetries(function()
+		return playerDataStore:UpdateAsync(key, function(oldData)
+			oldData = oldData or {}
+			applySavedData(oldData, data) 
+			return oldData
+		end)
+	end)
+
+	EPMService.ActiveSessions[player.UserId] = nil
+	saveLocks[userId] = nil
+
+	if not success then
+		warn("PlayerDataHandler: FAILED to save data for " .. player.Name .. " (" .. userId .. "): " .. tostring(err))
+	elseif isFinalSave then
+		print("PlayerDataHandler: final save complete for " .. player.Name)
+	end
+end
+
+-- ============================================================
+-- PLAYER LIFECYCLE
+-- ============================================================
+Players.PlayerAdded:Connect(loadPlayerData)
+
+Players.PlayerRemoving:Connect(function(player)
+	savePlayerData(player, true)
+	sessionStartTime[player.UserId] = nil
+end)
+
+game:BindToClose(function()
+	if RunService:IsStudio() then return end
+
+	local players = Players:GetPlayers()
+	local remaining = #players
+	if remaining == 0 then return end
+
+	for _, player in ipairs(players) do
+		task.spawn(function()
+			savePlayerData(player, true)
+			remaining -= 1
+		end)
+	end
+
+	local waited = 0
+	while remaining > 0 and waited < 25 do
+		task.wait(1)
+		waited += 1
+	end
+end)
+
+-- ============================================================
+-- AUTOSAVE
+-- ============================================================
+task.spawn(function()
+	while true do
+		task.wait(AUTOSAVE_INTERVAL)
+		for _, player in ipairs(Players:GetPlayers()) do
+			if player:FindFirstChild("PlayerData") then
+				task.spawn(savePlayerData, player, false)
+			end
+		end
+	end
+end)

@@ -1,0 +1,173 @@
+--[[
+	CriticalsController.lua (ModuleScript)
+	---------------------------------------
+	Shared crit-roll + crit-multiplier math for the Critical Essence
+	upgrade branch in TreeUpgrades:
+		critical_chance_1/2/3          -> EffectType "CritChance"
+		critical_multiplier_1/2        -> EffectType "CritMultiplierBonus"
+		guaranteed_crit_streak         -> EffectType "GuaranteedCritEveryNClicksReduction"
+		double_crit                    -> EffectType "DoubleCritChance"
+
+	Crits don't deal extra damage or affect the orb's HP at all -- they
+	purely amplify the essence PROFIT from whichever orb landed the crit.
+	This module has nothing to do with EssenceOrbController's HP/shots.
+
+	Reads every upgrade level straight off player Attributes via
+	TreeUpgrades.GetSummedEffectFromAttributes -- same pattern already used
+	elsewhere (CollectionUpgrades, IdleUpgrades) -- so this module behaves
+	identically whether required from the client or the server.
+
+	DESIGN NOTE ON TRUST: RollCrit/RollDoubleCrit are meant to be called
+	CLIENT-SIDE, once per orb, purely to decide whether that orb gets crit
+	visuals (tint/glow/bigger pop) and to flag it for the "collected"
+	RemoteEvent. The actual BONUS AMOUNT that flag is worth is computed by
+	GetCritMultiplier, which reads CritMultiplierBonus live off the
+	player's own Attributes -- so even if a client always claimed
+	crit = true, the payout is still capped by the upgrades they've
+	actually bought. Call GetCritMultiplier SERVER-SIDE (see
+	EssenceMultiplier.lua) -- that's what keeps the bonus amount honest;
+	the boolean itself is just a convenience flag, not a security boundary
+	(consistent with how `quantity` from the client is already trusted
+	elsewhere in this codebase).
+
+	USAGE
+	------
+		local Criticals = require(path.to.CriticalsController)
+
+		-- client, once per spawned orb:
+		local isCrit = Criticals.RollCrit(player)
+		orbInstance:SetAttribute("IsCrit", isCrit)
+		-- (tint/glow the orb however you like based on isCrit)
+
+		-- wherever collection actually fires the "collected" RemoteEvent:
+		collectedEvent:FireServer(orbName, quantity, orbInstance:GetAttribute("IsCrit"), isGolden)
+
+		-- server, inside the "collected" handler (see EssenceMultiplier.lua,
+		-- which already wraps this for you):
+		local isDoubleCrit = Criticals.RollDoubleCrit(plr, crit)
+		local multiplier = Criticals.GetCritMultiplier(plr, crit, isDoubleCrit)
+
+		-- optional, read-only, for UI (doesn't touch streak state):
+		local chance = Criticals.GetCritChance(player)          -- 0-1
+		local bonus = Criticals.GetCritMultiplierBonus(player)  -- e.g. 0.35
+]]
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TreeUpgrades = require(ReplicatedStorage:WaitForChild("TreeUpgrades"))
+
+local CriticalsController = {}
+
+-- =========================================================================
+-- TUNABLES (design choices TreeUpgrades doesn't specify a number for)
+-- =========================================================================
+
+-- guaranteed_crit_streak reduces this by EffectPerLevel(=2) per level,
+-- MaxLevel 5 -> up to -10 total. Floor keeps it from ever hitting 0 or
+-- going negative regardless of how the tree gets tuned later.
+local BASE_GUARANTEED_CRIT_STREAK = 20
+local MIN_GUARANTEED_CRIT_STREAK = 4
+
+-- Belt-and-suspenders cap so stacking every CritChance upgrade can't push
+-- past a near-guaranteed crit on every single click.
+local MAX_CRIT_CHANCE = 0.9
+
+-- =========================================================================
+-- PER-PLAYER STREAK STATE
+-- =========================================================================
+-- [player] = number of non-crit clicks in a row since the last crit
+local streakCounts = {}
+
+local function getGuaranteedStreakLength(player)
+	local reduction = TreeUpgrades.GetSummedEffectFromAttributes(player, "GuaranteedCritEveryNClicksReduction")
+	return math.max(MIN_GUARANTEED_CRIT_STREAK, BASE_GUARANTEED_CRIT_STREAK - reduction)
+end
+
+-- =========================================================================
+-- READ-ONLY DISPLAY HELPERS (safe to call from UI, never touch streak state)
+-- =========================================================================
+
+function CriticalsController.GetCritChance(player)
+	return math.min(MAX_CRIT_CHANCE, TreeUpgrades.GetSummedEffectFromAttributes(player, "CritChance"))
+end
+
+function CriticalsController.GetCritMultiplierBonus(player)
+	return TreeUpgrades.GetSummedEffectFromAttributes(player, "CritMultiplierBonus")
+end
+
+-- =========================================================================
+-- ROLLING
+-- =========================================================================
+
+-- Returns true/false for whether this single orb/collection should be
+-- treated as a critical. Combines a base random roll off CritChance with
+-- a guaranteed crit once enough non-crit clicks have piled up
+-- (guaranteed_crit_streak). Advances/resets the player's streak counter as
+-- a side effect, so call this AT MOST ONCE PER ORB.
+function CriticalsController.RollCrit(player)
+	local critChance = CriticalsController.GetCritChance(player)
+	local streakLength = getGuaranteedStreakLength(player)
+	local clicksSinceLastCrit = (streakCounts[player] or 0) + 1
+
+	local isCrit = math.random() < critChance
+	if not isCrit and clicksSinceLastCrit >= streakLength then
+		isCrit = true
+	end
+
+	streakCounts[player] = isCrit and 0 or clicksSinceLastCrit
+
+	return isCrit
+end
+
+-- Rolls double_crit's "chance to immediately trigger a second critical" on
+-- top of an already-landed crit. Returns false immediately if isCrit is
+-- false (no double-crit without crit-ing first) or if the player doesn't
+-- own double_crit at all.
+function CriticalsController.RollDoubleCrit(player, isCrit)
+	if not isCrit then
+		return false
+	end
+
+	local doubleCritChance = TreeUpgrades.GetSummedEffectFromAttributes(player, "DoubleCritChance")
+	if doubleCritChance <= 0 then
+		return false
+	end
+
+	return math.random() < doubleCritChance
+end
+
+-- =========================================================================
+-- MULTIPLIER
+-- =========================================================================
+
+-- Returns the essence multiplier a single collection is worth given
+-- whether it crit (and optionally double-crit). 1 = no bonus, i.e. safe to
+-- multiply straight into an existing essence calculation unconditionally.
+-- This is the piece meant to be trusted server-side: the bonus is derived
+-- from CritMultiplierBonus on the player's own Attributes, not from
+-- anything the client sent, so it can't be inflated beyond what their
+-- upgrades actually justify.
+function CriticalsController.GetCritMultiplier(player, isCrit, isDoubleCrit)
+	if not isCrit then
+		return 1
+	end
+
+	local critBonus = CriticalsController.GetCritMultiplierBonus(player)
+	local multiplier = 2 + critBonus
+
+	if isDoubleCrit then
+		multiplier += critBonus -- second proc stacks another full crit bonus
+	end
+
+	return multiplier
+end
+
+-- =========================================================================
+-- CLEANUP
+-- =========================================================================
+
+Players.PlayerRemoving:Connect(function(player)
+	streakCounts[player] = nil
+end)
+
+return CriticalsController
