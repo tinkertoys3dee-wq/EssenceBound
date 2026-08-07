@@ -110,7 +110,7 @@ local GAMEPASS_HANDLERS = {
 -- anything other than true tells Roblox to retry the purchase later
 -- instead of silently losing it.
 local PotionTimerService = require(game.ServerScriptService:WaitForChild("PotionTimerService"))
-local EssenceStorm = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("EssenceStorm")
+local StormController = require(game.ServerScriptService:WaitForChild("StormController"))
 local PRODUCT_HANDLERS = {
 	[3609555390] = function(player) -- Mini Essence Potion (e.g. +250 Essence)
 		print(player.Name .. " bought the Small Gem Pack")
@@ -134,9 +134,23 @@ local PRODUCT_HANDLERS = {
 		return true
 	end,
 	
-	[3609555580] = function(player) -- Essence Rain (e.g. +250 Essence)
-		print(player.Name .. " bought the Small Gem Pack")
-		EssenceStorm:FireClient(player)		-- return ok
+	[3609555580] = function(player) -- Essence Rain
+		-- Storms are driven server-side: the controller owns the timer,
+		-- the golden roll and the spawn interval, and tells the client
+		-- what to draw. Firing the EssenceStorm remote from here directly
+		-- (as this used to) sent the client a bare event with no action
+		-- string or payload, which its handler simply ignored -- so the
+		-- purchase took the player's Robux and produced nothing at all.
+		local started, reason = StormController.ForceStormFor(player)
+
+		if not started then
+			warn(("Essence Rain purchase could not start a storm for %s: %s")
+				:format(player.Name, tostring(reason)))
+			-- Returning false leaves the receipt unprocessed so Roblox
+			-- retries it, rather than charging for a storm that never ran.
+			return false
+		end
+
 		return true
 	end,
 

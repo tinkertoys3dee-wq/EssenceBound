@@ -219,6 +219,64 @@ function StormController:TryManualSummon()
 	return true
 end
 
+-- Unconditionally starts a storm the player has PAID for (the Essence
+-- Rain developer product).
+--
+-- Deliberately skips every check TryManualSummon applies: those gate a
+-- FREE ability behind an upgrade unlock and a cooldown, and a purchase
+-- must never be silently swallowed by them. Buying rain always rains.
+--
+-- Returns: success (bool), reason (string, nil on success)
+function StormController:ForceStorm()
+	-- Buying while it's already raining tops the timer back up rather than
+	-- restarting it (or being discarded outright), so the purchase can't
+	-- be wasted by unlucky timing.
+	if self.Active then
+		self.TimeRemaining = math.max(self.TimeRemaining, MANUAL_STORM_DURATION)
+		self:_mirrorAttributes()
+
+		if self.RemoteEvent then
+			self.RemoteEvent:FireClient(self.Player, "StormStart", {
+				Duration = self.TimeRemaining,
+				IsGolden = self.IsGolden,
+				SpawnInterval = getSpawnInterval(self.GetPlayerData(self.Player)),
+			})
+		end
+
+		return true
+	end
+
+	self:_startStorm(true)
+	return true
+end
+
+-- Module-level entry point: looks the controller up and calls ForceStorm
+-- with the correct `self`.
+--
+-- This exists because the alternative -- every caller doing its own
+-- StormController.Get(player) and then reaching for an internal method --
+-- is exactly how the wrong `self` gets passed (a dot call, or calling on
+-- the module itself). Every field then resolves to nil and it surfaces as
+-- a bare "attempt to call a nil value" from deep inside this module, far
+-- from the code that actually got it wrong.
+--
+-- Returns: success (bool), reason (string, nil on success)
+-- Reasons: "NoPlayer" | "NoController"
+function StormController.ForceStormFor(player)
+	if typeof(player) ~= "Instance" or not player:IsA("Player") then
+		return false, "NoPlayer"
+	end
+
+	local controller = ActiveControllers[player]
+	if not controller then
+		-- Player left, or joined before this system started running. The
+		-- caller decides whether that's worth retrying.
+		return false, "NoController"
+	end
+
+	return controller:ForceStorm()
+end
+
 -- =========================================================================
 -- MAIN LOOP
 -- =========================================================================
