@@ -51,6 +51,11 @@ end
 
 local PurchaseRemote = ensureRemote("RemoteEvent", "PurchaseSanctumUpgrade")
 local SyncRemote = ensureRemote("RemoteEvent", "SanctumSync")
+-- Lets the panel ask for a fresh read whenever it's opened, rather than
+-- depending solely on the one push at join. Defense in depth against any
+-- future timing edge case producing the same "stuck showing 0" bug the
+-- join-time race above just caused.
+local RequestSyncRemote = ensureRemote("RemoteEvent", "RequestSanctumSync")
 
 -- =========================================================================
 -- HELPERS
@@ -235,6 +240,21 @@ PurchaseRemote.OnServerEvent:Connect(function(player, upgradeId)
 	pushState(player)
 end)
 
+local requestSyncDebounce = {}
+local REQUEST_SYNC_DEBOUNCE = 1
+
+RequestSyncRemote.OnServerEvent:Connect(function(player)
+	-- Read-only, but still debounced against a client stuck in a fast loop.
+	local now = os.clock()
+	local last = requestSyncDebounce[player]
+	if last and (now - last) < REQUEST_SYNC_DEBOUNCE then
+		return
+	end
+	requestSyncDebounce[player] = now
+
+	pushState(player)
+end)
+
 -- =========================================================================
 -- LIFECYCLE
 -- =========================================================================
@@ -246,22 +266,38 @@ local function onPlayerAdded(player)
 			return
 		end
 
-		-- Let the client's UI script finish building before the first push.
-		task.wait(1)
+		-- Wait for the ACTUAL Shadow Essence leaderstat, not a fixed delay.
+		-- PlayerDataHandler's initial load includes a DataStore GetAsync
+		-- call (with retries on failure), which can easily take longer than
+		-- a flat 1-second guess -- especially for a large save. When the
+		-- leaderstat wasn't ready yet, the old code's getShadowStat()
+		-- returned nil, the panel showed a balance of 0 no matter how large
+		-- the real balance was, AND the live-update listener below never
+		-- got attached -- so it stayed wrong for the rest of the session,
+		-- not just a brief flash.
+		local leaderstats = player:WaitForChild("leaderstats", 30)
+		local stat = leaderstats and leaderstats:WaitForChild(SanctumUpgrades.CURRENCY, 30)
+
+		if not stat or not player.Parent then
+			warn(("SanctumService: %s never got a %q leaderstat -- Sanctum balance will not sync this session.")
+				:format(player.Name, SanctumUpgrades.CURRENCY))
+			return
+		end
+
+		-- Small extra beat so the client's UI script has finished building
+		-- and is listening before the first state arrives.
+		task.wait(0.5)
 		if player.Parent then
 			pushState(player)
 		end
 
 		-- Keep the panel's balance readout live as Shadow Essence is earned
 		-- or spent, without the client having to poll for it.
-		local stat = getShadowStat(player)
-		if stat then
-			stat:GetAttributeChangedSignal("Quantity"):Connect(function()
-				if player.Parent then
-					requestPush(player)
-				end
-			end)
-		end
+		stat:GetAttributeChangedSignal("Quantity"):Connect(function()
+			if player.Parent then
+				requestPush(player)
+			end
+		end)
 	end)
 end
 
@@ -269,6 +305,7 @@ Players.PlayerAdded:Connect(onPlayerAdded)
 Players.PlayerRemoving:Connect(function(player)
 	purchaseDebounce[player] = nil
 	pendingPush[player] = nil
+	requestSyncDebounce[player] = nil
 end)
 
 for _, existing in ipairs(Players:GetPlayers()) do

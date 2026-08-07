@@ -1558,3 +1558,223 @@ task.spawn(function()
 	refreshManualButton()
 end)
 
+-- =========================================================================
+-- SHADOW HAMMER (Sanctum relic: sanctum_hammer)
+-- =========================================================================
+-- Periodically slams a spectral hammer down on the great orb, spawning a
+-- burst of bonus real orbs -- the player never has to do anything for this
+-- to fire. Purely additive on top of normal clicking: uses the exact same
+-- SpawnOrb() every real click already uses, so a hammer-spawned orb rolls
+-- crit and pays out through the identical, already-trusted path.
+--
+-- Interval/BurstCount come from SanctumUpgrades so the numbers can never
+-- drift out of sync with what the Sanctum panel advertises.
+
+local SanctumUpgrades = require(ReplicatedStorage:WaitForChild("SanctumUpgrades"))
+
+local HAMMER_COLOR = Color3.fromRGB(190, 140, 255)
+
+local function playHammerSlam(burstCount)
+	local center = juiceLayer and Juice.CenterOf(LargeOrb, juiceLayer)
+
+	-- Telegraph: the hammer rises off-screen above the orb, holds a beat,
+	-- then slams down -- reads as a wind-up and a hit rather than
+	-- something just popping in and out of existence.
+	if juiceLayer and center then
+		local ok = pcall(function()
+			local hammer = Instance.new("TextLabel")
+			hammer.Name = "HammerRelic"
+			hammer.AnchorPoint = Vector2.new(0.5, 0.5)
+			hammer.Position = center - UDim2.fromOffset(0, 260)
+			hammer.Size = UDim2.fromOffset(70, 70)
+			hammer.BackgroundTransparency = 1
+			hammer.Font = Enum.Font.GothamBold
+			hammer.Text = "🔨"
+			hammer.TextScaled = true
+			hammer.Rotation = -25
+			hammer.ZIndex = 80
+			hammer.Parent = juiceLayer
+
+			local riseTween = TweenService:Create(
+				hammer,
+				TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+				{ Position = center - UDim2.fromOffset(0, 140), Rotation = 15 }
+			)
+			riseTween:Play()
+			riseTween.Completed:Wait()
+
+			task.wait(0.15)
+
+			local slamTween = TweenService:Create(
+				hammer,
+				TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+				{ Position = center, Rotation = -60 }
+			)
+			slamTween:Play()
+			slamTween.Completed:Wait()
+
+			hammer:Destroy()
+		end)
+
+		if not ok then
+			warn("[OrbClicker] Hammer telegraph FX errored, continuing to the actual reward.")
+		end
+	end
+
+	if center then
+		Juice.Shake(Center, 12, 0.3)
+	end
+
+	if juiceLayer and center then
+		Juice.Ring(juiceLayer, center, {
+			Color = HAMMER_COLOR, StartSize = 60, EndSize = 260, Duration = 0.6, Thickness = 5,
+		})
+		Juice.Burst(juiceLayer, center, {
+			Count = 18, Colors = { HAMMER_COLOR, Color3.fromRGB(255, 255, 255) },
+			Distance = 200, Duration = 0.8, Size = { 5, 12 },
+		})
+		Juice.FloatText(juiceLayer, center - UDim2.fromOffset(0, 40), "HAMMER SLAM!", {
+			Color = HAMMER_COLOR, Duration = 1.1, Rise = 70, TextSize = 30,
+		})
+	end
+
+	local sound = Juice.FindSound("SFX/UI/UIPop")
+	if sound then
+		-- Pitched well below a normal click so the slam has real weight.
+		Juice.PlaySound(sound, { Pitch = 0.6, Volume = 0.7 })
+	end
+
+	-- Staggered like a multi-orb click, so the reward has some visual
+	-- spread instead of every orb appearing in the same frame.
+	for i = 1, burstCount do
+		task.delay((i - 1) * 0.08, function()
+			if CanSpawnOrb() then
+				SpawnOrb(GetEssenceModule.GetRandomEssence(player), false)
+			end
+		end)
+	end
+end
+
+-- =========================================================================
+-- HAMMER COUNTDOWN PILL
+-- =========================================================================
+-- Watching a timer count down to a reward is most of what makes a
+-- periodic ability like this feel worth having equipped -- without a
+-- visible countdown, a slam would just be an unpredictable surprise the
+-- player can't anticipate or plan around. Position is a LAYOUT-style
+-- constant so it's a one-line move if it collides with anything.
+
+local RELIC_HUD_GUI = Instance.new("ScreenGui")
+RELIC_HUD_GUI.Name = "RelicCountdowns"
+RELIC_HUD_GUI.ResetOnSpawn = false
+RELIC_HUD_GUI.IgnoreGuiInset = true
+RELIC_HUD_GUI.DisplayOrder = 45
+RELIC_HUD_GUI.Parent = Gui
+
+local HAMMER_PILL_POSITION = UDim2.fromScale(0.5, 0.025)
+
+local hammerPill = Instance.new("Frame")
+hammerPill.Name = "HammerCountdown"
+hammerPill.AnchorPoint = Vector2.new(0.5, 0)
+hammerPill.Position = HAMMER_PILL_POSITION
+hammerPill.Size = UDim2.fromScale(0.13, 0.032)
+hammerPill.BackgroundColor3 = Color3.fromRGB(28, 17, 48)
+hammerPill.BackgroundTransparency = 0.1
+hammerPill.Visible = false
+hammerPill.ZIndex = 44
+hammerPill.Parent = RELIC_HUD_GUI
+
+local hammerPillCorner = Instance.new("UICorner")
+hammerPillCorner.CornerRadius = UDim.new(0.5, 0)
+hammerPillCorner.Parent = hammerPill
+
+local hammerPillStroke = Instance.new("UIStroke")
+hammerPillStroke.Color = HAMMER_COLOR
+hammerPillStroke.Thickness = 1.5
+hammerPillStroke.Transparency = 0.3
+hammerPillStroke.Parent = hammerPill
+
+-- Fill sweeps from empty to full as the wait elapses, same visual language
+-- as the playtime chest pill elsewhere in the game.
+local hammerPillFill = Instance.new("Frame")
+hammerPillFill.Name = "Fill"
+hammerPillFill.Size = UDim2.fromScale(0, 1)
+hammerPillFill.BackgroundColor3 = HAMMER_COLOR
+hammerPillFill.BackgroundTransparency = 0.75
+hammerPillFill.BorderSizePixel = 0
+hammerPillFill.ZIndex = 44
+hammerPillFill.Parent = hammerPill
+
+local hammerPillFillCorner = Instance.new("UICorner")
+hammerPillFillCorner.CornerRadius = UDim.new(0.5, 0)
+hammerPillFillCorner.Parent = hammerPillFill
+
+local hammerPillLabel = Instance.new("TextLabel")
+hammerPillLabel.Name = "Label"
+hammerPillLabel.Size = UDim2.fromScale(1, 1)
+hammerPillLabel.BackgroundTransparency = 1
+hammerPillLabel.Font = Enum.Font.GothamBold
+hammerPillLabel.Text = "🔨 --"
+hammerPillLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+hammerPillLabel.TextScaled = true
+hammerPillLabel.ZIndex = 45
+hammerPillLabel.Parent = hammerPill
+
+local hammerPillTextConstraint = Instance.new("UITextSizeConstraint")
+hammerPillTextConstraint.MaxTextSize = 15
+hammerPillTextConstraint.Parent = hammerPillLabel
+
+task.spawn(function()
+	-- Blocks here, no polling, until the player owns any level of the
+	-- Hammer -- GetAttributeChangedSignal only wakes this thread on an
+	-- actual purchase.
+	while (player:GetAttribute("sanctum_hammer") or 0) <= 0 do
+		player:GetAttributeChangedSignal("sanctum_hammer"):Wait()
+	end
+
+	hammerPill.Visible = true
+
+	while true do
+		local level = player:GetAttribute("sanctum_hammer") or 0
+		local relicData = SanctumUpgrades.GetRelicLevelData("sanctum_hammer", level)
+
+		if not relicData then
+			-- Shouldn't happen once level >= 1, but never busy-loop on a
+			-- bad read.
+			task.wait(5)
+		else
+			-- Ticks in 1-second steps rather than one blocking wait, purely
+			-- so the pill above can count down live -- this is the same
+			-- total wait as before, just observable instead of opaque.
+			local total = relicData.Interval
+			local remaining = total
+
+			while remaining > 0 do
+				hammerPillLabel.Text = ("🔨 %ds"):format(math.ceil(remaining))
+				hammerPillFill.Size = UDim2.fromScale(math.clamp(1 - (remaining / total), 0, 1), 1)
+
+				local step = math.min(1, remaining)
+				task.wait(step)
+				remaining -= step
+			end
+
+			-- Re-read rather than trust the closed-over `level`: an
+			-- upgrade purchased mid-wait should size the NEXT slam
+			-- correctly, even though it doesn't shorten the wait already
+			-- in progress.
+			local currentLevel = player:GetAttribute("sanctum_hammer") or 0
+			local currentData = SanctumUpgrades.GetRelicLevelData("sanctum_hammer", currentLevel)
+			if currentData then
+				hammerPillLabel.Text = "🔨 NOW!"
+				hammerPillFill.Size = UDim2.fromScale(1, 1)
+				Juice.Punch(Juice.GetScale(hammerPill), 0.25, 0.3)
+
+				local ok, err = pcall(playHammerSlam, currentData.BurstCount)
+				if not ok then
+					warn("[OrbClicker] Hammer slam errored: " .. tostring(err))
+				end
+			end
+		end
+	end
+end)
+

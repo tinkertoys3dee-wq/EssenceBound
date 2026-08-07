@@ -101,6 +101,48 @@ local UPGRADES = {
 		EffectPerLevel = 4,
 		EffectSuffix = " collect radius",
 	},
+
+	-- ===================== RELICS =====================
+	-- Unlike the four stat upgrades above, these don't grant a linear
+	-- per-level number -- they grant a periodic, automatic EVENT: a big,
+	-- unmissable visual moment that fires on its own timer without the
+	-- player having to do anything. That's deliberate: the stat upgrades
+	-- make the existing loop a bit better every purchase; a relic is
+	-- supposed to feel like a completely different kind of reward, and be
+	-- something a player watches the clock for.
+	--
+	-- Kind = "Relic" upgrades read Levels[level] = {Interval, BurstCount?}
+	-- instead of EffectPerLevel -- see GetRelicLevelData below. Priced well
+	-- above the stat upgrades (500+ vs 20-35 base) since a relic is a much
+	-- bigger, rarer purchase, not a routine incremental one.
+	{
+		Id = "sanctum_hammer",
+		Name = "Shadow Hammer",
+		Description = "Summons a spectral hammer that periodically slams down on your orb for a burst of bonus essence orbs.",
+		Icon = "🔨",
+		Kind = "Relic",
+		MaxLevel = 2,
+		BaseCost = 500,
+		CostGrowth = 6, -- level 2 costs 3000
+		Levels = {
+			[1] = { Interval = 45, BurstCount = 4 },
+			[2] = { Interval = 28, BurstCount = 7 },
+		},
+	},
+	{
+		Id = "sanctum_laser",
+		Name = "Void Laser",
+		Description = "Sweeps a beam of void energy across your collection field, instantly gathering everything currently active.",
+		Icon = "🌌",
+		Kind = "Relic",
+		MaxLevel = 2,
+		BaseCost = 700,
+		CostGrowth = 6, -- level 2 costs 4200
+		Levels = {
+			[1] = { Interval = 55 },
+			[2] = { Interval = 32 },
+		},
+	},
 }
 
 SanctumUpgrades.List = UPGRADES
@@ -135,15 +177,38 @@ function SanctumUpgrades.GetCostForNextLevel(id: string, currentLevel: number): 
 	return math.floor(def.BaseCost * (def.CostGrowth ^ currentLevel))
 end
 
--- Total effect granted at a given level.
+-- Total effect granted at a given level. Relics have no linear per-level
+-- number (see GetRelicLevelData instead), so this returns 0 for them
+-- rather than erroring on a nil EffectPerLevel -- defensive in case
+-- something calls this generically without checking Kind first.
 function SanctumUpgrades.GetEffect(id: string, level: number): number
 	local def = ById[id]
-	if not def then
+	if not def or def.Kind == "Relic" then
 		return 0
 	end
 
 	level = math.clamp(math.floor(tonumber(level) or 0), 0, def.MaxLevel)
 	return def.EffectPerLevel * level
+end
+
+-- Relic-only: the {Interval, BurstCount?} table for a given level, or nil
+-- if `id` isn't a relic or `level` is 0 (not yet purchased). BurstCount is
+-- absent for relics whose activation isn't "spawn N orbs" (e.g. the Void
+-- Laser collects everything active instead of spawning a fixed amount).
+function SanctumUpgrades.GetRelicLevelData(id: string, level: number)
+	local def = ById[id]
+	if not def or def.Kind ~= "Relic" or not def.Levels then
+		return nil
+	end
+
+	level = math.floor(tonumber(level) or 0)
+	return def.Levels[level]
+end
+
+-- Convenience wrapper matching GetPlayerEffect's naming, for the client
+-- scripts that actually run each relic's periodic loop.
+function SanctumUpgrades.GetPlayerRelicLevelData(player, id: string)
+	return SanctumUpgrades.GetRelicLevelData(id, SanctumUpgrades.GetPlayerLevel(player, id))
 end
 
 -- Reads the level straight off the player attribute the server mirrors, so
@@ -166,12 +231,23 @@ function SanctumUpgrades.GetPlayerEffect(player, id: string): number
 	return SanctumUpgrades.GetEffect(id, SanctumUpgrades.GetPlayerLevel(player, id))
 end
 
--- Human-readable effect string for the UI, e.g. "+15% essence" or
--- "+120 max energy".
+-- Human-readable effect string for the UI, e.g. "+15% essence", "+120 max
+-- energy", or (for a relic) "Slams every 45s (+4 bonus orbs)".
 function SanctumUpgrades.DescribeEffect(id: string, level: number): string
 	local def = ById[id]
 	if not def then
 		return ""
+	end
+
+	if def.Kind == "Relic" then
+		local data = SanctumUpgrades.GetRelicLevelData(id, level)
+		if not data then
+			return ""
+		end
+		if data.BurstCount then
+			return ("Activates every %ds (+%d bonus orbs)"):format(data.Interval, data.BurstCount)
+		end
+		return ("Activates every %ds (collects everything active)"):format(data.Interval)
 	end
 
 	local total = SanctumUpgrades.GetEffect(id, level)

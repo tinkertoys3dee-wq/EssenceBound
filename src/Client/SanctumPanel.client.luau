@@ -29,6 +29,7 @@ local juiceLayer = Juice.GetLayer(playerGui)
 local remotesFolder = ReplicatedStorage:WaitForChild("SanctumRemotes")
 local PurchaseRemote = remotesFolder:WaitForChild("PurchaseSanctumUpgrade")
 local SyncRemote = remotesFolder:WaitForChild("SanctumSync")
+local RequestSyncRemote = remotesFolder:WaitForChild("RequestSanctumSync")
 
 -- =========================================================================
 -- THEME
@@ -636,6 +637,11 @@ local function open()
 	isOpen = true
 
 	render()
+
+	-- Ask for a fresh read every time the panel opens rather than trusting
+	-- whatever the last push happened to contain -- self-heals from any
+	-- timing edge case that causes the initial join-time sync to be missed.
+	RequestSyncRemote:FireServer()
 
 	backdrop.Visible = true
 	tween(backdrop, TweenInfo.new(0.2), { BackgroundTransparency = 0.5 }):Play()

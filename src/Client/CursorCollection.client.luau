@@ -622,3 +622,208 @@ RunService.RenderStepped:Connect(function(deltaTime)
 	local rp = ring.AbsolutePosition
 	updateCollection(rp.X + ringRadius, rp.Y + ringRadius, deltaTime)
 end)
+
+-- =========================================================================
+-- VOID LASER (Sanctum relic: sanctum_laser)
+-- =========================================================================
+-- Periodically sweeps a beam across the field and force-collects every orb
+-- currently active -- through the exact same CollectEffect() a normal
+-- hover-collection already uses, so payout goes through the identical,
+-- already-trusted path. Purely a periodic BONUS on top of normal play; the
+-- player does nothing to trigger it.
+
+local SanctumUpgrades = require(RP:WaitForChild("SanctumUpgrades"))
+
+local LASER_COLOR = Color3.fromRGB(150, 90, 255)
+
+local function playLaserSweep()
+	-- Snapshot BEFORE the visual, not after: the sweep takes real time, and
+	-- collecting only what existed at the moment the laser fired -- rather
+	-- than also mopping up anything that spawns mid-animation -- keeps the
+	-- reward tied to what the player actually had on screen, not to how
+	-- long the beam happens to take to cross it.
+	--
+	-- Bail is checked here even though CollectEffect sets it too: this
+	-- protects against a race where the ring's own updateCollection has
+	-- already queued the same orb for collection on this exact frame,
+	-- before its removal from collectibleObjects (which only happens once
+	-- the reparent to Destro actually fires ChildRemoved) has gone through
+	-- -- without this check, that orb could get CollectEffect called on it
+	-- twice and be paid out twice for one collection.
+	local targets = {}
+	for _, obj in ipairs(collectibleObjects) do
+		if obj.Parent and not obj:GetAttribute("Bail") then
+			table.insert(targets, obj)
+		end
+	end
+
+	if juiceLayer then
+		local ok = pcall(function()
+			local beam = Instance.new("Frame")
+			beam.Name = "LaserRelic"
+			beam.AnchorPoint = Vector2.new(0.5, 0.5)
+			beam.Position = UDim2.fromScale(-0.1, 0.5)
+			beam.Size = UDim2.new(0.045, 0, 1.5, 0)
+			beam.Rotation = 12
+			beam.BackgroundColor3 = LASER_COLOR
+			beam.BackgroundTransparency = 0.15
+			beam.BorderSizePixel = 0
+			beam.ZIndex = 85
+			beam.Parent = juiceLayer
+
+			local edgeGlow = Instance.new("UIStroke")
+			edgeGlow.Thickness = 6
+			edgeGlow.Color = Color3.fromRGB(255, 255, 255)
+			edgeGlow.Transparency = 0.35
+			edgeGlow.Parent = beam
+
+			local sweep = TweenService:Create(
+				beam,
+				TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+				{ Position = UDim2.fromScale(1.1, 0.5) }
+			)
+			sweep:Play()
+			sweep.Completed:Wait()
+
+			beam:Destroy()
+		end)
+
+		if not ok then
+			warn("[CursorCollection] Laser sweep FX errored, continuing to the actual reward.")
+		end
+	end
+
+	-- Re-checked at the moment of collection too, not just at snapshot
+	-- time -- the sweep's ~0.45s runtime is enough for the player's own
+	-- ring to have legitimately collected one of these in the meantime.
+	for _, obj in ipairs(targets) do
+		if obj.Parent and not obj:GetAttribute("Bail") then
+			CollectEffect(obj)
+		end
+	end
+
+	if juiceLayer then
+		Juice.FloatText(juiceLayer, UDim2.fromScale(0.5, 0.42), "VOID SWEEP!", {
+			Color = LASER_COLOR,
+			Duration = 1,
+			Rise = 60,
+			TextSize = 28,
+		})
+	end
+
+	local sound = Juice.FindSound("SFX/UI/UIPop")
+	if sound then
+		Juice.PlaySound(sound, { Pitch = 1.4, Volume = 0.45 })
+	end
+end
+
+-- =========================================================================
+-- LASER COUNTDOWN PILL
+-- =========================================================================
+-- Same reasoning as the Hammer's countdown in OrbClicker.client.luau:
+-- watching a timer count down is most of what makes a periodic ability
+-- feel worth having. Sits directly under the Hammer pill by default --
+-- LASER_PILL_POSITION is a one-line move if that collides with anything.
+
+local RELIC_HUD_GUI = Instance.new("ScreenGui")
+RELIC_HUD_GUI.Name = "RelicCountdownsLaser"
+RELIC_HUD_GUI.ResetOnSpawn = false
+RELIC_HUD_GUI.IgnoreGuiInset = true
+RELIC_HUD_GUI.DisplayOrder = 45
+RELIC_HUD_GUI.Parent = playerGui
+
+local LASER_PILL_POSITION = UDim2.fromScale(0.5, 0.062)
+
+local laserPill = Instance.new("Frame")
+laserPill.Name = "LaserCountdown"
+laserPill.AnchorPoint = Vector2.new(0.5, 0)
+laserPill.Position = LASER_PILL_POSITION
+laserPill.Size = UDim2.fromScale(0.13, 0.032)
+laserPill.BackgroundColor3 = Color3.fromRGB(28, 17, 48)
+laserPill.BackgroundTransparency = 0.1
+laserPill.Visible = false
+laserPill.ZIndex = 44
+laserPill.Parent = RELIC_HUD_GUI
+
+local laserPillCorner = Instance.new("UICorner")
+laserPillCorner.CornerRadius = UDim.new(0.5, 0)
+laserPillCorner.Parent = laserPill
+
+local laserPillStroke = Instance.new("UIStroke")
+laserPillStroke.Color = LASER_COLOR
+laserPillStroke.Thickness = 1.5
+laserPillStroke.Transparency = 0.3
+laserPillStroke.Parent = laserPill
+
+local laserPillFill = Instance.new("Frame")
+laserPillFill.Name = "Fill"
+laserPillFill.Size = UDim2.fromScale(0, 1)
+laserPillFill.BackgroundColor3 = LASER_COLOR
+laserPillFill.BackgroundTransparency = 0.75
+laserPillFill.BorderSizePixel = 0
+laserPillFill.ZIndex = 44
+laserPillFill.Parent = laserPill
+
+local laserPillFillCorner = Instance.new("UICorner")
+laserPillFillCorner.CornerRadius = UDim.new(0.5, 0)
+laserPillFillCorner.Parent = laserPillFill
+
+local laserPillLabel = Instance.new("TextLabel")
+laserPillLabel.Name = "Label"
+laserPillLabel.Size = UDim2.fromScale(1, 1)
+laserPillLabel.BackgroundTransparency = 1
+laserPillLabel.Font = Enum.Font.GothamBold
+laserPillLabel.Text = "🌌 --"
+laserPillLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+laserPillLabel.TextScaled = true
+laserPillLabel.ZIndex = 45
+laserPillLabel.Parent = laserPill
+
+local laserPillTextConstraint = Instance.new("UITextSizeConstraint")
+laserPillTextConstraint.MaxTextSize = 15
+laserPillTextConstraint.Parent = laserPillLabel
+
+task.spawn(function()
+	-- Blocks here, no polling, until the player owns any level of the
+	-- Laser -- GetAttributeChangedSignal only wakes this thread on an
+	-- actual purchase.
+	while (player:GetAttribute("sanctum_laser") or 0) <= 0 do
+		player:GetAttributeChangedSignal("sanctum_laser"):Wait()
+	end
+
+	laserPill.Visible = true
+
+	while true do
+		local level = player:GetAttribute("sanctum_laser") or 0
+		local relicData = SanctumUpgrades.GetRelicLevelData("sanctum_laser", level)
+
+		if not relicData then
+			-- Shouldn't happen once level >= 1, but never busy-loop on a
+			-- bad read.
+			task.wait(5)
+		else
+			-- Ticks in 1-second steps rather than one blocking wait, purely
+			-- so the pill above can count down live.
+			local total = relicData.Interval
+			local remaining = total
+
+			while remaining > 0 do
+				laserPillLabel.Text = ("🌌 %ds"):format(math.ceil(remaining))
+				laserPillFill.Size = UDim2.fromScale(math.clamp(1 - (remaining / total), 0, 1), 1)
+
+				local step = math.min(1, remaining)
+				task.wait(step)
+				remaining -= step
+			end
+
+			laserPillLabel.Text = "🌌 NOW!"
+			laserPillFill.Size = UDim2.fromScale(1, 1)
+			Juice.Punch(Juice.GetScale(laserPill), 0.25, 0.3)
+
+			local ok, err = pcall(playLaserSweep)
+			if not ok then
+				warn("[CursorCollection] Laser sweep errored: " .. tostring(err))
+			end
+		end
+	end
+end)
