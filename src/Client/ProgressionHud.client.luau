@@ -82,7 +82,7 @@ local THEME = {
 local LAYOUT = {
 	-- Vertical button stack (Daily + Quests). Anchored to the left edge,
 	-- below the currency panel that occupies the top-left.
-	ButtonsPosition = UDim2.fromScale(0.014, 0.60),
+	ButtonsPosition = UDim2.fromScale(0.85, 0.2),
 	ButtonsAnchor = Vector2.new(0, 0.5),
 	ButtonSize = UDim2.fromScale(0.062, 0.062),
 
