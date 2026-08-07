@@ -64,7 +64,7 @@ screenGui.ResetOnSpawn = false
 -- disagree about where the screen starts, the aura lands offset from the
 -- orb by the height of the topbar. Set to false to line up with MainGui.
 screenGui.IgnoreGuiInset = false
-screenGui.DisplayOrder = 2 -- between the backdrop and MainGui
+screenGui.DisplayOrder = 4 -- between the backdrop and MainGui
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = playerGui
 
