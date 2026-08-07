@@ -95,7 +95,14 @@ function EssenceMultiplier.CalculateMultiplier(plr, gold, crit)
 	local shadowEssence = plr:GetAttribute("ShadowEssenceLifetime")
 		or plr:GetAttribute("ShadowEssence")
 		or 0
-	multiplier *= (shadowEssence + 1)^.2
+
+	-- NOTE ON THE +1 IN FRONT: this is a flat baseline boost on top of the
+	-- shadow synergy, NOT a safety guard. (x + 1)^.2 on its own is already
+	-- >= 1 for any non-negative balance, so it could never reduce a reward;
+	-- the leading +1 roughly doubles every payout instead, from 1x to 2x at
+	-- zero Shadow Essence and rising from there. Drop the "1 +" to return
+	-- to the un-inflated curve.
+	multiplier *= 1 + (shadowEssence + 1)^.2
 	return multiplier
 end
 

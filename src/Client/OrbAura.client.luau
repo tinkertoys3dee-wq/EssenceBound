@@ -59,7 +59,11 @@ local MOTE_COUNT = 6
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "OrbAura"
 screenGui.ResetOnSpawn = false
-screenGui.IgnoreGuiInset = true
+-- Must MATCH MainGui's inset handling, because mirrorToOrb positions the
+-- aura straight from largeOrb.AbsolutePosition. If the two ScreenGuis
+-- disagree about where the screen starts, the aura lands offset from the
+-- orb by the height of the topbar. Set to false to line up with MainGui.
+screenGui.IgnoreGuiInset = false
 screenGui.DisplayOrder = -5 -- between the backdrop and MainGui
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = playerGui
@@ -84,9 +88,9 @@ local function mirrorToOrb()
 		return
 	end
 
-	-- IgnoreGuiInset is true on this ScreenGui, and AbsolutePosition is
-	-- reported in the same inset-free space, so no offset correction is
-	-- needed here.
+	-- This ScreenGui shares MainGui's inset handling (IgnoreGuiInset =
+	-- false), so the orb's AbsolutePosition and this frame's offset are in
+	-- the same coordinate space and need no correction.
 	anchor.Size = UDim2.fromOffset(size.X, size.Y)
 	anchor.Position = UDim2.fromOffset(pos.X + size.X / 2, pos.Y + size.Y / 2)
 	anchor.Visible = true

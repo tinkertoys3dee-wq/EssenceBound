@@ -72,9 +72,14 @@ local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "AmbientBackground"
 screenGui.ResetOnSpawn = false
 screenGui.IgnoreGuiInset = true
--- Negative order keeps this behind MainGui, the popups and every effect
--- layer without needing to touch any of their DisplayOrder values.
-screenGui.DisplayOrder = -10
+-- Renders IN FRONT of MainGui rather than behind it. MainGui has its own
+-- opaque backdrop, so a layer underneath was simply never visible; putting
+-- the atmosphere on top with a fully transparent root means the motes,
+-- glows and vignette read over the game instead of being hidden by it.
+--
+-- Nothing in here is a GuiButton or Active, so despite sitting in front it
+-- consumes no input -- clicks pass straight through to the orb and buttons.
+screenGui.DisplayOrder = 2
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = playerGui
 
@@ -82,6 +87,11 @@ local root = Instance.new("Frame")
 root.Name = "Backdrop"
 root.Size = UDim2.fromScale(1, 1)
 root.BackgroundColor3 = COLOR_DEEP
+-- Fully transparent: this layer is an overlay now, so a filled root would
+-- black out the entire game. Note this also makes the `wash` gradient
+-- below inert (a gradient tints a background that no longer renders) --
+-- the atmosphere now comes from the glows, motes and vignette.
+root.BackgroundTransparency = 1
 root.BorderSizePixel = 0
 root.ZIndex = 1
 root.Parent = screenGui
