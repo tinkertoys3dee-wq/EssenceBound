@@ -123,7 +123,6 @@ collected.OnServerEvent:Connect(function(plr, orbName, quantity, crit, gold)
 	if orbName == "Earth Essence" then
 		temp = "EarthEssence"
 	end
-	print(temp)
 	local newEssence = essenceGained + PlayerDatas[plr.UserId]["data"]["Essences"][temp]["Quantity"]
 	PlayerDatas[plr.UserId]["data"]["TotalEssenceGathered"] += essenceGained
 	PlayerDatas[plr.UserId][orbName.." leaderstat"]:SetAttribute("Quantity",newEssence)

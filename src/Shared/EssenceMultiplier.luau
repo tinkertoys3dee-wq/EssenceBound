@@ -68,7 +68,6 @@ function EssenceMultiplier.CalculateMultiplier(plr, gold, crit)
 	end
 	
 	if plr:GetAttribute("essence_convergence") then
-		print(plr:GetAttribute("essence_convergence"))
 		multiplier *= 1 + plr:GetAttribute("essence_convergence")
 	end
 	
