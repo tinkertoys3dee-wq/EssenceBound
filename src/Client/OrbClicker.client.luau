@@ -1533,6 +1533,41 @@ EssenceStormEvent.OnClientEvent:Connect(function(action, payload)
 		local IsGolden = payload.IsGolden or false
 		refreshActiveUI()
 
+		-- Storm arrival announcement: a real event happening rather than a
+		-- text label quietly updating in the corner. This is the game's
+		-- biggest recurring moment -- free bonus orbs raining from the sky
+		-- -- and landing with nothing but a status label was a big missed
+		-- beat. Purely cosmetic: the storm's actual duration/spawn
+		-- rate/golden roll are unchanged, this only reacts to what the
+		-- server already decided.
+		do
+			local stormColor = IsGolden and Color3.fromRGB(255, 215, 0) or Color3.fromRGB(120, 200, 255)
+
+			if juiceLayer then
+				Juice.Flash(juiceLayer, {
+					Color = stormColor,
+					Peak = IsGolden and 0.5 or 0.35,
+					Duration = 0.6,
+				})
+				Juice.FloatText(juiceLayer, UDim2.fromScale(0.5, 0.22),
+					IsGolden and "✨ GOLDEN STORM! ✨" or "⚡ ESSENCE STORM! ⚡",
+					{
+						Color = stormColor,
+						Duration = 1.6,
+						Rise = 50,
+						TextSize = IsGolden and 40 or 34,
+					}
+				)
+			end
+
+			local sound = Juice.FindSound("SFX/UI/UIPop")
+			if sound then
+				-- Golden storms ring higher than a normal one so the rarer
+				-- version is audibly distinct even before the label is read.
+				Juice.PlaySound(sound, { Pitch = IsGolden and 1.5 or 0.75, Volume = 0.6 })
+			end
+		end
+
 		if currentEventThread then
 			task.cancel(currentEventThread)
 		end

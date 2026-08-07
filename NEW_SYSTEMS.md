@@ -203,6 +203,56 @@ To retune, edit the `UPGRADES` table in `SanctumUpgrades.luau` — costs,
 levels and effects are all there, and the server and UI both read it, so
 they can't drift apart.
 
+### Bug fixed: panel showing 0 despite a real balance
+
+`SanctumService`'s join logic did a blind `task.wait(1)` before reading
+the balance. `PlayerDataHandler` creates the Shadow Essence leaderstat
+*after* a DataStore load that can easily take longer than a flat
+1-second guess, especially for a large save. When the stat wasn't ready
+yet, the panel showed 0 no matter the real balance, **and the live-update
+listener never got attached** — so it stayed wrong for the whole session,
+not just a brief flash. Now waits for the actual leaderstat via
+`WaitForChild` before ever reading it, and the panel also fires a
+`RequestSanctumSync` every time it opens as a self-healing backstop.
+
+### Relics — periodic, automatic, highly visual events
+
+Two new Sanctum purchases that aren't stat bumps — they're timed events
+that fire on their own and demand attention when they do:
+
+| Relic | Cost | Interval (lvl 1 → 2) | Effect |
+|---|---|---|---|
+| 🔨 Shadow Hammer | 500 → 3000 | 45s → 28s | Telegraphed slam on the great orb, +4 → +7 bonus real orbs |
+| 🌌 Void Laser | 700 → 4200 | 55s → 32s | Beam sweeps the field, instantly collects everything active |
+
+Both fire through the **exact same functions** a real click/collection
+already uses (`SpawnOrb`, `CollectEffect`) — no new trust surface, payout
+validated server-side through the identical path everything else uses.
+
+Each gets a **live countdown pill** (top-center, Hammer above Laser) built
+into the same loop that fires the ability, ticking in 1-second steps so
+display and timing can never drift apart. Positions are one-line moves —
+`HAMMER_PILL_POSITION` in `OrbClicker.client.luau`, `LASER_PILL_POSITION`
+in `CursorCollection.client.luau`.
+
+Extending `SanctumUpgrades.luau`'s schema with `Kind = "Relic"` +
+`Levels[level] = {Interval, BurstCount?}` was the only change needed —
+`SanctumService` and `SanctumPanel` already read costs/levels/
+descriptions generically, so the whole server + panel pipeline picked
+these up with zero changes to either file.
+
+### Storm arrival now announces itself
+
+The automatic Essence Storm (every 5 minutes minimum, even at zero
+upgrades — so most sessions that clear the first few minutes will see
+one) used to land as nothing but a text label quietly updating in the
+corner. It's the game's biggest recurring free-bonus moment and was
+landing completely flat. Now gets a screen flash, a big "⚡ ESSENCE
+STORM! ⚡" (or "✨ GOLDEN STORM! ✨") callout, and a distinct sound —
+golden storms ring at a higher pitch so the rarer version is audibly
+distinct before the label is even read. Purely cosmetic; the storm's
+actual duration, spawn rate and golden roll are untouched.
+
 All rewards scale with rebirth count, so they stay meaningful for a
 returning player without breaking a new one. Everything pays out in
 ordinary in-game essence — nothing here costs Robux or pressures a
