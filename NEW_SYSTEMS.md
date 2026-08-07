@@ -83,6 +83,88 @@ LAUNCH  WELCOME  ESSENCE  ORBHUNTER  BOOSTME
 To add one, add an entry to that table (keys in CAPS — input is
 upper-cased before lookup) and publish.
 
+## 4. Game feel pass
+
+New `src/Shared/Juice.luau` — a shared toolkit (pitch-varied sound, scale
+punch, shake, expanding rings, particle bursts, floating text, animated
+count-up, unified button feel). Applied across `OrbClicker`,
+`CursorCollection`, `UIManagement` and `ProgressionHud`.
+
+**A real bug it fixed:** `HoverClickTween` squishes the orb's `UIScale` to
+0.95 on mouse-down, then `OrbClicker`'s `popTween` yanked the same
+property to 1.1 a frame later — the press-squish existed in the code but
+was never visible. The manual click path now leaves scale to
+`HoverClickTween`.
+
+Also: the orb click has escalating feedback on rapid clicking (pitch,
+burst size, a bigger beat every 10), out-of-energy shakes and says
+"Recharging!" instead of a bare red flash that read as a bug, currency
+counters roll up instead of snapping, crits announce themselves, and the
+global button handler no longer replays one shared `Sound` at a fixed
+pitch (which cut itself off and got grating fast).
+
+Everything here is cosmetic. No reward, rate or spawn count is touched —
+a 20-click streak is worth exactly the same as the first click.
+
+## 5. Visual environment
+
+| File | Role |
+|---|---|
+| `src/Client/AmbientBackground.client.luau` | Parallax motes, drifting colour wash, vignette |
+| `src/Client/OrbAura.client.luau` | Rings, breathing glow and orbiting motes around the great orb |
+
+The game is played entirely in a ScreenGui, so whatever sits behind the
+orb *is* the environment — there's no 3D world doing that job.
+
+Both live in their own ScreenGuis at negative `DisplayOrder` (−10 and −5)
+so they render behind everything else without any existing UI changing.
+Motes are created once and recycled forever, motion is TweenService-driven
+rather than per-frame, and counts scale down on small screens.
+
+The aura also dims and cools as orb energy drains, so that state is
+readable from the orb itself and not only from the bar beneath it.
+
+> ⚠️ **If you don't see the background:** `MainGui` probably has an opaque
+> full-screen frame behind everything. Set its `BackgroundTransparency` to
+> 1 (or delete it) and the ambient layer will show through. The repo can't
+> tell — StarterGui properties were never synced.
+
+## 6. Shadow Sanctum (Shadow Essence finally has a use)
+
+Shadow Essence was a **dead-end currency**. Its orbs spawn at the same
+rate as Earth Essence and it feeds a passive multiplier, but every upgrade
+in `TreeUpgrades` costs `EarthEssence` — so there was nothing to spend it
+on.
+
+| File | Role |
+|---|---|
+| `src/Shared/SanctumUpgrades.luau` | Definitions, costs, effect math |
+| `src/Server/SanctumService.server.luau` | Purchase validation + persistence |
+| `src/Client/SanctumPanel.client.luau` | The panel UI (🌑 button, left edge) |
+
+Four permanent upgrades, all bought with Shadow Essence:
+
+| Upgrade | Effect per level | Max |
+|---|---|---|
+| Umbral Focus | +5% essence | 10 |
+| Deep Well | +40 max orb energy | 10 |
+| Swift Shadows | +0.6 energy/sec regen | 8 |
+| Wider Reach | +4 collection radius | 8 |
+
+They stack **on top of** the Earth tree, and live in
+`PlayerData.SanctumUpgrades` — separate from `PlayerData.Upgrades`, so a
+rebirth (which wipes the Earth tree) never touches them.
+
+**Spending doesn't make you weaker.** The multiplier used to read your
+Shadow Essence *balance*, which would mean buying anything shrank your own
+multiplier — a trap where using the shop is a downgrade. It now reads
+`LifetimeShadowEssence`, which only ever increases. Existing saves are
+migrated on load, so nobody loses multiplier when this first ships.
+
+To retune, edit the `UPGRADES` table in `SanctumUpgrades.luau` — costs,
+levels and effects are all there, and the server and UI both read it, so
+they can't drift apart.
+
 All rewards scale with rebirth count, so they stay meaningful for a
 returning player without breaking a new one. Everything pays out in
 ordinary in-game essence — nothing here costs Robux or pressures a
@@ -107,10 +189,10 @@ use — so **nothing needs to be hand-built in Studio**.
 1. **Press play and confirm essence actually goes up.** This is the whole
    ballgame. Click the orb, hover a drop, watch the counter. If it moves,
    the core bug is fixed.
-2. **Check the three new buttons** (🎁 Daily / 📜 Quests / 🎟️ Codes) on
-   the left edge don't overlap your existing UI. If they do, every
-   position is in the `LAYOUT` table at the top of
-   `ProgressionHud.client.luau` — one line each, no hunting.
+2. **Check the four new buttons** (🎁 Daily / 📜 Quests / 🎟️ Codes /
+   🌑 Sanctum) on the left edge don't overlap your existing UI. Positions
+   live in the `LAYOUT` table at the top of `ProgressionHud.client.luau`
+   and `SanctumPanel.client.luau` — one line each, no hunting.
 3. **Try a code** (`LAUNCH`) to confirm the redeem flow works end to end.
 4. **Watch the Output window** for red errors on join.
 5. **Daily panel auto-opens** on a first join once the tutorial is done.

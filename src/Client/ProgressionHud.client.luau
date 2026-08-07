@@ -569,6 +569,41 @@ local function createPanel(titleText, subtitleText, sizeScale)
 	corner(panel, UDim.new(0, 18))
 	stroke(panel, THEME.Accent, 3)
 
+	-- Vertical gradient so the panel reads as a lit surface rather than a
+	-- flat rectangle. Subtle on purpose: strong enough to give depth,
+	-- weak enough that text contrast is unaffected anywhere on it.
+	new("UIGradient", {
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(38, 22, 60)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(20, 10, 34)),
+		}),
+		Rotation = 90,
+	}, panel)
+
+	-- Soft glow lifting the panel off the dimmed backdrop.
+	--
+	-- Must be a SIBLING of the panel, not a child: under
+	-- ZIndexBehavior.Sibling a child always draws above its parent's
+	-- background regardless of ZIndex, so nesting this would wash an
+	-- orange haze over the panel's own contents instead of sitting behind
+	-- it. Its visibility is chained to the panel's below.
+	local glow = new("ImageLabel", {
+		Name = titleText .. "Glow",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(sizeScale.X.Scale * 1.3, sizeScale.Y.Scale * 1.45),
+		BackgroundTransparency = 1,
+		Image = "rbxasset://textures/ui/Glow.png",
+		ImageColor3 = THEME.Accent,
+		ImageTransparency = 0.85,
+		Visible = false,
+		ZIndex = 105,
+	}, screenGui)
+
+	panel:GetPropertyChangedSignal("Visible"):Connect(function()
+		glow.Visible = panel.Visible
+	end)
+
 	local scale = new("UIScale", { Scale = 0.85 }, panel)
 
 	local titleBar = new("Frame", {
