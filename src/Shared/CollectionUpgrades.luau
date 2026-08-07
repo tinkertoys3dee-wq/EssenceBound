@@ -27,6 +27,7 @@ local CollectionUpgrades = {}
 -- UPGRADE DEFINITIONS (Collection branch only)
 -- =========================================================================
 local treeUpgrades = require(script.Parent.TreeUpgrades)
+local SanctumUpgrades = require(script.Parent:WaitForChild("SanctumUpgrades"))
 local RADIUS_UPGRADES = {
 	{ Id = "collection_radius_1", 
 		EffectPerLevel = treeUpgrades.GetUpgrade("collection_radius_1").EffectPerLevel, 
@@ -76,6 +77,10 @@ do
 	collect(SPEED_UPGRADES)
 	collect(MAX_ACTIVE_ORB_UPGRADES)
 	table.insert(ALL_UPGRADE_IDS, AUTO_COLLECT_UPGRADE_ID)
+	-- Included so WatchAll fires when a Sanctum purchase changes the ring
+	-- size -- without this the ring would keep its old radius until
+	-- something else happened to trigger a recalculation.
+	table.insert(ALL_UPGRADE_IDS, "sanctum_wider_reach")
 end
 CollectionUpgrades.AllUpgradeIds = ALL_UPGRADE_IDS
 
@@ -103,9 +108,13 @@ end
 -- PUBLIC ACCESSORS
 -- =========================================================================
 
--- Extra radius (added on top of a base size) from collection_radius_1/2.
+-- Extra radius (added on top of a base size) from collection_radius_1/2,
+-- plus the Shadow Sanctum's Wider Reach. The two stack additively so the
+-- Shadow economy complements the Earth Essence tree rather than replacing
+-- it.
 function CollectionUpgrades.GetCollectionRadiusBonus(player)
-	return sumEffect(player, RADIUS_UPGRADES)
+	local sanctumReach = tonumber(SanctumUpgrades.GetPlayerEffect(player, "sanctum_wider_reach")) or 0
+	return sumEffect(player, RADIUS_UPGRADES) + sanctumReach
 end
 
 -- Combined pull strength from magnetic_pull_1/2 (for whatever script moves

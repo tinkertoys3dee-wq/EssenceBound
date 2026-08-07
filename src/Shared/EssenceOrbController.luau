@@ -85,6 +85,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 local EssenceUpgrades = require(script.Parent:WaitForChild("TreeUpgrades"))
+local SanctumUpgrades = require(script.Parent:WaitForChild("SanctumUpgrades"))
 
 local EssenceOrbController = {}
 
@@ -155,8 +156,16 @@ function EssenceOrbController.RecalculateStats(player)
 		return
 	end
 
-	local maxHP = BASE_MAX_HP + sumEffect(player, MAX_HP_UPGRADE_IDS)
-	local regenRate = BASE_REGEN_RATE + sumEffect(player, REGEN_UPGRADE_IDS)
+	-- Shadow Sanctum upgrades stack additively on top of the Earth Essence
+	-- tree rather than replacing it, so the two economies complement each
+	-- other instead of one making the other pointless.
+	-- Coerced with tonumber so a missing or malformed Sanctum effect can
+	-- never turn MaxHP/RegenRate into a non-number and break the regen loop.
+	local sanctumMaxHP = tonumber(SanctumUpgrades.GetPlayerEffect(player, "sanctum_deep_well")) or 0
+	local sanctumRegen = tonumber(SanctumUpgrades.GetPlayerEffect(player, "sanctum_swift_shadows")) or 0
+
+	local maxHP = BASE_MAX_HP + sumEffect(player, MAX_HP_UPGRADE_IDS) + sanctumMaxHP
+	local regenRate = BASE_REGEN_RATE + sumEffect(player, REGEN_UPGRADE_IDS) + sanctumRegen
 
 	local shotCostReduction = sumEffect(player, { SHOT_COST_UPGRADE_ID }) -- e.g. 0.09 for 3 levels
 	local shotHPCost = math.max(MIN_SHOT_HP_COST, BASE_SHOT_HP_COST * (1 - shotCostReduction))
@@ -209,6 +218,10 @@ function EssenceOrbController.Init(player)
 	end
 	table.insert(watchedIds, SHOT_COST_UPGRADE_ID)
 	table.insert(watchedIds, NEVER_DEPLETED_UPGRADE_ID)
+	-- Sanctum upgrades that change orb stats, so buying one takes effect
+	-- immediately instead of waiting for some other recalculation.
+	table.insert(watchedIds, "sanctum_deep_well")
+	table.insert(watchedIds, "sanctum_swift_shadows")
 
 	local state = orbStates[player]
 	for _, id in ipairs(watchedIds) do

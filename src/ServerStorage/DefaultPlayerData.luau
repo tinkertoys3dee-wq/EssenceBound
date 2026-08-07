@@ -98,6 +98,24 @@ local DefaultPlayerData = {
 	
 	Upgrades = {},
 
+	-- Total Shadow Essence ever EARNED, which only ever increases.
+	--
+	-- EssenceMultiplier grants a bonus from Shadow Essence. If that read the
+	-- current balance, then spending it in the Shadow Sanctum would directly
+	-- reduce the player's own multiplier -- a trap where using the shop is a
+	-- downgrade. Basing the bonus on lifetime earnings instead means
+	-- spending costs the balance but never the power already earned.
+	--
+	-- Existing saves are migrated on load (see PlayerDataHandler): a player
+	-- whose lifetime total is behind their current balance has it raised to
+	-- match, so nobody loses multiplier when this field first appears.
+	LifetimeShadowEssence = 0,
+
+	-- [upgradeId] = level, for the Shadow Sanctum (see SanctumUpgrades).
+	-- Kept separate from Upgrades so a rebirth, which wipes the Earth
+	-- Essence tree, never touches what Shadow Essence bought.
+	SanctumUpgrades = {},
+
 	-- Daily streak / daily quest state, driven by ProgressionService.
 	-- Quest progress is stored by SLOT INDEX (1..QuestsPerDay) rather than
 	-- by quest id on purpose: the save merge in PlayerDataHandler only

@@ -4,6 +4,7 @@ local EssenceMultiplier = {}
 local rebirthModule = require(ReplicatedStorage:WaitForChild("RebirthHandler"))
 local IdleUpgrades = require(ReplicatedStorage:WaitForChild("IdleUpgrades"))
 local Criticals = require(ReplicatedStorage:WaitForChild("CriticalsController"))
+local SanctumUpgrades = require(ReplicatedStorage:WaitForChild("SanctumUpgrades"))
 
 -- Rolls the double-crit chain for a single collection and returns the
 -- resulting crit multiplier contribution (1 = no crit bonus). Kept as its
@@ -48,12 +49,26 @@ function EssenceMultiplier.CalculateMultiplier(plr, gold, crit)
 		multiplier *= 1 + plr:GetAttribute("essence_convergence")
 	end
 	
-	-- Shadow Essence holdings give a synergy bonus that grows with stockpile
-	-- size, but must never zero out the base multiplier for players who
-	-- haven't collected any Shadow Essence yet (0^.2 == 0, which was
-	-- silently zeroing every single essence reward in the game for every
-	-- new player). +1 keeps this a neutral 1x at zero and growing from there.
-	local shadowEssence = plr:GetAttribute("ShadowEssence") or 0
+	-- Shadow Sanctum: Umbral Focus is a flat additive bonus to everything.
+	-- Coerced so a missing effect can never turn the multiplier into a
+	-- non-number and zero out every reward in the game (which is exactly
+	-- the failure mode the ShadowEssence^.2 bug caused).
+	local umbralFocus = tonumber(SanctumUpgrades.GetPlayerEffect(plr, "sanctum_umbral_focus")) or 0
+	multiplier *= 1 + umbralFocus
+
+	-- Shadow Essence gives a synergy bonus that grows with the stockpile,
+	-- but must never zero out the base multiplier for players who haven't
+	-- collected any yet (0^.2 == 0, which was silently zeroing every single
+	-- essence reward in the game for every new player). +1 keeps this a
+	-- neutral 1x at zero and growing from there.
+	--
+	-- Reads LIFETIME earnings rather than the current balance: the balance
+	-- is spendable in the Sanctum, and if this used it, buying anything
+	-- would shrink the player's own multiplier. Falls back to the balance
+	-- for the brief window on join before the lifetime attribute is set.
+	local shadowEssence = plr:GetAttribute("ShadowEssenceLifetime")
+		or plr:GetAttribute("ShadowEssence")
+		or 0
 	multiplier *= (shadowEssence + 1)^.2
 	return multiplier
 end

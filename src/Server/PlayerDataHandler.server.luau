@@ -145,6 +145,31 @@ local function loadPlayerData(player)
 
 	player:SetAttribute("ShadowEssence", data.Essences["Shadow Essence"].Quantity)
 	player:SetAttribute("EarthEssence", data.Essences.EarthEssence.Quantity)
+
+	-- ===== LIFETIME SHADOW ESSENCE =====
+	-- Migration for saves written before this field existed: a lifetime
+	-- total behind the current balance is raised to match, so nobody loses
+	-- multiplier the first time they load after this shipped.
+	data.LifetimeShadowEssence = math.max(
+		tonumber(data.LifetimeShadowEssence) or 0,
+		tonumber(data.Essences["Shadow Essence"].Quantity) or 0
+	)
+	player:SetAttribute("ShadowEssenceLifetime", data.LifetimeShadowEssence)
+
+	-- Tracks deltas so only genuine INCOME counts toward the lifetime
+	-- total -- spending in the Shadow Sanctum must not reduce it.
+	local lastShadowQuantity = tonumber(data.Essences["Shadow Essence"].Quantity) or 0
+
+	-- Mirror Sanctum levels onto attributes. The systems those upgrades
+	-- affect (EssenceOrbController, CollectionUpgrades, EssenceMultiplier)
+	-- read the attribute directly, the same way they already do for the
+	-- TreeUpgrades ids.
+	if type(data.SanctumUpgrades) ~= "table" then
+		data.SanctumUpgrades = {}
+	end
+	for upgradeId, level in pairs(data.SanctumUpgrades) do
+		player:SetAttribute(upgradeId, level)
+	end
 	
 	player:SetAttribute("ShadowEssenceDiscovered", data.Essences["Shadow Essence"].Discovered)
 	player:SetAttribute("EarthEssenceDiscovered", data.Essences.EarthEssence.Discovered)
@@ -207,6 +232,18 @@ local function loadPlayerData(player)
 			data.Essences["Shadow Essence"].Quantity = ShadowEssence:GetAttribute("Quantity")
 			player:SetAttribute("ShadowEssence", ShadowEssence:GetAttribute("Quantity"))
 			ShadowEssence.Value = formatNumber(data.Essences["Shadow Essence"].Quantity)
+
+			-- Only count increases toward the lifetime total. A decrease is
+			-- the player spending in the Sanctum, which must never claw back
+			-- the multiplier they already earned.
+			local current = tonumber(ShadowEssence:GetAttribute("Quantity")) or 0
+			local gained = current - lastShadowQuantity
+			lastShadowQuantity = current
+
+			if gained > 0 then
+				data.LifetimeShadowEssence = (tonumber(data.LifetimeShadowEssence) or 0) + gained
+				player:SetAttribute("ShadowEssenceLifetime", data.LifetimeShadowEssence)
+			end
 
 			if data.Essences["Shadow Essence"].Discovered == false then
 				player:SetAttribute("ShadowEssenceDiscovered",true)
