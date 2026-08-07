@@ -66,6 +66,11 @@ end
 local function applyButtonFeel(button, hoverScale, baseColor, hoverColor, parent, highlight, highlightColor)
 	hoverScale = hoverScale or 1.05
 
+	-- Marks this button as already having a bespoke hover animation, so
+	-- the global Juice.ButtonFeel pass in UIManagement skips it instead of
+	-- layering a second, competing scale animation on top.
+	button:SetAttribute("JuiceFeelApplied", true)
+
 	local tweener = parent or button
 	local baseSize = tweener.Size
 

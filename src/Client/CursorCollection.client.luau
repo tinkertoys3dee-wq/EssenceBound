@@ -220,11 +220,13 @@ local DUST_COUNT = 7
 local DUST_COLOR = Color3.fromRGB(100, 98, 90)
 
 
-local function spawnDustParticle(parent, originPosition, baseZIndex)
+local function spawnDustParticle(parent, originPosition, baseZIndex, tint)
 	local dust = Instance.new("Frame")
 	dust.Name = "CollectDust"
 	dust.AnchorPoint = Vector2.new(0.5, 0.5)
-	dust.BackgroundColor3 = DUST_COLOR
+	-- Tinted to the essence being collected. The old flat grey read as
+	-- smoke rather than essence and muddied the collection moment.
+	dust.BackgroundColor3 = tint or DUST_COLOR
 	dust.BackgroundTransparency = 0.15
 	dust.BorderSizePixel = 0
 	dust.ZIndex = baseZIndex + 1
@@ -262,14 +264,103 @@ local EssenceMulti = require(RP:WaitForChild("EssenceMultiplier"))
 local newDiscovery = game:GetService("ReplicatedStorage"):WaitForChild("EssenceDiscovered")
 local GetEssences = require(game:GetService("ReplicatedStorage"):WaitForChild("GetEssence"))
 
+-- =========================================================================
+-- COLLECTION FEEL
+-- =========================================================================
+-- Collecting is the payoff beat of the whole loop and it was landing
+-- almost silently: a grey dust puff and a "+N". Everything below is
+-- cosmetic only -- what the orb is actually worth is decided server-side.
+
+local Juice = require(RP:WaitForChild("Juice"))
+local juiceLayer = Juice.GetLayer(playerGui)
+
+local ORB_TINTS = {
+	["Earth Essence"] = Color3.fromRGB(120, 240, 160),
+	["Shadow Essence"] = Color3.fromRGB(170, 130, 255),
+}
+local CRIT_GOLD = Color3.fromRGB(255, 205, 80)
+
+local collectSound = Juice.FindSound("SFX/UI/UIPop")
+
+-- Rapid collection climbs in pitch the same way the orb click does, so a
+-- big harvest reads as a rising run of notes rather than one repeated
+-- blip. Cosmetic only.
+local collectStreak = 0
+local lastCollectAt = 0
+
+local function playCollectFeel(orb, isCrit, isGolden)
+	local now = os.clock()
+	if (now - lastCollectAt) <= 0.8 then
+		collectStreak = math.min(collectStreak + 1, 16)
+	else
+		collectStreak = 1
+	end
+	lastCollectAt = now
+
+	if not juiceLayer then
+		return
+	end
+
+	local center = Juice.CenterOf(orb, juiceLayer)
+	if not center then
+		return
+	end
+
+	local tint = ORB_TINTS[orb:GetAttribute("OrbType")] or ORB_TINTS["Earth Essence"]
+	if isCrit or isGolden then
+		tint = CRIT_GOLD
+	end
+
+	if collectSound then
+		Juice.PlaySound(collectSound, {
+			Pitch = Juice.PitchForStreak(collectStreak, 18) * (isCrit and 1.25 or 1),
+			Volume = isCrit and 0.5 or 0.32,
+		})
+	end
+
+	Juice.Ring(juiceLayer, center, {
+		Color = tint,
+		StartSize = isCrit and 34 or 24,
+		EndSize = isCrit and 130 or 78,
+		Duration = 0.4,
+		Thickness = isCrit and 3 or 2,
+	})
+
+	Juice.Burst(juiceLayer, center, {
+		Count = isCrit and 12 or 5,
+		Colors = { tint, Color3.fromRGB(255, 255, 255) },
+		Distance = isCrit and 130 or 60,
+		Duration = 0.5,
+		Size = isCrit and { 5, 11 } or { 3, 7 },
+	})
+
+	-- A crit previously looked identical to any other collection once the
+	-- orb was gone. Now it announces itself.
+	if isCrit then
+		Juice.FloatText(juiceLayer, center, "CRITICAL!", {
+			Color = CRIT_GOLD,
+			Duration = 0.85,
+			Rise = 80,
+			TextSize = 30,
+		})
+	end
+end
+
 local function CollectEffect(orb)
 	if not orb or not orb.Parent then return end
 	orb:SetAttribute("Bail", true)
 
 	local essenceValue = orb:GetAttribute("EssenceValue") or 1
+	local isCrit = orb:GetAttribute("IsCrit")
+	local isGolden = orb:GetAttribute("IsGolden")
+
+	-- Read the orb's on-screen position BEFORE it's reparented into
+	-- Destro, otherwise the effects spawn wherever that folder happens to
+	-- resolve to rather than where the player actually saw the orb.
+	pcall(playCollectFeel, orb, isCrit, isGolden)
 
 	orb.Parent = Destro
-	collectionFireable:FireServer(orb:GetAttribute("OrbType"), essenceValue, orb:GetAttribute("IsCrit"), orb:GetAttribute("IsGolden"))
+	collectionFireable:FireServer(orb:GetAttribute("OrbType"), essenceValue, isCrit, isGolden)
 	
 	if orb:GetAttribute("OrbType") == "Shadow Essence" then
 		local discovered = player:GetAttribute("ShadowEssenceDiscovered") or false
@@ -371,10 +462,15 @@ local function CollectEffect(orb)
 		-- Dust/smoke burst rising out of the fading orb, staggered slightly
 		local dustOrigin = orb.Position
 		local baseZ = orb.ZIndex or 1
+		local dustTint = ORB_TINTS[orb:GetAttribute("OrbType")] or DUST_COLOR
+		if isCrit or isGolden then
+			dustTint = CRIT_GOLD
+		end
+
 		for i = 1, DUST_COUNT do
 			task.delay(math.random() * 0.18, function()
 				if container and container.Parent then
-					spawnDustParticle(container, dustOrigin, baseZ)
+					spawnDustParticle(container, dustOrigin, baseZ, dustTint)
 				end
 			end)
 		end

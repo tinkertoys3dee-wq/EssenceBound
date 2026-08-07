@@ -45,9 +45,11 @@ local UserInputService = game:GetService("UserInputService")
 local SoundService = game:GetService("SoundService")
 
 local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
+local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
+local juiceLayer = Juice.GetLayer(playerGui)
 
 local remotesFolder = ReplicatedStorage:WaitForChild("ProgressionRemotes")
 local SyncRemote = remotesFolder:WaitForChild("ProgressionSync")
@@ -144,6 +146,10 @@ end
 -- Hover/press feel, applied to every button here so they behave like the
 -- rest of the game's buttons.
 local function addButtonFeel(button, scaleTarget)
+	-- Marks this button as already animated so the global Juice.ButtonFeel
+	-- pass in UIManagement doesn't add a second, competing one.
+	button:SetAttribute("JuiceFeelApplied", true)
+
 	local scale = new("UIScale", { Scale = 1 }, button)
 	scaleTarget = scaleTarget or 1.07
 
@@ -278,6 +284,8 @@ new("UITextSizeConstraint", { MaxTextSize = 16 }, toastSubtitle)
 local toastQueue = {}
 local toastShowing = false
 
+local toastScale = Juice.GetScale(toastFrame)
+
 local function playToast(payload)
 	toastIcon.Text = payload.Icon or "🎁"
 	toastTitle.Text = payload.Title or "Reward"
@@ -291,6 +299,25 @@ local function playToast(payload)
 	})
 	inTween:Play()
 	inTween.Completed:Wait()
+
+	-- Landing beat: earning something should feel like an event, not a
+	-- notification. Purely cosmetic -- the reward was already granted and
+	-- validated server-side before this ever ran.
+	Juice.Punch(toastScale, 0.12, 0.3)
+
+	if juiceLayer then
+		local center = Juice.CenterOf(toastFrame, juiceLayer)
+		if center then
+			Juice.Burst(juiceLayer, center, {
+				Count = 16,
+				Colors = { THEME.Gold, THEME.Accent, THEME.White },
+				Distance = 190,
+				Duration = 0.8,
+				Size = { 5, 12 },
+				ZIndex = 205,
+			})
+		end
+	end
 
 	task.wait(2.4)
 

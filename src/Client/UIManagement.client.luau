@@ -111,17 +111,64 @@ local ShadowEssenceleaderstat = leaderstats:WaitForChild("Shadow Essence")
 local ShadowEssenceDisplay = currencys:WaitForChild("Shadow Essence")
 local ShadowEssenceDisplayText= ShadowEssenceDisplay:WaitForChild("Value")
 
-EarthEssenceDisplayText.Text = formatNumber(EarthEsseceleaderstat:GetAttribute("Quantity"))
+-- =========================================================================
+-- CURRENCY DISPLAY
+-- =========================================================================
+-- Watching the number climb IS the reward loop in an idle game, so these
+-- counters roll up to their new value and pop rather than silently
+-- snapping. Purely presentational -- the authoritative value is still
+-- whatever the server put on the leaderstat, and the label always lands
+-- exactly on it.
 
-EarthEsseceleaderstat:GetAttributeChangedSignal("Quantity"):Connect(function()
-	EarthEssenceDisplayText.Text = formatNumber(EarthEsseceleaderstat:GetAttribute("Quantity"))
-end)
+local Juice = require(RP:WaitForChild("Juice"))
 
-ShadowEssenceDisplayText.Text = formatNumber(ShadowEssenceleaderstat:GetAttribute("Quantity"))
+local GAIN_COLOR = Color3.fromRGB(140, 255, 170)
+local SPEND_COLOR = Color3.fromRGB(255, 150, 150)
 
-ShadowEssenceleaderstat:GetAttributeChangedSignal("Quantity"):Connect(function()
-	ShadowEssenceDisplayText.Text = formatNumber(ShadowEssenceleaderstat:GetAttribute("Quantity"))
-end)
+local function bindCurrencyDisplay(leaderstat, label)
+	local displayed = tonumber(leaderstat:GetAttribute("Quantity")) or 0
+	label.Text = formatNumber(displayed)
+
+	local labelScale = Juice.GetScale(label)
+
+	leaderstat:GetAttributeChangedSignal("Quantity"):Connect(function()
+		local target = tonumber(leaderstat:GetAttribute("Quantity")) or 0
+
+		-- Resume from the value currently on screen, not the last target.
+		-- Orbs land several times a second, so without this the counter
+		-- would snap to the previous target before each new roll.
+		local previous = tonumber(label:GetAttribute("JuiceCurrentValue")) or displayed
+		displayed = target
+
+		local delta = target - previous
+		if delta == 0 then
+			return
+		end
+
+		-- Roll the number. Bigger jumps get a slightly longer roll so a
+		-- large payout feels substantial, capped so it never lags behind
+		-- what the player is doing.
+		local magnitude = math.abs(delta) / math.max(1, math.abs(previous))
+		local duration = math.clamp(0.25 + magnitude * 0.5, 0.25, 0.8)
+
+		Juice.CountUp(label, previous, target, {
+			Duration = duration,
+			Formatter = formatNumber,
+		})
+
+		if delta > 0 then
+			Juice.Punch(labelScale, 0.14, 0.24)
+			Juice.PulseColor(label, GAIN_COLOR, 0.4)
+		else
+			-- Spending should read differently from earning, so a
+			-- purchase is unmistakable.
+			Juice.PulseColor(label, SPEND_COLOR, 0.4)
+		end
+	end)
+end
+
+bindCurrencyDisplay(EarthEsseceleaderstat, EarthEssenceDisplayText)
+bindCurrencyDisplay(ShadowEssenceleaderstat, ShadowEssenceDisplayText)
 
 local UpdateTimer = Left:WaitForChild("UpdateTimer")
 -- Internal refresh countdown, not something a player needs to see ("Next
@@ -132,14 +179,49 @@ local updateValue = 60
 
 UpdateStats()
 
-local clickSound = game:GetService("SoundService"):WaitForChild("SFX"):WaitForChild("UI"):WaitForChild("UIPop")
-for _, btn in pairs(player:WaitForChild("PlayerGui"):GetDescendants()) do
-	if btn:IsA("TextButton") then
-		btn.MouseButton1Click:Connect(function()
-			clickSound:Play()
-		end)
+-- =========================================================================
+-- GLOBAL BUTTON FEEL + SOUND
+-- =========================================================================
+-- Previously this replayed one shared Sound instance at a fixed pitch on
+-- every button. Two problems: a single Sound restarts rather than layering,
+-- so fast clicks cut each other off, and an identical pitch every time is
+-- what makes UI audio grating within a minute. Juice.PlaySound clones per
+-- play and jitters the pitch, so clicks layer and stay pleasant.
+--
+-- It also only ever ran once at startup, so any button created later (the
+-- progression panels, dynamically built shop rows) got nothing. The
+-- DescendantAdded hook below covers those too.
+
+local clickSound = Juice.FindSound("SFX/UI/UIPop")
+local playerGuiRoot = player:WaitForChild("PlayerGui")
+local orbArea = gui:FindFirstChild("Center")
+
+local function bindButton(btn)
+	if not btn:IsA("GuiButton") then
+		return
 	end
+
+	-- The great orb runs its own richer, streak-aware click feedback in
+	-- OrbClicker -- adding the generic UI blip on top would double it up.
+	if orbArea and btn:IsDescendantOf(orbArea) then
+		return
+	end
+
+	-- Juice.ButtonFeel no-ops on anything already carrying
+	-- JuiceFeelApplied, which is how buttons that own a bespoke hover
+	-- animation elsewhere opt out of getting a second one.
+	Juice.ButtonFeel(btn, {
+		HoverScale = 1.05,
+		Sound = clickSound,
+		PitchRange = { 0.92, 1.08 },
+	})
 end
+
+for _, btn in ipairs(playerGuiRoot:GetDescendants()) do
+	bindButton(btn)
+end
+
+playerGuiRoot.DescendantAdded:Connect(bindButton)
 
 while true do
 	task.wait(1)

@@ -55,6 +55,115 @@ local popTween = TweenService:Create(LargeOrbuiScale, tweenInfo, {Scale = 1.1}) 
 local resetTween = TweenService:Create(LargeOrbuiScale, tweenInfo, {Scale = 1}) -- Squishes to 95%
 
 -- =========================================================================
+-- CLICK FEEL
+-- =========================================================================
+-- The great orb is the single most-repeated interaction in the game, so
+-- it has to land. Everything below is cosmetic only -- no reward, rate or
+-- spawn count is touched by any of it.
+--
+-- NOTE ON SCALE OWNERSHIP: LargeOrb's UIScale is already driven by
+-- HoverClickTween (hover 1.1 / press 0.95 / release 1.1). popTween writes
+-- that same property, so firing it on a manual click was overriding the
+-- press-squish about a frame after it started -- the squish was there in
+-- the code but never actually visible. The manual click path below now
+-- leaves the scale to HoverClickTween (which is driven by real mouse
+-- events and does it properly) and layers its impact on separate
+-- elements instead. The automation path still uses popTween, because
+-- auto-clicks fire no mouse events and would otherwise be silent.
+
+local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
+
+-- Shared full-screen effect layer (see Juice.GetLayer) -- kept out of
+-- MainGui so rings and particles can never be clipped by, or interfere
+-- with the layout of, the existing UI.
+local juiceLayer = Juice.GetLayer(Gui)
+
+local ESSENCE_GREEN = Color3.fromRGB(120, 240, 160)
+local ESSENCE_GOLD = Color3.fromRGB(255, 205, 80)
+local ESSENCE_DEEP = Color3.fromRGB(150, 110, 240)
+
+local clickSound = Juice.FindSound("SFX/UI/UIPop")
+
+-- Rapid clicking escalates the feedback: the pitch climbs, the ring grows
+-- and the burst thickens. Purely a feedback curve -- it does not change
+-- what a click is worth.
+local clickStreak = 0
+local lastClickAt = 0
+local STREAK_WINDOW = 0.65
+local STREAK_MAX = 20
+
+local function OrbClickJuice(isAutomated)
+	local now = os.clock()
+
+	if isAutomated then
+		-- Automated clicks get the visual but never drive the streak or
+		-- the rising pitch -- otherwise idle play would sit at a
+		-- permanently shrill top note the player didn't earn.
+		local center = Juice.CenterOf(LargeOrb, juiceLayer)
+		if center then
+			Juice.Ring(juiceLayer, center, {
+				Color = ESSENCE_GREEN,
+				StartSize = 70,
+				EndSize = 150,
+				Duration = 0.5,
+				Thickness = 2,
+			})
+		end
+		return
+	end
+
+	if (now - lastClickAt) <= STREAK_WINDOW then
+		clickStreak = math.min(clickStreak + 1, STREAK_MAX)
+	else
+		clickStreak = 1
+	end
+	lastClickAt = now
+
+	local intensity = clickStreak / STREAK_MAX
+
+	if clickSound then
+		Juice.PlaySound(clickSound, {
+			Pitch = Juice.PitchForStreak(clickStreak, 14) * (0.97 + math.random() * 0.06),
+			Volume = 0.5,
+		})
+	end
+
+	local center = Juice.CenterOf(LargeOrb, juiceLayer)
+	if not center then
+		return
+	end
+
+	Juice.Ring(juiceLayer, center, {
+		Color = intensity > 0.6 and ESSENCE_GOLD or ESSENCE_GREEN,
+		StartSize = 80,
+		EndSize = 170 + (intensity * 90),
+		Duration = 0.45,
+		Thickness = 2 + (intensity * 2),
+	})
+
+	Juice.Burst(juiceLayer, center, {
+		Count = 4 + math.floor(intensity * 7),
+		Colors = { ESSENCE_GREEN, ESSENCE_GOLD, ESSENCE_DEEP },
+		Distance = 90 + (intensity * 70),
+		Duration = 0.5,
+		Size = { 4, 9 },
+	})
+
+	-- A bigger beat every 10 clicks in a row, so a sustained streak builds
+	-- to something instead of flatlining.
+	if clickStreak > 0 and clickStreak % 10 == 0 then
+		Juice.Shake(Center, 5, 0.22)
+		Juice.Burst(juiceLayer, center, {
+			Count = 14,
+			Colors = { ESSENCE_GOLD, Color3.fromRGB(255, 255, 255) },
+			Distance = 210,
+			Duration = 0.7,
+			Size = { 6, 13 },
+		})
+	end
+end
+
+-- =========================================================================
 -- COLLECTION UPGRADES: overflow_capacity (max active orbs) + magnetic_pull
 -- (drift toward cursor). Both are spawn/motion concerns, so they live here
 -- rather than in CollectionRing.lua, which only owns overlap detection.
@@ -894,12 +1003,48 @@ end)
 local deniedColor = Color3.fromRGB(255, 90, 90)
 local originalOrbColor = Color3.fromRGB(255,255,255) -- adjust if color lives elsewhere on LargeOrb
 
+-- Throttles the explanatory text so hammering a depleted orb doesn't
+-- stack a dozen overlapping labels.
+local lastDeniedMessageAt = 0
+
 local function FlashDenied()
 	local flashTween = TweenService:Create(LargeOrb, TweenInfo.new(0.08), {ImageColor3 = deniedColor})
 	flashTween:Play()
 	flashTween.Completed:Connect(function()
 		TweenService:Create(LargeOrb, TweenInfo.new(0.15), {ImageColor3 = originalOrbColor}):Play()
 	end)
+
+	-- A bare colour flash reads as "this is broken" rather than "this is a
+	-- mechanic". The shake gives the refusal weight, and pointing the
+	-- player at the energy bar tells them what to do about it -- this was
+	-- the single most confusing moment in the early game.
+	Juice.Shake(Center, 7, 0.22)
+
+	if bar then
+		Juice.PulseBackground(bar, Color3.fromRGB(255, 120, 120), 0.45)
+		Juice.Punch(Juice.GetScale(bar.Parent), 0.12, 0.25)
+	end
+
+	local now = os.clock()
+	if (now - lastDeniedMessageAt) > 1.6 then
+		lastDeniedMessageAt = now
+
+		if clickSound then
+			-- Dropped well below the normal click pitch so a refusal is
+			-- instantly distinguishable by ear alone.
+			Juice.PlaySound(clickSound, { Pitch = 0.55, Volume = 0.4 })
+		end
+
+		local center = Juice.CenterOf(LargeOrb, juiceLayer)
+		if center then
+			Juice.FloatText(juiceLayer, center, "Recharging!", {
+				Color = Color3.fromRGB(255, 140, 140),
+				Duration = 1,
+				Rise = 60,
+				TextSize = 28,
+			})
+		end
+	end
 end
 
 LargeOrbButton.Activated:Connect(function()
@@ -911,8 +1056,10 @@ LargeOrbButton.Activated:Connect(function()
 	end
 
 	if currentHP >= shotHPCost or currentHP <= 0 then
-		-- immediate click feedback, every successful click
-		popTween:Play()
+		-- Immediate click feedback, every successful click. Scale is left
+		-- to HoverClickTween here (see CLICK FEEL note above) so its
+		-- press-squish stays visible instead of being overridden.
+		OrbClickJuice(false)
 
 		ClickOrbEvent:FireServer()
 
@@ -968,8 +1115,10 @@ task.spawn(function()
 			local shotHPCost = player:GetAttribute("OrbShotHPCost") or 0
 			local hasCoreResilience = (player:GetAttribute("core_resilience") or 0) >= 1
 			if currentHP >= shotHPCost or (currentHP > 0 and hasCoreResilience) then
-				-- immediate click feedback, every successful click
+				-- Automation fires no mouse events, so popTween is the only
+				-- thing that moves the orb here -- kept for that reason.
 				popTween:Play()
+				OrbClickJuice(true)
 				ClickOrbEvent:FireServer()
 				local baseOrbCount = 1
 				-- shatter_force_1/2: fragments, not full orbs
