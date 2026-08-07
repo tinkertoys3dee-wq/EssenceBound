@@ -102,7 +102,7 @@ function EssenceMultiplier.CalculateMultiplier(plr, gold, crit)
 	-- the leading +1 roughly doubles every payout instead, from 1x to 2x at
 	-- zero Shadow Essence and rising from there. Drop the "1 +" to return
 	-- to the un-inflated curve.
-	multiplier *= 1 + (shadowEssence + 1)^.2
+	multiplier *= (shadowEssence + 1)^.2
 	return multiplier
 end
 
