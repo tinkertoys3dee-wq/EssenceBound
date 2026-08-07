@@ -85,9 +85,9 @@ local LAYOUT = {
 	ButtonSize = UDim2.fromScale(0.062, 0.062),
 
 	-- Playtime chest pill, sitting just under the button stack.
-	ChestPosition = UDim2.fromScale(0.014, 0.755),
+	ChestPosition = UDim2.fromScale(.78, 0.12),
 	ChestAnchor = Vector2.new(0, 0.5),
-	ChestSize = UDim2.fromScale(0.17, 0.052),
+	ChestSize = UDim2.fromScale(0.14, 0.043),
 
 	-- Reward toast, dropping in from the top edge.
 	ToastPosition = UDim2.fromScale(0.5, 0.055),
