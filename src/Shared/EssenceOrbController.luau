@@ -85,7 +85,29 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 local EssenceUpgrades = require(script.Parent:WaitForChild("TreeUpgrades"))
-local SanctumUpgrades = require(script.Parent:WaitForChild("SanctumUpgrades"))
+-- Timed lookup rather than a bare WaitForChild: a missing SanctumUpgrades
+-- must cost the Sanctum bonus only, not hang the module that owns every
+-- player's orb energy.
+local SanctumUpgrades
+do
+	local module = script.Parent:FindFirstChild("SanctumUpgrades")
+		or script.Parent:WaitForChild("SanctumUpgrades", 10)
+
+	if module then
+		local ok, result = pcall(require, module)
+		if ok and type(result) == "table" then
+			SanctumUpgrades = result
+		end
+	end
+end
+
+-- Returns 0 when the module is unavailable, so callers stay arithmetic-safe.
+local function sanctumEffect(player, id)
+	if not SanctumUpgrades then
+		return 0
+	end
+	return tonumber(SanctumUpgrades.GetPlayerEffect(player, id)) or 0
+end
 
 local EssenceOrbController = {}
 
@@ -159,10 +181,10 @@ function EssenceOrbController.RecalculateStats(player)
 	-- Shadow Sanctum upgrades stack additively on top of the Earth Essence
 	-- tree rather than replacing it, so the two economies complement each
 	-- other instead of one making the other pointless.
-	-- Coerced with tonumber so a missing or malformed Sanctum effect can
-	-- never turn MaxHP/RegenRate into a non-number and break the regen loop.
-	local sanctumMaxHP = tonumber(SanctumUpgrades.GetPlayerEffect(player, "sanctum_deep_well")) or 0
-	local sanctumRegen = tonumber(SanctumUpgrades.GetPlayerEffect(player, "sanctum_swift_shadows")) or 0
+	-- Always numbers, even if the Sanctum module is missing, so a bad value
+	-- can never turn MaxHP/RegenRate into a non-number and break regen.
+	local sanctumMaxHP = sanctumEffect(player, "sanctum_deep_well")
+	local sanctumRegen = sanctumEffect(player, "sanctum_swift_shadows")
 
 	local maxHP = BASE_MAX_HP + sumEffect(player, MAX_HP_UPGRADE_IDS) + sanctumMaxHP
 	local regenRate = BASE_REGEN_RATE + sumEffect(player, REGEN_UPGRADE_IDS) + sanctumRegen

@@ -27,7 +27,20 @@ local CollectionUpgrades = {}
 -- UPGRADE DEFINITIONS (Collection branch only)
 -- =========================================================================
 local treeUpgrades = require(script.Parent.TreeUpgrades)
-local SanctumUpgrades = require(script.Parent:WaitForChild("SanctumUpgrades"))
+-- Timed lookup rather than a bare WaitForChild: a missing SanctumUpgrades
+-- must cost the Sanctum bonus only, not hang collection entirely.
+local SanctumUpgrades
+do
+	local module = script.Parent:FindFirstChild("SanctumUpgrades")
+		or script.Parent:WaitForChild("SanctumUpgrades", 10)
+
+	if module then
+		local ok, result = pcall(require, module)
+		if ok and type(result) == "table" then
+			SanctumUpgrades = result
+		end
+	end
+end
 local RADIUS_UPGRADES = {
 	{ Id = "collection_radius_1", 
 		EffectPerLevel = treeUpgrades.GetUpgrade("collection_radius_1").EffectPerLevel, 
@@ -113,7 +126,10 @@ end
 -- Shadow economy complements the Earth Essence tree rather than replacing
 -- it.
 function CollectionUpgrades.GetCollectionRadiusBonus(player)
-	local sanctumReach = tonumber(SanctumUpgrades.GetPlayerEffect(player, "sanctum_wider_reach")) or 0
+	local sanctumReach = 0
+	if SanctumUpgrades then
+		sanctumReach = tonumber(SanctumUpgrades.GetPlayerEffect(player, "sanctum_wider_reach")) or 0
+	end
 	return sumEffect(player, RADIUS_UPGRADES) + sanctumReach
 end
 

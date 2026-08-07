@@ -4,7 +4,30 @@ local EssenceMultiplier = {}
 local rebirthModule = require(ReplicatedStorage:WaitForChild("RebirthHandler"))
 local IdleUpgrades = require(ReplicatedStorage:WaitForChild("IdleUpgrades"))
 local Criticals = require(ReplicatedStorage:WaitForChild("CriticalsController"))
-local SanctumUpgrades = require(ReplicatedStorage:WaitForChild("SanctumUpgrades"))
+-- Timed lookup with a graceful fallback, NOT a bare WaitForChild.
+--
+-- Every essence reward in the game flows through CalculateMultiplier. If
+-- SanctumUpgrades ever failed to reach ReplicatedStorage (a partial sync,
+-- a script deleted in Studio), an infinite WaitForChild here would hang
+-- this module forever and silently zero the entire economy -- which is
+-- precisely the failure this file already caused once. Missing the Sanctum
+-- module must cost the Sanctum bonus and nothing else.
+local SanctumUpgrades
+do
+	local module = ReplicatedStorage:FindFirstChild("SanctumUpgrades")
+		or ReplicatedStorage:WaitForChild("SanctumUpgrades", 10)
+
+	if module then
+		local ok, result = pcall(require, module)
+		if ok and type(result) == "table" then
+			SanctumUpgrades = result
+		end
+	end
+
+	if not SanctumUpgrades then
+		warn("EssenceMultiplier: SanctumUpgrades unavailable -- Sanctum bonuses disabled, economy otherwise unaffected.")
+	end
+end
 
 -- Rolls the double-crit chain for a single collection and returns the
 -- resulting crit multiplier contribution (1 = no crit bonus). Kept as its
@@ -53,7 +76,10 @@ function EssenceMultiplier.CalculateMultiplier(plr, gold, crit)
 	-- Coerced so a missing effect can never turn the multiplier into a
 	-- non-number and zero out every reward in the game (which is exactly
 	-- the failure mode the ShadowEssence^.2 bug caused).
-	local umbralFocus = tonumber(SanctumUpgrades.GetPlayerEffect(plr, "sanctum_umbral_focus")) or 0
+	local umbralFocus = 0
+	if SanctumUpgrades then
+		umbralFocus = tonumber(SanctumUpgrades.GetPlayerEffect(plr, "sanctum_umbral_focus")) or 0
+	end
 	multiplier *= 1 + umbralFocus
 
 	-- Shadow Essence gives a synergy bonus that grows with the stockpile,
