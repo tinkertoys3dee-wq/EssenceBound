@@ -54,9 +54,14 @@ local CONFIG = {
 	SmallOrbImage = "rbxassetid://72641569769631",
 	Music = game:GetService("SoundService"):WaitForChild("Music"):WaitForChild("Loading Screen"):WaitForChild("Music1"),
 	-- ================= TIMING =================
-	MinDisplayTime = 2.25,
+	-- MinDisplayTime and GraceAfterComplete were 2.25 / 1.5 -- pure enforced
+	-- wait before ANY player, new or returning, can start playing. This is
+	-- a pacing change only, not a tone change: nothing about the ominous
+	-- theme/content below is touched, only how long the player is held
+	-- here regardless of theme.
+	MinDisplayTime = 1.4,
 	FadeTime = 0.7,
-	GraceAfterComplete = 1.5,
+	GraceAfterComplete = 0.8,
 	SkipButtonDelay = 5, -- seconds before the skip button fades in
 
 	-- ================= OMINOUS SYSTEM =================

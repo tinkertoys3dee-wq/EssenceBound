@@ -65,7 +65,19 @@ local CriticalsController = {}
 -- guaranteed_crit_streak reduces this by EffectPerLevel(=2) per level,
 -- MaxLevel 5 -> up to -10 total. Floor keeps it from ever hitting 0 or
 -- going negative regardless of how the tree gets tuned later.
-local BASE_GUARANTEED_CRIT_STREAK = 20
+--
+-- Was 20: lowered so the wait between guaranteed crits is shorter across
+-- the whole game, not just via the first-click guarantee added in
+-- OrbClicker.client.luau (which only ever covers the very first one).
+-- Deliberately NOT lowered further than this: at 16, a maxed
+-- guaranteed_crit_streak (-10) still lands on 6, comfortably above the
+-- floor of 4, so every level of that upgrade stays meaningful. Dropping
+-- much further would push the upgrade's own top level(s) below the floor
+-- and make them do nothing -- the same kind of dead-upgrade problem
+-- root_awakening's levels 2-5 already have elsewhere in TreeUpgrades
+-- (its "UnlockTree" effect is defined but never read anywhere -- flagged,
+-- not fixed here, since it's a balance call outside this change's scope).
+local BASE_GUARANTEED_CRIT_STREAK = 16
 local MIN_GUARANTEED_CRIT_STREAK = 4
 
 -- Belt-and-suspenders cap so stacking every CritChance upgrade can't push

@@ -24,6 +24,13 @@ local DefaultPlayerData = {
 	LastLeaveTime = 0,
 	ManualStormsSummoned = 0,
 	SeenTutorial = false,
+	-- Forces the very first orb a player ever spawns to land as a
+	-- guaranteed critical (see OrbClicker.client.luau). A new player's
+	-- first click otherwise had a real chance of landing on the single
+	-- least exciting outcome available -- this guarantees their first
+	-- taste of the game's biggest visual payoff instead of leaving it to
+	-- a 0% base crit chance and a 20-click guaranteed-streak wait.
+	SeenFirstCrit = false,
 	Badges = {
 		[3032854636359044] = false, --- First Steps
 		[4008378896042305] = false, -- Welcome to the grind

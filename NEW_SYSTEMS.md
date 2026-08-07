@@ -129,7 +129,45 @@ readable from the orb itself and not only from the bar beneath it.
 > 1 (or delete it) and the ambient layer will show through. The repo can't
 > tell — StarterGui properties were never synced.
 
-## 6. Shadow Sanctum (Shadow Essence finally has a use)
+## 6. Early-game pacing pass
+
+Targeted at "people leave in the first few minutes because it's slow."
+Investigated the actual numbers rather than guessing — here's what a
+brand-new, upgrade-less player was actually experiencing:
+
+- **0.9s hover-charge on every single collection**, forever, from orb #1.
+  This sits directly in the path of every reward in the game. → **0.5s.**
+  `swift_collection_1/2` can still shave off up to 2.3s combined, so the
+  upgrade line reaches the 0.15s floor comfortably either way — nothing
+  about that upgrade got less meaningful.
+- **0% base crit chance**, with the first *guaranteed* crit not landing
+  until click #20 (`BASE_GUARANTEED_CRIT_STREAK`). A brand-new player
+  could easily have a whole short session with zero crits — meaning they
+  never saw the game's biggest visual payoff. Two changes: the streak
+  constant → **16** (kept high enough that a maxed
+  `guaranteed_crit_streak` upgrade — max reduction −10 — still lands on
+  6, above the floor of 4, so all 5 levels of that upgrade stay
+  meaningful), and the **first non-fragment orb a player ever spawns is
+  now a guaranteed crit** (`src/Client/OrbClicker.client.luau`, gated by
+  a new one-time `SeenFirstCrit` flag, same pattern as `SeenTutorial`).
+  This is a real crit, not just a visual — it pays the actual crit
+  multiplier server-side too.
+- **Loading screen forced wait** (`MinDisplayTime` + `GraceAfterComplete`)
+  was 2.25s + 1.5s regardless of theme. Trimmed to 1.4s + 0.8s. This is a
+  pacing change only — none of the ominous content itself was touched.
+
+**Found but deliberately not touched:** `root_awakening` levels 2–5 (the
+literal first node in the tree) cost up to 428,415 essence and do
+*nothing* — its `EffectType = "UnlockTree"` is defined but never read
+anywhere in the codebase, despite the in-game description promising it
+"doubles base essence reward for each level." Not an early-game issue
+(a new player can't reach 195 essence for level 2 for a while), but it's
+real false advertising sitting at the root of your upgrade tree and worth
+a conscious call: either wire up a real effect, or fix the description.
+I didn't want to invent tree-wide balance numbers without being able to
+playtest them.
+
+## 7. Shadow Sanctum (Shadow Essence finally has a use)
 
 Shadow Essence was a **dead-end currency**. Its orbs spawn at the same
 rate as Earth Essence and it feeds a passive multiplier, but every upgrade

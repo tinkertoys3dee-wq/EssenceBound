@@ -306,6 +306,7 @@ local function loadPlayerData(player)
 	
 	player:SetAttribute("Rebirths", data.Rebirths)
 	player:SetAttribute("SeenTutorial", data.SeenTutorial)
+	player:SetAttribute("SeenFirstCrit", data.SeenFirstCrit)
 	
 	for name, level in pairs(data.Upgrades) do
 		player:SetAttribute(name, level)

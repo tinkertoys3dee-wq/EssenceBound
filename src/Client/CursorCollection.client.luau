@@ -34,7 +34,14 @@ local FOLLOW_LERP = 1
 -- swift_collection_1/2 (GetCollectionSpeedBonus) shave time off this.
 -- essence_magnet_field (HasAutoCollect) skips the charge entirely.
 -- ============================================================
-local BASE_CHARGE_TIME = 0.9 -- seconds to fill the ring with 0 swift_collection levels
+-- Was 0.9. This sits directly in the path of every single reward in the
+-- game, from a brand-new player's very first orb through to a maxed
+-- account's ten-thousandth -- it's the single biggest lever on how snappy
+-- the whole core loop feels. swift_collection_1/2 can shave off up to
+-- 2.3s combined (10*0.09 + 10*0.14), so the upgrade path still comfortably
+-- reaches MIN_CHARGE_TIME well before being maxed; this change doesn't
+-- reduce how meaningful that upgrade line is.
+local BASE_CHARGE_TIME = 0.5 -- seconds to fill the ring with 0 swift_collection levels
 local MIN_CHARGE_TIME = 0.15 -- charge time can never be reduced below this
 local PROGRESS_RING_COLOR = Color3.fromRGB(255, 221, 84)
 local PROGRESS_RING_THICKNESS = RING_THICKNESS + 1

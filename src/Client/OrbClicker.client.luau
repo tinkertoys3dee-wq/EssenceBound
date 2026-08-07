@@ -13,6 +13,8 @@ local LP = LargeOrbFolder:WaitForChild("Leafparent")
 local UserInputService = game:GetService("UserInputService")
 local GuiService = game:GetService("GuiService")
 
+local UpdData = Events:WaitForChild("UpdateData")
+
 local EssenceUpgrades = require(ReplicatedStorage:WaitForChild("TreeUpgrades"))
 local CollectionUpgrades = require(ReplicatedStorage:WaitForChild("CollectionUpgrades"))
 local Criticals = require(ReplicatedStorage:WaitForChild("CriticalsController"))
@@ -644,6 +646,10 @@ local PopSounds = game:GetService("SoundService"):WaitForChild("SFX"):WaitForChi
 PopSounds:WaitForChild("Pop1")
 PopSounds:WaitForChild("Pop2")
 PopSounds:WaitForChild("Pop3")
+
+-- See the FIRST-CRIT GUARANTEE note inside SpawnOrb.
+local firstCritLocked = false
+
 local function SpawnOrb(EssenceType, isFragment)
 	local Orb = Template:Clone()
 	Orb.Name = EssenceTypes[EssenceType]["Name"]
@@ -676,7 +682,25 @@ local function SpawnOrb(EssenceType, isFragment)
 	-- This is the "convenience flag" half of CriticalsController -- the
 	-- actual payout comes from GetCritMultiplier, called server-side off
 	-- this same attribute once collection fires (see EssenceMultiplier.lua).
-	local isCrit = not isFragment and Criticals.RollCrit(player) or false
+	--
+	-- FIRST-CRIT GUARANTEE: a brand-new player has a 0% base crit chance
+	-- and would otherwise wait up to BASE_GUARANTEED_CRIT_STREAK clicks
+	-- before ever seeing the game's biggest visual payoff. The very first
+	-- non-fragment orb a player ever spawns is forced to crit instead.
+	--
+	-- firstCritLocked flips the instant this fires, so it can never
+	-- trigger twice even before the SeenFirstCrit attribute round-trips
+	-- back from the server -- otherwise a click that spawns more than one
+	-- base orb (twin_orb_manifestation) could force-crit every orb in
+	-- that single click instead of just the first one, ever.
+	local isCrit
+	if not isFragment and not firstCritLocked and not player:GetAttribute("SeenFirstCrit") then
+		isCrit = true
+		firstCritLocked = true
+		UpdData:FireServer(true, "=", "SeenFirstCrit")
+	else
+		isCrit = not isFragment and Criticals.RollCrit(player) or false
+	end
 	Orb:SetAttribute("IsCrit", isCrit)
 
 	-- === FX: resolve this orb's flavor color once, reused everywhere below ===
