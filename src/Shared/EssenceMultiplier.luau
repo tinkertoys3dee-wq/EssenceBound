@@ -95,12 +95,11 @@ function EssenceMultiplier.CalculateMultiplier(plr, gold, crit)
 		or plr:GetAttribute("ShadowEssence")
 		or 0
 
-	-- NOTE ON THE +1 IN FRONT: this is a flat baseline boost on top of the
-	-- shadow synergy, NOT a safety guard. (x + 1)^.2 on its own is already
-	-- >= 1 for any non-negative balance, so it could never reduce a reward;
-	-- the leading +1 roughly doubles every payout instead, from 1x to 2x at
-	-- zero Shadow Essence and rising from there. Drop the "1 +" to return
-	-- to the un-inflated curve.
+	-- The +1 inside the bracket is the safety guard: it keeps this at a
+	-- neutral 1x when the balance is 0 instead of annihilating the whole
+	-- multiplier. Adding a second "1 +" in FRONT of this expression is not
+	-- a guard -- it would be a flat ~2x baseline inflation of every reward
+	-- in the game.
 	multiplier *= (shadowEssence + 1)^.2
 	return multiplier
 end

@@ -978,6 +978,24 @@ end
 
 local bar = LP:WaitForChild("Healthbar"):WaitForChild("Healthbar")
 
+-- Energy bar colours. Reading the bar's fill LEVEL takes a moment; reading
+-- its colour is instant, which matters because running dry is the single
+-- most confusing thing that happens to a new player.
+local ENERGY_FULL = Color3.fromRGB(90, 230, 140)
+local ENERGY_MID = Color3.fromRGB(245, 200, 70)
+local ENERGY_LOW = Color3.fromRGB(240, 90, 90)
+
+local lastEnergyScale = nil
+
+local function energyColor(ratio)
+	-- Two-stage ramp: green holds until half, then slides through amber to
+	-- red, so the warning reads as a real change rather than a slow drift.
+	if ratio > 0.5 then
+		return ENERGY_MID:Lerp(ENERGY_FULL, math.clamp((ratio - 0.5) / 0.5, 0, 1))
+	end
+	return ENERGY_LOW:Lerp(ENERGY_MID, math.clamp(ratio / 0.5, 0, 1))
+end
+
 local function updateHealthBar()
 	local currentHP = player:GetAttribute("OrbCurrentHP")
 	local maxHP = player:GetAttribute("OrbMaxHP")
@@ -986,8 +1004,24 @@ local function updateHealthBar()
 		return
 	end
 
-	local targetScale = currentHP / maxHP
-	bar.Size = UDim2.new(math.clamp(targetScale, 0, 1), 0, 1, 0)
+	local targetScale = math.clamp(currentHP / maxHP, 0, 1)
+
+	-- Spending is a single instant deduction, so it gets a short tween --
+	-- a hard snap has no weight and is easy to miss entirely. Regen is the
+	-- opposite: the server writes OrbCurrentHP every heartbeat, so those
+	-- arrive as a continuous stream of tiny increments that are already
+	-- smooth. Tweening those too would spawn a tween per frame for no
+	-- visible gain.
+	if lastEnergyScale and targetScale < lastEnergyScale - 0.001 then
+		TweenService:Create(bar, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Size = UDim2.new(targetScale, 0, 1, 0),
+		}):Play()
+	else
+		bar.Size = UDim2.new(targetScale, 0, 1, 0)
+	end
+
+	lastEnergyScale = targetScale
+	bar.BackgroundColor3 = energyColor(targetScale)
 end
 
 player:GetAttributeChangedSignal("OrbCurrentHP"):Connect(updateHealthBar)
@@ -1021,7 +1055,13 @@ local function FlashDenied()
 	Juice.Shake(Center, 7, 0.22)
 
 	if bar then
-		Juice.PulseBackground(bar, Color3.fromRGB(255, 120, 120), 0.45)
+		-- Punch only, deliberately no colour pulse: the bar's colour is now
+		-- driven by the energy ratio, and Juice.PulseBackground caches a
+		-- "base" colour the first time it runs and restores to it. Against a
+		-- colour that keeps changing, that base goes stale and would pin the
+		-- bar to whatever shade it happened to be on the first denial.
+		-- Nothing is lost -- the bar is already red at the point a click
+		-- gets refused.
 		Juice.Punch(Juice.GetScale(bar.Parent), 0.12, 0.25)
 	end
 

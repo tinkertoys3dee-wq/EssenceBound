@@ -121,15 +121,96 @@ local ShadowEssenceDisplayText= ShadowEssenceDisplay:WaitForChild("Value")
 -- exactly on it.
 
 local Juice = require(RP:WaitForChild("Juice"))
+local juiceLayer = Juice.GetLayer(player:WaitForChild("PlayerGui"))
 
 local GAIN_COLOR = Color3.fromRGB(140, 255, 170)
 local SPEND_COLOR = Color3.fromRGB(255, 150, 150)
 
-local function bindCurrencyDisplay(leaderstat, label)
+-- =========================================================================
+-- MILESTONE CELEBRATIONS
+-- =========================================================================
+-- Passing 1K, then 10K, then a million is the main long-term progression
+-- signal an idle game has, and it was going by completely unmarked -- the
+-- number just rolled past with nothing to show a threshold had been
+-- crossed. These are cosmetic only; nothing is granted.
+
+local MILESTONES = {
+	100, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14,
+}
+
+local MILESTONE_COLOR = Color3.fromRGB(255, 225, 130)
+
+-- Highest milestone already passed. Seeded from the player's balance on
+-- join WITHOUT celebrating, so a returning player with millions doesn't
+-- get every threshold fired at them the moment they log in.
+local function highestPassed(value)
+	local passed = 0
+	for _, threshold in ipairs(MILESTONES) do
+		if value >= threshold then
+			passed = threshold
+		end
+	end
+	return passed
+end
+
+local function celebrateMilestone(threshold, label)
+	Juice.PulseColor(label, MILESTONE_COLOR, 0.8)
+	Juice.Punch(Juice.GetScale(label), 0.3, 0.5)
+
+	if not juiceLayer then
+		return
+	end
+
+	local center = Juice.CenterOf(label, juiceLayer)
+	if not center then
+		return
+	end
+
+	Juice.Ring(juiceLayer, center, {
+		Color = MILESTONE_COLOR,
+		StartSize = 40,
+		EndSize = 230,
+		Duration = 0.7,
+		Thickness = 4,
+	})
+
+	Juice.Burst(juiceLayer, center, {
+		Count = 20,
+		Colors = { MILESTONE_COLOR, Color3.fromRGB(255, 255, 255), GAIN_COLOR },
+		Distance = 220,
+		Duration = 0.9,
+		Size = { 5, 12 },
+		ZIndex = 210,
+	})
+
+	Juice.FloatText(juiceLayer, center, formatNumber(threshold) .. " ESSENCE!", {
+		Color = MILESTONE_COLOR,
+		Duration = 1.4,
+		Rise = 90,
+		TextSize = 32,
+	})
+
+	local sound = Juice.FindSound("SFX/UI/UIPop")
+	if sound then
+		-- A short rising flourish rather than a single blip, so a milestone
+		-- is audibly bigger than an ordinary collection.
+		for i = 0, 2 do
+			task.delay(i * 0.09, function()
+				Juice.PlaySound(sound, { Pitch = 1.15 + i * 0.22, Volume = 0.5 })
+			end)
+		end
+	end
+end
+
+-- celebrateMilestones: only the primary currency should fire these. Two
+-- currencies both announcing thresholds would step on each other and
+-- dilute the moment.
+local function bindCurrencyDisplay(leaderstat, label, celebrateMilestones)
 	local displayed = tonumber(leaderstat:GetAttribute("Quantity")) or 0
 	label.Text = formatNumber(displayed)
 
 	local labelScale = Juice.GetScale(label)
+	local passedMilestone = highestPassed(displayed)
 
 	leaderstat:GetAttributeChangedSignal("Quantity"):Connect(function()
 		local target = tonumber(leaderstat:GetAttribute("Quantity")) or 0
@@ -157,8 +238,16 @@ local function bindCurrencyDisplay(leaderstat, label)
 		})
 
 		if delta > 0 then
-			Juice.Punch(labelScale, 0.14, 0.24)
-			Juice.PulseColor(label, GAIN_COLOR, 0.4)
+			-- A milestone crossing supersedes the ordinary gain pop, so the
+			-- two don't fight over the same label's colour and scale.
+			local reached = celebrateMilestones and highestPassed(target) or 0
+			if reached > passedMilestone then
+				passedMilestone = reached
+				celebrateMilestone(reached, label)
+			else
+				Juice.Punch(labelScale, 0.14, 0.24)
+				Juice.PulseColor(label, GAIN_COLOR, 0.4)
+			end
 		else
 			-- Spending should read differently from earning, so a
 			-- purchase is unmistakable.
@@ -167,8 +256,8 @@ local function bindCurrencyDisplay(leaderstat, label)
 	end)
 end
 
-bindCurrencyDisplay(EarthEsseceleaderstat, EarthEssenceDisplayText)
-bindCurrencyDisplay(ShadowEssenceleaderstat, ShadowEssenceDisplayText)
+bindCurrencyDisplay(EarthEsseceleaderstat, EarthEssenceDisplayText, true)
+bindCurrencyDisplay(ShadowEssenceleaderstat, ShadowEssenceDisplayText, false)
 
 local UpdateTimer = Left:WaitForChild("UpdateTimer")
 -- Internal refresh countdown, not something a player needs to see ("Next
