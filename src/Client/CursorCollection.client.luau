@@ -547,8 +547,17 @@ end
 -- ============================================================
 local chargeProgress = 0
 
+-- Set true for a few seconds at a time by the Chrono Rift relic (see the
+-- bottom of this file). Declared here because updateCollection below reads
+-- it every frame -- the relic only ever writes it.
+local chronoRiftActive = false
+
 local function updateCollection(ringCenterX, ringCenterY, deltaTime)
-	local hasAutoCollect = CollectionUpgrades.HasAutoCollect(player)
+	-- Chrono Rift grants the SAME instant-collection behaviour the
+	-- essence_magnet_field upgrade permanently unlocks, just temporarily --
+	-- reusing that exact path rather than adding a parallel one means the
+	-- rift can't drift out of sync with how auto-collect actually works.
+	local hasAutoCollect = CollectionUpgrades.HasAutoCollect(player) or chronoRiftActive
 	local anyOverlap = false
 	local toCollect = {}
 
@@ -823,6 +832,171 @@ task.spawn(function()
 			local ok, err = pcall(playLaserSweep)
 			if not ok then
 				warn("[CursorCollection] Laser sweep errored: " .. tostring(err))
+			end
+		end
+	end
+end)
+
+-- =========================================================================
+-- CHRONO RIFT (Sanctum relic: sanctum_chrono_rift)
+-- =========================================================================
+-- Periodically opens a window where collection is instant -- no hover
+-- charge at all. Unlike the Hammer (spawns orbs) and the Laser (collects
+-- what exists), this grants a temporary STATE, so for its duration the
+-- whole loop plays differently: sweep the cursor and everything it
+-- touches is gathered immediately.
+
+local RIFT_COLOR = Color3.fromRGB(120, 255, 235)
+local RIFT_PILL_POSITION = UDim2.fromScale(0.5, 0.099)
+
+local riftPill = Instance.new("Frame")
+riftPill.Name = "RiftCountdown"
+riftPill.AnchorPoint = Vector2.new(0.5, 0)
+riftPill.Position = RIFT_PILL_POSITION
+riftPill.Size = UDim2.fromScale(0.13, 0.032)
+riftPill.BackgroundColor3 = Color3.fromRGB(28, 17, 48)
+riftPill.BackgroundTransparency = 0.1
+riftPill.Visible = false
+riftPill.ZIndex = 44
+riftPill.Parent = RELIC_HUD_GUI
+
+local riftPillCorner = Instance.new("UICorner")
+riftPillCorner.CornerRadius = UDim.new(0.5, 0)
+riftPillCorner.Parent = riftPill
+
+local riftPillStroke = Instance.new("UIStroke")
+riftPillStroke.Color = RIFT_COLOR
+riftPillStroke.Thickness = 1.5
+riftPillStroke.Transparency = 0.3
+riftPillStroke.Parent = riftPill
+
+local riftPillFill = Instance.new("Frame")
+riftPillFill.Name = "Fill"
+riftPillFill.Size = UDim2.fromScale(0, 1)
+riftPillFill.BackgroundColor3 = RIFT_COLOR
+riftPillFill.BackgroundTransparency = 0.75
+riftPillFill.BorderSizePixel = 0
+riftPillFill.ZIndex = 44
+riftPillFill.Parent = riftPill
+
+local riftPillFillCorner = Instance.new("UICorner")
+riftPillFillCorner.CornerRadius = UDim.new(0.5, 0)
+riftPillFillCorner.Parent = riftPillFill
+
+local riftPillLabel = Instance.new("TextLabel")
+riftPillLabel.Name = "Label"
+riftPillLabel.Size = UDim2.fromScale(1, 1)
+riftPillLabel.BackgroundTransparency = 1
+riftPillLabel.Font = Enum.Font.GothamBold
+riftPillLabel.Text = "⌛ --"
+riftPillLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+riftPillLabel.TextScaled = true
+riftPillLabel.ZIndex = 45
+riftPillLabel.Parent = riftPill
+
+local riftPillTextConstraint = Instance.new("UITextSizeConstraint")
+riftPillTextConstraint.MaxTextSize = 15
+riftPillTextConstraint.Parent = riftPillLabel
+
+-- Full-screen tint shown only while the rift window is open, so the
+-- altered state is unmistakable rather than something the player has to
+-- infer from orbs behaving differently.
+local riftOverlay = Instance.new("Frame")
+riftOverlay.Name = "RiftOverlay"
+riftOverlay.Size = UDim2.fromScale(1, 1)
+riftOverlay.BackgroundColor3 = RIFT_COLOR
+riftOverlay.BackgroundTransparency = 1
+riftOverlay.BorderSizePixel = 0
+riftOverlay.Visible = false
+riftOverlay.ZIndex = 1
+riftOverlay.Parent = RELIC_HUD_GUI
+
+local function openChronoRift(windowSeconds)
+	chronoRiftActive = true
+
+	riftOverlay.Visible = true
+	riftOverlay.BackgroundTransparency = 1
+	TweenService:Create(riftOverlay, TweenInfo.new(0.3), { BackgroundTransparency = 0.88 }):Play()
+
+	if juiceLayer then
+		Juice.FloatText(juiceLayer, UDim2.fromScale(0.5, 0.3), "CHRONO RIFT!", {
+			Color = RIFT_COLOR,
+			Duration = 1.3,
+			Rise = 70,
+			TextSize = 34,
+		})
+	end
+
+	local sound = Juice.FindSound("SFX/UI/UIPop")
+	if sound then
+		Juice.PlaySound(sound, { Pitch = 1.7, Volume = 0.5 })
+	end
+
+	-- Counts the window down in the pill too, so the player can see how
+	-- much of the instant-collect state is left rather than guessing.
+	local remaining = windowSeconds
+	while remaining > 0 do
+		riftPillLabel.Text = ("⌛ %ds LEFT"):format(math.ceil(remaining))
+		riftPillFill.Size = UDim2.fromScale(math.clamp(remaining / windowSeconds, 0, 1), 1)
+
+		local step = math.min(0.5, remaining)
+		task.wait(step)
+		remaining -= step
+	end
+
+	chronoRiftActive = false
+
+	local fadeOut = TweenService:Create(riftOverlay, TweenInfo.new(0.4), { BackgroundTransparency = 1 })
+	fadeOut:Play()
+	fadeOut.Completed:Connect(function()
+		-- Guarded: a second rift may have opened during the fade, and
+		-- hiding the overlay then would blank an active window.
+		if not chronoRiftActive then
+			riftOverlay.Visible = false
+		end
+	end)
+end
+
+task.spawn(function()
+	while (player:GetAttribute("sanctum_chrono_rift") or 0) <= 0 do
+		player:GetAttributeChangedSignal("sanctum_chrono_rift"):Wait()
+	end
+
+	riftPill.Visible = true
+
+	while true do
+		local level = player:GetAttribute("sanctum_chrono_rift") or 0
+		local relicData = SanctumUpgrades.GetRelicLevelData("sanctum_chrono_rift", level)
+
+		if not relicData then
+			task.wait(5)
+		else
+			local total = relicData.Interval
+			local remaining = total
+
+			while remaining > 0 do
+				riftPillLabel.Text = ("⌛ %ds"):format(math.ceil(remaining))
+				riftPillFill.Size = UDim2.fromScale(math.clamp(1 - (remaining / total), 0, 1), 1)
+
+				local step = math.min(1, remaining)
+				task.wait(step)
+				remaining -= step
+			end
+
+			local currentLevel = player:GetAttribute("sanctum_chrono_rift") or 0
+			local currentData = SanctumUpgrades.GetRelicLevelData("sanctum_chrono_rift", currentLevel)
+			if currentData then
+				Juice.Punch(Juice.GetScale(riftPill), 0.25, 0.3)
+
+				local ok, err = pcall(openChronoRift, currentData.WindowSeconds)
+				if not ok then
+					-- Never leave the rift stuck on if the visual half
+					-- errored partway through -- that would be a permanent
+					-- free auto-collect.
+					chronoRiftActive = false
+					riftOverlay.Visible = false
+					warn("[CursorCollection] Chrono Rift errored: " .. tostring(err))
+				end
 			end
 		end
 	end

@@ -215,6 +215,27 @@ not just a brief flash. Now waits for the actual leaderstat via
 `WaitForChild` before ever reading it, and the panel also fires a
 `RequestSanctumSync` every time it opens as a self-healing backstop.
 
+### The full upgrade list (11 total)
+
+**Enhancements** (linear stat boosts):
+
+| Upgrade | Effect per level | Max | Hooks into |
+|---|---|---|---|
+| 🌑 Umbral Focus | +5% essence | 10 | `EssenceMultiplier` |
+| 🔋 Deep Well | +40 max orb energy | 10 | `EssenceOrbController` |
+| ⏳ Swift Shadows | +0.6 energy/sec regen | 8 | `EssenceOrbController` |
+| 🎯 Wider Reach | +4 collect radius | 8 | `CollectionUpgrades` |
+| 🎲 Dark Fortune | +2% crit chance | 10 | `CriticalsController` |
+| 💠 Umbral Fracture | 4% cheaper clicks | 8 | `EssenceOrbController` |
+| 🧲 Void Magnetism | +0.12 magnet pull | 8 | `CollectionUpgrades` |
+| ♾️ Shadow Overflow | +3 max active orbs | 8 | `CollectionUpgrades` |
+
+Every one stacks *additively* with the matching Earth Essence tree line
+rather than replacing it, and each is clamped where the base game already
+clamped. Umbral Fracture's clamp matters most: combined with
+`fracture_efficiency` it could otherwise push the cost reduction past
+100%, making clicks *refund* energy and the orb infinitely clickable.
+
 ### Relics — periodic, automatic, highly visual events
 
 Two new Sanctum purchases that aren't stat bumps — they're timed events
@@ -224,6 +245,14 @@ that fire on their own and demand attention when they do:
 |---|---|---|---|
 | 🔨 Shadow Hammer | 500 → 3000 | 45s → 28s | Telegraphed slam on the great orb, +4 → +7 bonus real orbs |
 | 🌌 Void Laser | 700 → 4200 | 55s → 32s | Beam sweeps the field, instantly collects everything active |
+| ⌛ Chrono Rift | 900 → 5400 | 70s → 45s | 6s → 10s window where collection is instant, no hover charge |
+
+Chrono Rift grants a temporary *state* rather than a one-shot payout, so
+for its duration the whole loop plays differently — sweep the cursor and
+everything it touches is gathered immediately. It reuses the exact
+instant-collect path `essence_magnet_field` permanently unlocks, so the
+two can't drift apart, and a full-screen tint makes the altered state
+unmistakable.
 
 Both fire through the **exact same functions** a real click/collection
 already uses (`SpawnOrb`, `CollectEffect`) — no new trust surface, payout
@@ -235,8 +264,27 @@ display and timing can never drift apart. Positions are one-line moves —
 `HAMMER_PILL_POSITION` in `OrbClicker.client.luau`, `LASER_PILL_POSITION`
 in `CursorCollection.client.luau`.
 
+### Panel layout
+
+With eleven upgrades the list needed real structure:
+
+- **`UIPadding` on the scroll frame** instead of negative row widths. The
+  right inset clears the scrollbar so rows can't slide underneath it, and
+  the bottom inset stops the last row butting against the panel edge.
+- **Section headers** (`ENHANCEMENTS` / `RELICS`) with `LayoutOrder`
+  spacing, since an unbroken list gave no way to tell the two very
+  different kinds apart without reading every description.
+- **Panel grown** 0.62 → 0.72 tall to hold it.
+- **Row hover** — rows are Frames, but `GuiObject` still fires
+  `MouseEnter`/`MouseLeave`, so the whole row responds to the cursor
+  rather than only the small Buy button.
+- **Affordability pulse** — one shared loop so every affordable row
+  breathes *in sync*; staggered pulses read as noise, a single rhythm
+  reads as "these are the ones you can buy."
+
 Extending `SanctumUpgrades.luau`'s schema with `Kind = "Relic"` +
-`Levels[level] = {Interval, BurstCount?}` was the only change needed —
+`Levels[level] = {Interval, BurstCount?/WindowSeconds?}` was the only
+change needed —
 `SanctumService` and `SanctumPanel` already read costs/levels/
 descriptions generically, so the whole server + panel pipeline picked
 these up with zero changes to either file.

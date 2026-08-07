@@ -56,6 +56,22 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TreeUpgrades = require(ReplicatedStorage:WaitForChild("TreeUpgrades"))
 
+-- Timed lookup rather than a bare WaitForChild: crit rolling runs on every
+-- orb spawn, so a missing SanctumUpgrades must cost the Sanctum crit bonus
+-- only, never hang this module.
+local SanctumUpgrades
+do
+	local module = ReplicatedStorage:FindFirstChild("SanctumUpgrades")
+		or ReplicatedStorage:WaitForChild("SanctumUpgrades", 10)
+
+	if module then
+		local ok, result = pcall(require, module)
+		if ok and type(result) == "table" then
+			SanctumUpgrades = result
+		end
+	end
+end
+
 local CriticalsController = {}
 
 -- =========================================================================
@@ -100,7 +116,17 @@ end
 -- =========================================================================
 
 function CriticalsController.GetCritChance(player)
-	return math.min(MAX_CRIT_CHANCE, TreeUpgrades.GetSummedEffectFromAttributes(player, "CritChance"))
+	-- Shadow Sanctum's Dark Fortune stacks additively with the Earth tree's
+	-- CritChance line, then the whole total is clamped by MAX_CRIT_CHANCE
+	-- exactly as before -- so the two economies complement each other and
+	-- neither can push crit chance past the existing cap.
+	local sanctumCrit = 0
+	if SanctumUpgrades then
+		sanctumCrit = tonumber(SanctumUpgrades.GetPlayerEffect(player, "sanctum_dark_fortune")) or 0
+	end
+
+	local total = TreeUpgrades.GetSummedEffectFromAttributes(player, "CritChance") + sanctumCrit
+	return math.min(MAX_CRIT_CHANCE, total)
 end
 
 function CriticalsController.GetCritMultiplierBonus(player)

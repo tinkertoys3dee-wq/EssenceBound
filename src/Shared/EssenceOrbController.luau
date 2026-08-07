@@ -189,7 +189,17 @@ function EssenceOrbController.RecalculateStats(player)
 	local maxHP = BASE_MAX_HP + sumEffect(player, MAX_HP_UPGRADE_IDS) + sanctumMaxHP
 	local regenRate = BASE_REGEN_RATE + sumEffect(player, REGEN_UPGRADE_IDS) + sanctumRegen
 
-	local shotCostReduction = sumEffect(player, { SHOT_COST_UPGRADE_ID }) -- e.g. 0.09 for 3 levels
+	-- Sanctum's Umbral Fracture stacks additively with fracture_efficiency,
+	-- then the combined total is clamped to 0..0.9 before being applied.
+	-- Without that clamp, enough combined levels could drive the reduction
+	-- past 1.0 and make BASE_SHOT_HP_COST * (1 - reduction) go NEGATIVE --
+	-- a click that REFUNDS energy and makes the orb infinitely clickable.
+	-- MIN_SHOT_HP_COST alone wouldn't catch that, since math.max would
+	-- happily return the floor while the real intent was broken.
+	local shotCostReduction = sumEffect(player, { SHOT_COST_UPGRADE_ID })
+		+ sanctumEffect(player, "sanctum_fracture")
+	shotCostReduction = math.clamp(shotCostReduction, 0, 0.9)
+
 	local shotHPCost = math.max(MIN_SHOT_HP_COST, BASE_SHOT_HP_COST * (1 - shotCostReduction))
 
 	local neverFullyDepleted = getLevel(player, NEVER_DEPLETED_UPGRADE_ID) >= 1
@@ -244,6 +254,7 @@ function EssenceOrbController.Init(player)
 	-- immediately instead of waiting for some other recalculation.
 	table.insert(watchedIds, "sanctum_deep_well")
 	table.insert(watchedIds, "sanctum_swift_shadows")
+	table.insert(watchedIds, "sanctum_fracture")
 
 	local state = orbStates[player]
 	for _, id in ipairs(watchedIds) do

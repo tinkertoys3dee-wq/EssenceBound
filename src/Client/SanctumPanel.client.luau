@@ -59,7 +59,10 @@ local LAYOUT = {
 	ButtonPosition = UDim2.fromScale(0.895, 0.295),
 	ButtonAnchor = Vector2.new(0, 0.5),
 	ButtonSize = UDim2.fromScale(0.062, 0.062),
-	PanelSize = UDim2.fromScale(0.54, 0.62),
+	-- Taller than it was (0.62) now the list holds nine upgrades across two
+	-- sections -- centred at 0.5, this spans 0.14..0.86 and still leaves a
+	-- clear margin top and bottom on a 16:9 screen.
+	PanelSize = UDim2.fromScale(0.56, 0.72),
 }
 
 -- =========================================================================
@@ -316,15 +319,29 @@ local listHolder = new("ScrollingFrame", {
 	Name = "List",
 	AnchorPoint = Vector2.new(0.5, 0),
 	Position = UDim2.fromScale(0.5, 0.17),
-	Size = UDim2.fromScale(0.94, 0.8),
+	-- Bottom edge lands at 0.17 + 0.79 = 0.96, leaving a deliberate 4%
+	-- margin inside the panel rather than running to its rounded corner.
+	Size = UDim2.fromScale(0.95, 0.79),
 	BackgroundTransparency = 1,
 	BorderSizePixel = 0,
-	ScrollBarThickness = 5,
+	ScrollBarThickness = 6,
 	ScrollBarImageColor3 = THEME.Shadow,
 	CanvasSize = UDim2.new(),
 	AutomaticCanvasSize = Enum.AutomaticSize.Y,
 	ZIndex = 131,
 }, panel)
+
+-- Padding on the scroll frame rather than negative row widths. The right
+-- inset clears the scrollbar so rows can't slide underneath it, and the
+-- bottom inset means the last row doesn't butt against the panel edge when
+-- scrolled fully down. AutomaticCanvasSize accounts for UIPadding, so the
+-- scrollable height stays correct.
+new("UIPadding", {
+	PaddingLeft = UDim.new(0, 4),
+	PaddingRight = UDim.new(0, 12),
+	PaddingTop = UDim.new(0, 2),
+	PaddingBottom = UDim.new(0, 10),
+}, listHolder)
 
 new("UIListLayout", {
 	FillDirection = Enum.FillDirection.Vertical,
@@ -333,15 +350,73 @@ new("UIListLayout", {
 	HorizontalAlignment = Enum.HorizontalAlignment.Center,
 }, listHolder)
 
+-- Section headers. With nine upgrades split across two very different
+-- kinds -- linear stat boosts vs periodic relic abilities -- an unbroken
+-- list gives the player no way to tell which is which before reading every
+-- description. LayoutOrder is spaced so headers always sort above their
+-- group regardless of how many upgrades land in each.
+local function addSectionHeader(text, color, order)
+	local header = new("Frame", {
+		Name = text .. "Header",
+		Size = UDim2.new(1, 0, 0, 26),
+		BackgroundTransparency = 1,
+		LayoutOrder = order,
+		ZIndex = 132,
+	}, listHolder)
+
+	local label = new("TextLabel", {
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.fromScale(0.02, 0.5),
+		Size = UDim2.fromScale(0.5, 0.85),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBlack,
+		Text = text,
+		TextColor3 = color,
+		TextScaled = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 133,
+	}, header)
+	new("UITextSizeConstraint", { MaxTextSize = 14 }, label)
+
+	-- Hairline rule filling the space to the right of the label.
+	local rule = new("Frame", {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.fromScale(1, 0.5),
+		Size = UDim2.fromScale(0.46, 0),
+		BackgroundColor3 = color,
+		BackgroundTransparency = 0.65,
+		BorderSizePixel = 0,
+		ZIndex = 133,
+	}, header)
+	rule.Size = UDim2.new(0.46, 0, 0, 1)
+
+	return header
+end
+
 local rows = {}
 
+-- Relics render below the stat upgrades, each under its own header.
+local statOrder, relicOrder = 10, 1000
+addSectionHeader("ENHANCEMENTS", THEME.Grey, statOrder - 1)
+addSectionHeader("RELICS  •  periodic abilities", THEME.Shadow, relicOrder - 1)
+
 for index, def in ipairs(SanctumUpgrades.List) do
+	local isRelic = def.Kind == "Relic"
+	local order
+	if isRelic then
+		relicOrder += 1
+		order = relicOrder
+	else
+		statOrder += 1
+		order = statOrder
+	end
+
 	local row = new("Frame", {
 		Name = def.Id,
-		Size = UDim2.new(1, -8, 0, 92),
+		Size = UDim2.new(1, 0, 0, 92),
 		BackgroundColor3 = THEME.Row,
 		BorderSizePixel = 0,
-		LayoutOrder = index,
+		LayoutOrder = order,
 		ZIndex = 132,
 	}, listHolder)
 	corner(row, UDim.new(0, 12))
@@ -472,6 +547,22 @@ for index, def in ipairs(SanctumUpgrades.List) do
 		PurchaseRemote:FireServer(def.Id)
 	end)
 
+	-- Rows are Frames, not buttons, but GuiObject still fires MouseEnter /
+	-- MouseLeave -- so the whole row can respond to the cursor even though
+	-- only the Buy button inside it is clickable. Without this the list
+	-- feels completely inert everywhere except that one small button.
+	row.MouseEnter:Connect(function()
+		tween(row, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			BackgroundColor3 = THEME.RowHover,
+		}):Play()
+	end)
+
+	row.MouseLeave:Connect(function()
+		tween(row, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			BackgroundColor3 = THEME.Row,
+		}):Play()
+	end)
+
 	rows[index] = {
 		Row = row,
 		Stroke = rowStroke,
@@ -480,8 +571,34 @@ for index, def in ipairs(SanctumUpgrades.List) do
 		Level = levelLabel,
 		Pips = pips,
 		Buy = buyButton,
+		-- Set by render(); read by the shared affordability pulse below.
+		Affordable = false,
 	}
 end
+
+-- =========================================================================
+-- AFFORDABILITY PULSE
+-- =========================================================================
+-- One shared loop rather than a per-row loop, so every affordable row
+-- breathes in sync -- staggered pulses read as noise, a single synchronised
+-- rhythm reads as "these are the ones you can buy right now."
+
+task.spawn(function()
+	local bright = true
+
+	while true do
+		for _, row in ipairs(rows) do
+			if row.Affordable and row.Stroke.Parent then
+				tween(row.Stroke, TweenInfo.new(0.55, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+					Transparency = bright and 0 or 0.55,
+				}):Play()
+			end
+		end
+
+		bright = not bright
+		task.wait(0.6)
+	end
+end)
 
 -- =========================================================================
 -- RENDER
@@ -514,6 +631,10 @@ local function render()
 		local maxed = entry.Level >= entry.MaxLevel
 		local affordable = entry.Cost ~= nil and state.Balance >= entry.Cost
 
+		-- Drives the shared affordability pulse. Set before the branches so
+		-- every path below agrees with it.
+		row.Affordable = affordable and not maxed
+
 		if maxed then
 			row.Buy.Text = "MAXED"
 			row.Buy.BackgroundColor3 = THEME.Locked
@@ -526,7 +647,9 @@ local function render()
 			row.Buy.BackgroundColor3 = THEME.Shadow
 			row.Buy.TextColor3 = Color3.fromRGB(24, 12, 40)
 			row.Stroke.Color = THEME.Shadow
-			row.Stroke.Transparency = 0
+			-- Transparency deliberately NOT set here: the affordability
+			-- pulse owns that property while a row is affordable, and
+			-- writing it on every render would fight the tween mid-cycle.
 		else
 			row.Buy.Text = formatNumber(entry.Cost or 0)
 			row.Buy.BackgroundColor3 = THEME.Locked
@@ -539,7 +662,16 @@ local function render()
 		local previous = lastLevels[index]
 		if previous ~= nil and entry.Level > previous then
 			Juice.Punch(Juice.GetScale(row.Row), 0.06, 0.3)
-			Juice.PulseBackground(row.Row, THEME.RowHover, 0.5)
+
+			-- Explicit flash-and-return rather than Juice.PulseBackground:
+			-- that helper caches a "base" colour the first time it runs and
+			-- restores to it, which goes stale now that hover also changes
+			-- this row's background -- buying while hovering would have
+			-- pinned the row to the hover colour permanently.
+			row.Row.BackgroundColor3 = THEME.Shadow
+			tween(row.Row, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				BackgroundColor3 = THEME.Row,
+			}):Play()
 
 			if juiceLayer then
 				local center = Juice.CenterOf(row.Icon, juiceLayer)

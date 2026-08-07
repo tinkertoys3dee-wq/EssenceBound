@@ -102,6 +102,59 @@ local UPGRADES = {
 		EffectSuffix = " collect radius",
 	},
 
+	{
+		Id = "sanctum_dark_fortune",
+		Name = "Dark Fortune",
+		Description = "The dark favours you. Raises the chance any orb lands as a critical.",
+		Icon = "🎲",
+		MaxLevel = 10,
+		BaseCost = 40,
+		CostGrowth = 1.62,
+		-- Read by CriticalsController.
+		EffectPerLevel = 0.02,
+		EffectSuffix = "% crit chance",
+		EffectIsPercent = true,
+	},
+	{
+		Id = "sanctum_fracture",
+		Name = "Umbral Fracture",
+		Description = "Shadow bleeds into every strike, so each click drains less of the orb's energy.",
+		Icon = "💠",
+		MaxLevel = 8,
+		BaseCost = 45,
+		CostGrowth = 1.65,
+		-- Read by EssenceOrbController. Stacks with fracture_efficiency;
+		-- both are clamped together against MIN_SHOT_HP_COST there, so this
+		-- can never make clicking free.
+		EffectPerLevel = 0.04,
+		EffectSuffix = "% cheaper clicks",
+		EffectIsPercent = true,
+	},
+	{
+		Id = "sanctum_magnetism",
+		Name = "Void Magnetism",
+		Description = "Loose orbs are pulled toward your cursor instead of drifting where they land.",
+		Icon = "🧲",
+		MaxLevel = 8,
+		BaseCost = 55,
+		CostGrowth = 1.6,
+		-- Read by CollectionUpgrades.
+		EffectPerLevel = 0.12,
+		EffectSuffix = " magnet pull",
+	},
+	{
+		Id = "sanctum_overflow",
+		Name = "Shadow Overflow",
+		Description = "Hold more orbs on screen at once, so big bursts aren't cut short by the cap.",
+		Icon = "♾️",
+		MaxLevel = 8,
+		BaseCost = 60,
+		CostGrowth = 1.58,
+		-- Read by CollectionUpgrades.
+		EffectPerLevel = 3,
+		EffectSuffix = " max active orbs",
+	},
+
 	-- ===================== RELICS =====================
 	-- Unlike the four stat upgrades above, these don't grant a linear
 	-- per-level number -- they grant a periodic, automatic EVENT: a big,
@@ -141,6 +194,22 @@ local UPGRADES = {
 		Levels = {
 			[1] = { Interval = 55 },
 			[2] = { Interval = 32 },
+		},
+	},
+	{
+		Id = "sanctum_chrono_rift",
+		Name = "Chrono Rift",
+		Description = "Tears open a rift where time thins -- for a few seconds, orbs are gathered the instant they touch your ring.",
+		Icon = "⌛",
+		Kind = "Relic",
+		MaxLevel = 2,
+		BaseCost = 900,
+		CostGrowth = 6, -- level 2 costs 5400
+		-- WindowSeconds instead of BurstCount: this relic grants a timed
+		-- state rather than spawning or collecting a fixed amount.
+		Levels = {
+			[1] = { Interval = 70, WindowSeconds = 6 },
+			[2] = { Interval = 45, WindowSeconds = 10 },
 		},
 	},
 }
@@ -246,6 +315,9 @@ function SanctumUpgrades.DescribeEffect(id: string, level: number): string
 		end
 		if data.BurstCount then
 			return ("Activates every %ds (+%d bonus orbs)"):format(data.Interval, data.BurstCount)
+		end
+		if data.WindowSeconds then
+			return ("Activates every %ds (%ds of instant collection)"):format(data.Interval, data.WindowSeconds)
 		end
 		return ("Activates every %ds (collects everything active)"):format(data.Interval)
 	end

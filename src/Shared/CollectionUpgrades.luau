@@ -94,6 +94,8 @@ do
 	-- size -- without this the ring would keep its old radius until
 	-- something else happened to trigger a recalculation.
 	table.insert(ALL_UPGRADE_IDS, "sanctum_wider_reach")
+	table.insert(ALL_UPGRADE_IDS, "sanctum_magnetism")
+	table.insert(ALL_UPGRADE_IDS, "sanctum_overflow")
 end
 CollectionUpgrades.AllUpgradeIds = ALL_UPGRADE_IDS
 
@@ -136,7 +138,11 @@ end
 -- Combined pull strength from magnetic_pull_1/2 (for whatever script moves
 -- orbs toward the player - this module just does the level math).
 function CollectionUpgrades.GetMagnetStrength(player)
-	return sumEffect(player, MAGNET_UPGRADES)
+	local sanctumMagnet = 0
+	if SanctumUpgrades then
+		sanctumMagnet = tonumber(SanctumUpgrades.GetPlayerEffect(player, "sanctum_magnetism")) or 0
+	end
+	return sumEffect(player, MAGNET_UPGRADES) + sanctumMagnet
 end
 
 -- Seconds shaved off however long an orb needs to dwell before collecting.
@@ -146,7 +152,13 @@ end
 
 -- Extra concurrent active orbs allowed on screen (for the orb spawner).
 function CollectionUpgrades.GetMaxActiveOrbsBonus(player)
-	return sumEffect(player, MAX_ACTIVE_ORB_UPGRADES)
+	local sanctumOverflow = 0
+	if SanctumUpgrades then
+		sanctumOverflow = tonumber(SanctumUpgrades.GetPlayerEffect(player, "sanctum_overflow")) or 0
+	end
+	-- Floored: this feeds an orb-count cap that's compared with >= and used
+	-- to size loops, so a fractional value would be a latent off-by-one.
+	return sumEffect(player, MAX_ACTIVE_ORB_UPGRADES) + math.floor(sanctumOverflow)
 end
 
 -- Whether the player has purchased essence_magnet_field (auto-collect
