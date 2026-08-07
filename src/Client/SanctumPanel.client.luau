@@ -55,7 +55,7 @@ local THEME = {
 local LAYOUT = {
 	-- Sits under the progression button stack on the left edge. Move this
 	-- one line if it collides with anything on a given screen size.
-	ButtonPosition = UDim2.fromScale(0.9, 0.3),
+	ButtonPosition = UDim2.fromScale(0.895, 0.295),
 	ButtonAnchor = Vector2.new(0, 0.5),
 	ButtonSize = UDim2.fromScale(0.062, 0.062),
 	PanelSize = UDim2.fromScale(0.54, 0.62),
