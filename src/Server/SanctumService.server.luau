@@ -136,6 +136,34 @@ local function pushState(player)
 	end
 end
 
+-- Shadow Essence changes every time a Shadow orb is collected, which is
+-- several times a second during normal play. Firing a full state snapshot
+-- per change would mean a constant stream of remote traffic just to keep a
+-- balance readout current, so routine updates mark the player dirty and a
+-- single flush loop coalesces them. Purchases still push immediately,
+-- because those need to feel instant.
+local pendingPush = {}
+
+local function requestPush(player)
+	pendingPush[player] = true
+end
+
+task.spawn(function()
+	while true do
+		task.wait(0.5)
+
+		for player in pairs(pendingPush) do
+			pendingPush[player] = nil
+			if player.Parent then
+				local ok, err = pcall(pushState, player)
+				if not ok then
+					warn("SanctumService: state push failed: " .. tostring(err))
+				end
+			end
+		end
+	end
+end)
+
 -- =========================================================================
 -- PURCHASE
 -- =========================================================================
@@ -230,7 +258,7 @@ local function onPlayerAdded(player)
 		if stat then
 			stat:GetAttributeChangedSignal("Quantity"):Connect(function()
 				if player.Parent then
-					pushState(player)
+					requestPush(player)
 				end
 			end)
 		end
@@ -240,6 +268,7 @@ end
 Players.PlayerAdded:Connect(onPlayerAdded)
 Players.PlayerRemoving:Connect(function(player)
 	purchaseDebounce[player] = nil
+	pendingPush[player] = nil
 end)
 
 for _, existing in ipairs(Players:GetPlayers()) do

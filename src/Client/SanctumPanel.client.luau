@@ -568,6 +568,64 @@ local function render()
 end
 
 -- =========================================================================
+-- DISCOVERABILITY
+-- =========================================================================
+-- A new button quietly appearing on the edge of the screen is easy to
+-- never notice, and Shadow Essence spent years being useless -- players
+-- have no reason to expect it's suddenly spendable. The first time
+-- something becomes affordable, the button says so once.
+
+local hasAnnounced = false
+
+local function announceOnce()
+	if hasAnnounced or isOpen then
+		return
+	end
+	hasAnnounced = true
+
+	Juice.Punch(Juice.GetScale(openButton), 0.25, 0.45)
+
+	if juiceLayer then
+		local center = Juice.CenterOf(openButton, juiceLayer)
+		if center then
+			Juice.Ring(juiceLayer, center, {
+				Color = THEME.Shadow,
+				StartSize = 40,
+				EndSize = 170,
+				Duration = 0.6,
+				Thickness = 3,
+			})
+			-- Offset upward so the label clears the button itself.
+			Juice.FloatText(juiceLayer, center - UDim2.fromOffset(0, 50), "Sanctum ready!", {
+				Color = THEME.Shadow,
+				Duration = 1.6,
+				Rise = 44,
+				TextSize = 24,
+			})
+		end
+	end
+end
+
+-- Slow pulse on the badge, matching the progression buttons so the whole
+-- left edge behaves consistently.
+task.spawn(function()
+	while true do
+		if openBadge.Visible then
+			tween(openBadge, TweenInfo.new(0.45, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+				Size = UDim2.fromScale(0.4, 0.4),
+			}):Play()
+		end
+		task.wait(0.5)
+		if openBadge.Visible then
+			tween(openBadge, TweenInfo.new(0.45, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+				Size = UDim2.fromScale(0.34, 0.34),
+			}):Play()
+		end
+		task.wait(0.5)
+	end
+end)
+
+-- =========================================================================
 -- OPEN / CLOSE
 -- =========================================================================
 
@@ -643,4 +701,8 @@ SyncRemote.OnClientEvent:Connect(function(payload)
 	state.Upgrades = payload.Upgrades or {}
 
 	render()
+
+	if openBadge.Visible then
+		announceOnce()
+	end
 end)
