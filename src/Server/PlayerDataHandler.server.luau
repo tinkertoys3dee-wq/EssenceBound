@@ -222,6 +222,11 @@ local function loadPlayerData(player)
 				if HighestDiscovered then
 					data.RarestEssence = HighestDiscovered
 					data.UniqueEssences = discoveries
+					-- Mirrors into an attribute (like Rebirths/RebirthCurrency
+					-- already do) so the "Rarest Essence" leaderstat below can
+					-- listen for changes instead of only ever reading the
+					-- value once at join -- same stale-leaderstat bug class.
+					player:SetAttribute("RarestEssence", HighestDiscovered)
 				end
 			end
 		end
@@ -269,6 +274,11 @@ local function loadPlayerData(player)
 				if HighestDiscovered then
 					data.RarestEssence = HighestDiscovered
 					data.UniqueEssences = discoveries
+					-- Mirrors into an attribute (like Rebirths/RebirthCurrency
+					-- already do) so the "Rarest Essence" leaderstat below can
+					-- listen for changes instead of only ever reading the
+					-- value once at join -- same stale-leaderstat bug class.
+					player:SetAttribute("RarestEssence", HighestDiscovered)
 				end
 			end
 		end
@@ -282,6 +292,14 @@ local function loadPlayerData(player)
 	rarestEssence.Name = "Rarest Essence"
 	rarestEssence.Value = data.RarestEssence or ""
 	rarestEssence.Parent = leaderstats
+
+	-- Was set once above and never again -- a player who discovers a
+	-- rarer essence type mid-session (data.RarestEssence updates
+	-- correctly, see the discovery blocks above) never saw it reflected
+	-- here. Same mirror pattern as Rebirths/Prestige Shards.
+	player:GetAttributeChangedSignal("RarestEssence"):Connect(function()
+		rarestEssence.Value = tostring(player:GetAttribute("RarestEssence") or "")
+	end)
 
 	local rebirths = Instance.new("IntValue")
 	rebirths.Name = "Rebirths"
