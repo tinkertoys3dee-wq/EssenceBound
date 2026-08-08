@@ -27,14 +27,18 @@ local function applyButtonFeel(button, hoverScale, baseColor, hoverColor, parent
 	hoverScale = hoverScale or 1.05
 
 	local tweener = parent or button
-	local UIScale = parent:FindFirstChild("UIScale") 
-	local baseSize = tweener.Size
 
-	local function scaled(mult)
-		return UDim2.new(
-			baseSize.X.Scale * mult, baseSize.X.Offset * mult,
-			baseSize.Y.Scale * mult, baseSize.Y.Offset * mult
-		)
+	-- Same fix as SettingsUIManagement.client.luau / IndexUIManagement.
+	-- client.luau / InventoryUIManagement.client.luau / ShopUITweens.
+	-- client.luau's copies of this exact helper: find-or-create rather
+	-- than a bare FindFirstChild, since every hover/press handler below
+	-- tweens UIScale directly and a nil target there throws on every
+	-- interaction.
+	local UIScale = tweener:FindFirstChild("UIScale")
+	if not UIScale then
+		UIScale = Instance.new("UIScale")
+		UIScale.Scale = 1
+		UIScale.Parent = tweener
 	end
 
 	local highlightStroke
@@ -51,7 +55,9 @@ local function applyButtonFeel(button, hoverScale, baseColor, hoverColor, parent
 	end
 
 	button.MouseEnter:Connect(function()
-		tween(UIScale, TweenInfo.new(0.15, Enum.EasingStyle.Quad), {Scale = 1.05}):Play()
+		-- Was hardcoded to 1.05, ignoring the hoverScale argument every
+		-- caller actually passes (1.3 here).
+		tween(UIScale, TweenInfo.new(0.15, Enum.EasingStyle.Quad), {Scale = hoverScale}):Play()
 		if hoverColor then
 			tween(tweener, TweenInfo.new(0.15), {BackgroundColor3 = hoverColor}):Play()
 		end

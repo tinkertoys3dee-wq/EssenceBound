@@ -1339,6 +1339,46 @@ its `applyButtonFeel` helper and click handler:
    every click, not just its animation. Deduplicated into one guarded
    lookup shared by both branches.
 
+## 27. The Index popup's tooltip was completely broken -- plus the same UIScale bug in 3 more files
+
+Continuing the sweep through `src/StarterGui`'s popup scripts turned
+up the single most certain bug of this whole pass -- not a "might
+happen if X is missing" risk, a guaranteed failure on every use.
+
+**`IndexUIManagement.client.luau`'s hover tooltip used `.value`
+(lowercase) to read a `BoolValue`'s data.** Roblox's `BoolValue` (like
+every `*Value` instance) stores its data in `.Value` -- capital V,
+case-sensitive, no fallback. `PlayerDataHandler.server.luau` confirms
+exactly this: `Instance.new("BoolValue"); V.Value = discovered`.
+Reading `.value` on that instance throws immediately -- and since this
+line ran *before* `popup.Visible = true` in the same synchronous
+`MouseEnter` handler, the error aborted the whole handler right there.
+Net effect: hovering ANY essence slot in the Index/compendium popup
+never showed the tooltip at all, for any player, ever. This is
+literally the popup's entire purpose. Fixed both occurrences
+(`.value` -> `.Value`).
+
+**Same popup, second fix:** the slot-validity check was `if slot.Name
+~= "Frame" then` -- a blocklist excluding one specific name, rather
+than checking against what the code actually needs (`EssenceDatas`
+only defines `"Earth Essence"`/`"Shadow Essence"`). Any other non-
+"Frame" child in that grid would have hit `Data[slot.Name].Rarity` on
+a nil table and errored. Changed to check `Data[slot.Name]` directly --
+the real requirement, and self-documenting about what "a valid slot"
+means here. Also removed a leftover debug `print`.
+
+**Third, unrelated finding in the same file, also present in
+`InventoryUIManagement.client.luau` and `ZonesUIManagement.client.
+luau`:** all three share (copy-pasted, it looks like) the exact same
+`applyButtonFeel` helper `SettingsUIManagement.client.luau` already
+had fixed in section 26 -- an unguarded nil `UIScale` that throws on
+every hover/press if a toggle's parent doesn't already have one, and a
+`hoverScale` parameter silently ignored in favor of a hardcoded
+`1.05`. Applied the identical fix to all three (find-or-create
+UIScale, use the actual `hoverScale` argument). `ShopUITweens.client.
+luau` was already checked earlier (section 23) and uses a different,
+unaffected technique (tweens `Size` directly, no `UIScale` involved).
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
@@ -1416,6 +1456,12 @@ its `applyButtonFeel` helper and click handler:
     and confirm the "COMBO x3!" callout appears at the orb, growing
     more dramatic at 5/8/12/20, and disappears silently (no callout at
     all) the moment a non-crit breaks the streak.
+13. **Open the Index/compendium popup and hover an essence slot**
+    (section 27) -- this should have been completely broken before
+    this pass (no tooltip ever appearing, silently). Confirm you now
+    see "Rarity: ... / Discovered: true/false" follow your cursor, and
+    that hovering/pressing the popup's buttons scales smoothly instead
+    of throwing (same for the Inventory and Zones popups).
 
 ## ⚠️ One thing to be careful about
 

@@ -27,14 +27,16 @@ local function applyButtonFeel(button, hoverScale, baseColor, hoverColor, parent
 	hoverScale = hoverScale or 1.05
 
 	local tweener = parent or button
-	local UIScale = parent:FindFirstChild("UIScale") 
-	local baseSize = tweener.Size
 
-	local function scaled(mult)
-		return UDim2.new(
-			baseSize.X.Scale * mult, baseSize.X.Offset * mult,
-			baseSize.Y.Scale * mult, baseSize.Y.Offset * mult
-		)
+	-- Same fix as SettingsUIManagement.client.luau / ShopUITweens.client.luau's
+	-- copies of this exact helper: find-or-create rather than a bare
+	-- FindFirstChild, since every hover/press handler below tweens UIScale
+	-- directly and a nil target there throws on every interaction.
+	local UIScale = tweener:FindFirstChild("UIScale")
+	if not UIScale then
+		UIScale = Instance.new("UIScale")
+		UIScale.Scale = 1
+		UIScale.Parent = tweener
 	end
 
 	local highlightStroke
@@ -51,7 +53,9 @@ local function applyButtonFeel(button, hoverScale, baseColor, hoverColor, parent
 	end
 
 	button.MouseEnter:Connect(function()
-		tween(UIScale, TweenInfo.new(0.15, Enum.EasingStyle.Quad), {Scale = 1.05}):Play()
+		-- Was hardcoded to 1.05, ignoring the hoverScale argument every
+		-- caller actually passes (1.3 here).
+		tween(UIScale, TweenInfo.new(0.15, Enum.EasingStyle.Quad), {Scale = hoverScale}):Play()
 		if hoverColor then
 			tween(tweener, TweenInfo.new(0.15), {BackgroundColor3 = hoverColor}):Play()
 		end
@@ -141,16 +145,23 @@ for _, slot in pairs(gridContainer:GetChildren()) do
 		-- When mouse enters the slot
 		slot.MouseEnter:Connect(function()
 			hoveredSlot = slot
-			if slot.Name ~= "Frame" then
-							popup.Title.Text = slot.Name -- E.g., "Water Essence"
 
-						
-							if slot.Name == "Shadow Essence" then
-								popup.Description.Text = "Rarity: ".. Data[slot.Name].Rarity.. "\n".. "Discovered: ".. tostring(player:WaitForChild(slot.Name).value).. "\n\n".. "X^.02 Extra Essence Per Shadow Essence"
-								print(popup.Description.Text)
-							else
-					popup.Description.Text = "Rarity: ".. Data[slot.Name].Rarity.. "\n".. "Discovered: ".. tostring(player:WaitForChild(slot.Name).value)
-							end
+			-- Was `if slot.Name ~= "Frame" then` -- a blocklist that only
+			-- excludes one specific non-essence name, rather than an
+			-- allowlist of the essences this actually has data for.
+			-- EssenceDatas only defines "Earth Essence"/"Shadow Essence",
+			-- so any OTHER non-"Frame" child in this grid would have hit
+			-- Data[slot.Name].Rarity on a nil table and errored. Checking
+			-- Data[slot.Name] directly is both the real requirement and
+			-- self-documenting about what a "valid slot" means here.
+			if Data[slot.Name] then
+				popup.Title.Text = slot.Name -- E.g., "Water Essence"
+
+				if slot.Name == "Shadow Essence" then
+					popup.Description.Text = "Rarity: ".. Data[slot.Name].Rarity.. "\n".. "Discovered: ".. tostring(player:WaitForChild(slot.Name).Value).. "\n\n".. "X^.02 Extra Essence Per Shadow Essence"
+				else
+					popup.Description.Text = "Rarity: ".. Data[slot.Name].Rarity.. "\n".. "Discovered: ".. tostring(player:WaitForChild(slot.Name).Value)
+				end
 			end
 			-- Update text (You can pull this data from your ModuleScript or attributes!)
 		
