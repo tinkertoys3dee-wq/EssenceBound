@@ -809,6 +809,22 @@ UI -- the emoji-prefixed key also happens to sort after the real essence
 names alphabetically, so it lands at the bottom of the list, reading as
 a bonus tacked onto the regular earnings rather than mixed in with them.
 
+## 15. Fixed a crash in the Earth tree purchase handler
+
+`UpgradeEvent.server.luau` pre-checked every purchase with
+`TreeModule.CanAfford(data, TreeModule.GetCostForNextLevel(name, ...))`
+before ever calling `PurchaseUpgrade`. `GetCostForNextLevel` only returns
+`nil` for a genuinely unknown upgrade id (it doesn't check `MaxLevel` at
+all), and `CanAfford` does `for currency, amount in pairs(cost)` with no
+guard on `cost` itself -- so any malformed/unknown `name` from the client
+(a stale id from a renamed upgrade, or a direct/malformed remote call)
+crashed the handler with a bare `pairs(nil)` error before it ever reached
+`PurchaseUpgrade`, which already checks unknown-id/locked/maxed correctly
+and returns `false, reason` instead of erroring. Simplified to just call
+`PurchaseUpgrade` directly and trust its return value -- it was already
+the correct single source of truth, the pre-check was both redundant and
+the one place actually missing a guard.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
