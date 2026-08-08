@@ -1922,3 +1922,179 @@ task.spawn(function()
 	end)
 end)
 
+-- =========================================================================
+-- PRESTIGE SHOP: shared remotes
+-- =========================================================================
+-- Owned/created by RebirthShopService.server.luau. Momentum has no remote
+-- of its own (MomentumStacks is a plain attribute, same pattern as
+-- OrbCurrentHP/StormTimeRemaining elsewhere in this file) -- only the
+-- three reactive/random effects need a server-initiated trigger.
+
+local rebirthShopRemotesFolder = ReplicatedStorage:WaitForChild("RebirthShopRemotes")
+local SecondWindRemote = rebirthShopRemotesFolder:WaitForChild("SecondWindProc")
+local ShardRainRemote = rebirthShopRemotesFolder:WaitForChild("ShardRainProc")
+local TwinAscensionRemote = rebirthShopRemotesFolder:WaitForChild("TwinAscensionProc")
+
+-- =========================================================================
+-- MOMENTUM (Prestige Shop: rebirthshop_momentum)
+-- =========================================================================
+-- MomentumStacks is maintained server-side (OrbClickManager.server.luau --
+-- it feeds a real essence-multiplier bonus in EssenceMultiplier, so the
+-- count itself has to be server-owned, same trust boundary as everything
+-- else this file only ever displays rather than decides). This is purely
+-- the combo counter that appears above the orb while it's building.
+
+local MOMENTUM_COLOR = Color3.fromRGB(255, 205, 60)
+
+local momentumLabel = Instance.new("TextLabel")
+momentumLabel.Name = "MomentumCombo"
+momentumLabel.AnchorPoint = Vector2.new(0.5, 1)
+momentumLabel.Size = UDim2.fromOffset(220, 36)
+momentumLabel.BackgroundTransparency = 1
+momentumLabel.Font = Enum.Font.GothamBlack
+momentumLabel.Text = ""
+momentumLabel.TextColor3 = MOMENTUM_COLOR
+momentumLabel.TextStrokeTransparency = 0.35
+momentumLabel.TextScaled = true
+momentumLabel.Visible = false
+momentumLabel.ZIndex = 60
+momentumLabel.Parent = juiceLayer
+
+local lastMomentumStacks = 0
+
+local function refreshMomentumLabel()
+	local stacks = player:GetAttribute("MomentumStacks") or 0
+	local center = juiceLayer and Juice.CenterOf(LargeOrb, juiceLayer)
+
+	if stacks <= 0 or not center then
+		momentumLabel.Visible = false
+		lastMomentumStacks = 0
+		return
+	end
+
+	momentumLabel.Position = center - UDim2.fromOffset(0, 115)
+	momentumLabel.Text = ("🔥 MOMENTUM x%d"):format(stacks)
+	momentumLabel.Visible = true
+
+	-- Only punch on genuine INCREASES -- the same signal also fires on the
+	-- reset-to-0 pass (already handled above) and would otherwise punch a
+	-- label that's simultaneously being hidden.
+	if stacks > lastMomentumStacks then
+		Juice.Punch(Juice.GetScale(momentumLabel), 0.28, 0.22)
+	end
+	lastMomentumStacks = stacks
+end
+
+player:GetAttributeChangedSignal("MomentumStacks"):Connect(refreshMomentumLabel)
+
+-- =========================================================================
+-- SECOND WIND (Prestige Shop: rebirthshop_secondwind)
+-- =========================================================================
+-- Fires the moment the server catches the orb's energy bottoming out and
+-- grants the comeback burst -- see EssenceOrbController.Fire and
+-- OrbClickManager.server.luau. Reads as a "close call, saved" beat rather
+-- than a routine relic activation: a hard flash + shake before the
+-- reassuring gold ring, instead of just building straight into the reward.
+
+local SECOND_WIND_COLOR = Color3.fromRGB(255, 120, 70)
+
+SecondWindRemote.OnClientEvent:Connect(function(boostSeconds)
+	boostSeconds = tonumber(boostSeconds) or 0
+	if boostSeconds <= 0 then
+		return
+	end
+
+	local center = juiceLayer and Juice.CenterOf(LargeOrb, juiceLayer)
+
+	if juiceLayer then
+		Juice.Flash(juiceLayer, { Color = SECOND_WIND_COLOR, Peak = 0.55, Duration = 0.45 })
+	end
+	Juice.Shake(Center, 10, 0.25)
+
+	if juiceLayer and center then
+		Juice.Ring(juiceLayer, center, {
+			Color = SECOND_WIND_COLOR, StartSize = 30, EndSize = 280, Duration = 0.7, Thickness = 5,
+		})
+		Juice.Burst(juiceLayer, center, {
+			Count = 16, Colors = { SECOND_WIND_COLOR, Color3.fromRGB(255, 255, 255) },
+			Distance = 220, Duration = 0.9, Size = { 4, 10 },
+		})
+		Juice.FloatText(juiceLayer, center - UDim2.fromOffset(0, 40), "SECOND WIND!", {
+			Color = SECOND_WIND_COLOR, Duration = 1.1, Rise = 70, TextSize = 30,
+		})
+	end
+
+	local sound = Juice.FindSound("SFX/UI/UIPop")
+	if sound then
+		Juice.PlaySound(sound, { Pitch = 0.8, Volume = 0.7 })
+	end
+end)
+
+-- =========================================================================
+-- SHARD RAIN (Prestige Shop: rebirthshop_shardrain)
+-- =========================================================================
+-- A rare bonus Prestige Shard from an ordinary collection -- fired from
+-- OrbClickManager.server.luau's collection handler. Anchored above the
+-- great orb like every other global callout in this file rather than at
+-- the collected orb's own position, since the server has no UI concept of
+-- where on screen that orb was.
+
+local SHARD_RAIN_COLOR = Color3.fromRGB(90, 190, 255)
+
+ShardRainRemote.OnClientEvent:Connect(function(amount)
+	amount = tonumber(amount) or 1
+	local center = juiceLayer and Juice.CenterOf(LargeOrb, juiceLayer)
+	if not (juiceLayer and center) then
+		return
+	end
+
+	Juice.Ring(juiceLayer, center, {
+		Color = SHARD_RAIN_COLOR, StartSize = 10, EndSize = 150, Duration = 0.6, Thickness = 4,
+	})
+	Juice.FloatText(juiceLayer, center - UDim2.fromOffset(0, 55), ("💎 +%d PRESTIGE SHARD%s!"):format(amount, amount > 1 and "S" or ""), {
+		Color = SHARD_RAIN_COLOR, Duration = 1.4, Rise = 80, TextSize = 24,
+	})
+
+	local sound = Juice.FindSound("SFX/UI/UIPop")
+	if sound then
+		Juice.PlaySound(sound, { Pitch = 1.6, Volume = 0.6 })
+	end
+end)
+
+-- =========================================================================
+-- TWIN ASCENSION (Prestige Shop: rebirthshop_twinascension)
+-- =========================================================================
+-- The rarest of the five -- only fires the moment a rebirth itself procs
+-- the double-currency roll (see RebirthHandler.luau). Biggest effect of
+-- the five accordingly: this is a jackpot moment on top of an already
+-- major moment (a rebirth), not routine feedback.
+
+local TWIN_ASCENSION_COLOR = Color3.fromRGB(255, 225, 140)
+
+TwinAscensionRemote.OnClientEvent:Connect(function()
+	local center = juiceLayer and Juice.CenterOf(LargeOrb, juiceLayer)
+	if not (juiceLayer and center) then
+		return
+	end
+
+	Juice.Flash(juiceLayer, { Color = TWIN_ASCENSION_COLOR, Peak = 0.6, Duration = 0.6 })
+	Juice.Ring(juiceLayer, center, {
+		Color = TWIN_ASCENSION_COLOR, StartSize = 20, EndSize = 340, Duration = 1, Thickness = 6,
+	})
+	Juice.Burst(juiceLayer, center, {
+		Count = 26, Colors = { TWIN_ASCENSION_COLOR, Color3.fromRGB(255, 255, 255) },
+		Distance = 280, Duration = 1.1, Size = { 5, 12 },
+	})
+	Juice.FloatText(juiceLayer, center - UDim2.fromOffset(0, 50), "✨ TWIN ASCENSION! ✨", {
+		Color = TWIN_ASCENSION_COLOR, Duration = 1.4, Rise = 80, TextSize = 32,
+	})
+	Juice.FloatText(juiceLayer, center + UDim2.fromOffset(0, 15), "DOUBLE PRESTIGE SHARDS", {
+		Color = Color3.fromRGB(255, 255, 255), Duration = 1.4, Rise = 60, TextSize = 18,
+	})
+
+	local sound = Juice.FindSound("SFX/UI/UIPop")
+	if sound then
+		Juice.PlaySound(sound, { Pitch = 1.3, Volume = 0.7 })
+	end
+end)
+

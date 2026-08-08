@@ -288,6 +288,43 @@ local function loadPlayerData(player)
 	rebirths.Value = data.Rebirths or 0
 	rebirths.Parent = leaderstats
 
+	-- ===== PRESTIGE SHARDS (RebirthCurrency) =====
+	-- The attribute itself (not this leaderstat) is the source of truth --
+	-- RebirthHandler.luau's PerformRebirth, and the Prestige Shop's own
+	-- purchase/reward code, all read and write player:GetAttribute
+	-- ("RebirthCurrency") directly. This leaderstat is a pure DISPLAY
+	-- mirror driven by the attribute, so every future call site that
+	-- changes the balance gets a correct display for free instead of
+	-- needing to remember to also touch a leaderstat.
+	--
+	-- Previously nothing ever initialized this attribute at join -- it was
+	-- only ever set the moment a player performed their NEXT rebirth this
+	-- session, so a returning player with an already-nonzero balance saw
+	-- nothing (attribute nil, shop balance reading 0) until they rebirthed
+	-- again. Same bug shape as the Sanctum "stuck showing 0" issue.
+	local rebirthCurrency = Instance.new("IntValue")
+	rebirthCurrency.Name = "Prestige Shards"
+	rebirthCurrency.Value = tonumber(data.RebirthCurrency) or 0
+	rebirthCurrency.Parent = leaderstats
+
+	player:SetAttribute("RebirthCurrency", tonumber(data.RebirthCurrency) or 0)
+	player:GetAttributeChangedSignal("RebirthCurrency"):Connect(function()
+		local value = tonumber(player:GetAttribute("RebirthCurrency")) or 0
+		data.RebirthCurrency = value
+		rebirthCurrency.Value = value
+	end)
+
+	-- Mirror Prestige Shop levels onto attributes, same reasoning as the
+	-- SanctumUpgrades mirror above: the systems those upgrades affect
+	-- (EssenceMultiplier, EssenceOrbController, OrbClickManager,
+	-- CursorCollection, RebirthHandler) all read the attribute directly.
+	if type(data.RebirthShopUpgrades) ~= "table" then
+		data.RebirthShopUpgrades = {}
+	end
+	for upgradeId, level in pairs(data.RebirthShopUpgrades) do
+		player:SetAttribute(upgradeId, level)
+	end
+
 	for _, value in pairs(data.Essences) do
 		local discovered = value.Discovered
 		local V = Instance.new("BoolValue")

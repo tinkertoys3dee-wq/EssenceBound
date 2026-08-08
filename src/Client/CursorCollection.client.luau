@@ -923,3 +923,205 @@ task.spawn(function()
 		end
 	end
 end)
+
+-- =========================================================================
+-- GRAVITY WELL (Prestige Shop: rebirthshop_gravitywell)
+-- =========================================================================
+-- Unlike the four relics above, this isn't a Sanctum purchase -- it's
+-- bought with Rebirth Currency in the Prestige Shop (RebirthShopUpgrades).
+-- Same "periodic, automatic, visual" shape though, so it gets the exact
+-- same countdown-pill treatment via Juice.RegisterRelicPill.
+--
+-- Every Interval seconds, nearby same-type orbs already sitting in the
+-- field are pulled together and FUSED into one bigger orb worth more than
+-- their sum. Deliberately a periodic PULSE rather than continuous
+-- per-frame drifting: each orb already runs its own per-frame homing
+-- animation (magnet pull toward the cursor, orbit/bob -- see SpawnOrb in
+-- OrbClicker.client.luau), and a second system fighting that same
+-- Position every frame would just jitter. A pulse sidesteps that
+-- entirely -- it reads each orb's position once, then only ever touches
+-- attributes (EssenceValue/IsCrit/IsGolden) and Bail/Destroy on the
+-- consumed orbs, exactly the same handoff CollectEffect already uses.
+
+local RebirthShopUpgrades
+do
+	local module = RP:FindFirstChild("RebirthShopUpgrades") or RP:WaitForChild("RebirthShopUpgrades", 10)
+	if module then
+		local ok, result = pcall(require, module)
+		if ok and type(result) == "table" then
+			RebirthShopUpgrades = result
+		end
+	end
+end
+
+local GRAVITY_WELL_COLOR = Color3.fromRGB(255, 165, 60)
+
+local gravityWellParts = Juice.RegisterRelicPill(playerGui, {
+	Name = "GravityWell",
+	Icon = "🌀",
+	Color = GRAVITY_WELL_COLOR,
+	Order = 5,
+})
+local gravityWellPill = gravityWellParts.Pill
+local gravityWellPillFill = gravityWellParts.Fill
+local gravityWellPillLabel = gravityWellParts.Label
+
+-- Single-linkage clustering: any orb within MergeRadius of ANY orb already
+-- in a cluster joins it. O(n^2) over currently-eligible orbs, which is
+-- fine at the field's real size (BASE_MAX_ACTIVE_ORBS is 40, and only a
+-- fraction of those are ever the same OrbType and already landed).
+local function clusterByProximity(orbs, mergeRadius)
+	local clusters = {}
+	local assigned = {}
+
+	for i, orb in ipairs(orbs) do
+		if not assigned[orb] then
+			local cluster = { orb }
+			assigned[orb] = true
+
+			-- Re-scan from the start each time a member is added, so a
+			-- chain (A near B, B near C, A far from C) still merges as one
+			-- cluster instead of only catching direct neighbors of the seed.
+			local growing = true
+			while growing do
+				growing = false
+				for _, candidate in ipairs(orbs) do
+					if not assigned[candidate] then
+						for _, member in ipairs(cluster) do
+							local dx = candidate.AbsolutePosition.X - member.AbsolutePosition.X
+							local dy = candidate.AbsolutePosition.Y - member.AbsolutePosition.Y
+							if (dx * dx + dy * dy) <= (mergeRadius * mergeRadius) then
+								table.insert(cluster, candidate)
+								assigned[candidate] = true
+								growing = true
+								break
+							end
+						end
+					end
+				end
+			end
+
+			table.insert(clusters, cluster)
+		end
+	end
+
+	return clusters
+end
+
+local function performGravityWellPulse(data)
+	-- Group eligible orbs (landed, not already mid-collection) by type --
+	-- orbs of different currencies can't sensibly fuse into one payout.
+	local byType = {}
+	for _, obj in ipairs(collectibleObjects) do
+		if obj.Parent and obj.Visible and obj:GetAttribute("Collectible") and not obj:GetAttribute("Bail") then
+			local orbType = obj:GetAttribute("OrbType") or "?"
+			byType[orbType] = byType[orbType] or {}
+			table.insert(byType[orbType], obj)
+		end
+	end
+
+	local fusedAny = false
+
+	for _, orbs in pairs(byType) do
+		if #orbs >= 2 then
+			local clusters = clusterByProximity(orbs, data.MergeRadius)
+
+			for _, cluster in ipairs(clusters) do
+				if #cluster >= 2 then
+					fusedAny = true
+
+					local survivor = cluster[1]
+					local totalValue = 0
+					local anyCrit, anyGolden = false, false
+
+					for _, member in ipairs(cluster) do
+						totalValue += (tonumber(member:GetAttribute("EssenceValue")) or 0)
+						if member:GetAttribute("IsCrit") then anyCrit = true end
+						if member:GetAttribute("IsGolden") then anyGolden = true end
+					end
+
+					survivor:SetAttribute("EssenceValue", totalValue * (1 + data.BonusPercent))
+					if anyCrit then survivor:SetAttribute("IsCrit", true) end
+					if anyGolden then survivor:SetAttribute("IsGolden", true) end
+
+					if juiceLayer then
+						local survivorPos = Juice.CenterOf(survivor, juiceLayer)
+						if survivorPos then
+							Juice.Ring(juiceLayer, survivorPos, {
+								Color = GRAVITY_WELL_COLOR, StartSize = 10, EndSize = 90, Duration = 0.5, Thickness = 3,
+							})
+						end
+					end
+					Juice.Punch(Juice.GetScale(survivor), 0.3, 0.35)
+
+					-- Consumed members: bail (stops their own per-frame
+					-- homing loop next frame, same guard CollectEffect
+					-- relies on), a small burst at their last position, then
+					-- gone -- never touched again after this.
+					for i = 2, #cluster do
+						local obj = cluster[i]
+						local objPos = juiceLayer and Juice.CenterOf(obj, juiceLayer)
+						obj:SetAttribute("Bail", true)
+						removeCollectible(obj)
+						obj:Destroy()
+
+						if juiceLayer then
+							Juice.Burst(juiceLayer, objPos, {
+								Count = 4, Colors = { GRAVITY_WELL_COLOR, Color3.fromRGB(255, 255, 255) },
+								Distance = 30, Duration = 0.35, Size = { 2, 5 },
+							})
+						end
+					end
+				end
+			end
+		end
+	end
+
+	return fusedAny
+end
+
+task.spawn(function()
+	while not RebirthShopUpgrades or (player:GetAttribute("rebirthshop_gravitywell") or 0) <= 0 do
+		if RebirthShopUpgrades then
+			player:GetAttributeChangedSignal("rebirthshop_gravitywell"):Wait()
+		else
+			task.wait(1)
+		end
+	end
+
+	gravityWellPill.Visible = true
+
+	while true do
+		local level = player:GetAttribute("rebirthshop_gravitywell") or 0
+		local data = RebirthShopUpgrades.GetLevelData("rebirthshop_gravitywell", level)
+
+		if not data then
+			task.wait(5)
+		else
+			local total = data.Interval
+			local remaining = total
+
+			while remaining > 0 do
+				gravityWellPillLabel.Text = ("🌀 %ds"):format(math.ceil(remaining))
+				gravityWellPillFill.Size = UDim2.fromScale(math.clamp(1 - (remaining / total), 0, 1), 1)
+
+				local step = math.min(1, remaining)
+				task.wait(step)
+				remaining -= step
+			end
+
+			local currentLevel = player:GetAttribute("rebirthshop_gravitywell") or 0
+			local currentData = RebirthShopUpgrades.GetLevelData("rebirthshop_gravitywell", currentLevel)
+			if currentData then
+				gravityWellPillLabel.Text = "🌀 PULL!"
+				gravityWellPillFill.Size = UDim2.fromScale(1, 1)
+				Juice.Punch(Juice.GetScale(gravityWellPill), 0.25, 0.3)
+
+				local ok, err = pcall(performGravityWellPulse, currentData)
+				if not ok then
+					warn("[CursorCollection] Gravity Well errored: " .. tostring(err))
+				end
+			end
+		end
+	end
+end)

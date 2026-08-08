@@ -354,15 +354,128 @@ use — so **nothing needs to be hand-built in Studio**.
 
 ---
 
+## 8. Prestige Shop (Rebirth Currency finally does something)
+
+Rebirth Currency ("Prestige Shards") was half-built already: every rebirth
+granted `RebirthModule.BASE_REBIRTH_CURRENCY_GRANT` (1) Shard, plus a bonus
+from the Earth tree's **Ascension Insight** upgrade — but that upgrade's
+own in-game description literally read *"[WIP] [WIP] [WIP]"* in red,
+because nothing existed to actually SPEND the currency, and nothing
+displayed the balance correctly either. This pass finishes both halves.
+
+| File | Role |
+|---|---|
+| `src/Shared/RebirthShopUpgrades.luau` | Definitions, costs, effect math |
+| `src/Server/RebirthShopService.server.luau` | Purchase validation, persistence, the 3 gameplay-effect remotes |
+| `src/Client/RebirthShopPanel.client.luau` | The panel UI (🔮 button, left edge, under the Sanctum button) |
+
+### Bug fixed: balance never initialized on join
+
+`player:SetAttribute("RebirthCurrency", ...)` was only ever called the
+moment a player performed their **next** rebirth that session — a
+returning player with an already-large Shard balance saw nothing (Shop
+balance reading 0) until they rebirthed again. Same bug shape as the
+Sanctum's "stuck showing 0" issue from earlier in this doc. Fixed the same
+way: `PlayerDataHandler` now sets the attribute at join from saved data,
+and a leaderstat ("Prestige Shards") mirrors it live off an
+`AttributeChanged` listener, so every future call site that changes the
+balance gets a correct display for free.
+
+### Why five mechanics instead of five more stat lines
+
+The Earth tree and the Shadow Sanctum both already do "flat number goes
+up" extremely well. Prestige Shards are far scarcer (1-7 per **rebirth**,
+which itself takes a real session) — spending that on a fourth copy of
+"+essence %" would waste the one currency in the game that could justify
+something weirder. Each of the five below changes HOW a system behaves,
+not just its size, and each is driven by a different trigger so they
+never compete for the same moment:
+
+| Upgrade | Cost (lvl1→max) | Trigger | Effect |
+|---|---|---|---|
+| ⚡ Momentum Core | 3→39 (5 lv) | Sustained clicking | Stacking essence bonus per combo stack (up to 20x); pausing 1.2s resets it |
+| 🌀 Gravity Well | 5→40 (4 lv) | Timer pulse | Nearby same-type orbs periodically fuse into fewer, bigger ones (+8-20% bonus value) |
+| ♊ Twin Ascension | 4→52 (5 lv) | Rebirth itself | Chance (5-28%) for a rebirth to grant DOUBLE Prestige Shards |
+| 🌅 Second Wind | 6→29 (3 lv) | Orb energy hits 0 | Instant refill (40-75%) + a burst of 1.5x essence, on its own cooldown |
+| 💎 Shard Rain | 8→155 (5 lv) | Any collection | Rare chance (0.4-2%) to also drop 1-2 bonus Prestige Shards |
+
+All five persist through rebirth (`PlayerData.RebirthShopUpgrades`, kept
+separate from `Upgrades` for the same reason `SanctumUpgrades` is — a
+rebirth wipes the Earth tree, never this).
+
+### Server authority per upgrade
+
+- **Momentum** feeds a real essence multiplier, so the combo count is
+  tracked server-side (`OrbClickManager.server.luau`'s `comboState`), not
+  trusted from the client. A player attribute (`MomentumStacks`) mirrors
+  it out for display and for `EssenceMultiplier` to read.
+- **Gravity Well** is pure client visual/gameplay: it only ever combines
+  the `EssenceValue` of orbs that already exist and were already going to
+  be collected, through the exact same `Collection` remote everything
+  else uses. No new trust surface beyond what any single orb already had.
+- **Twin Ascension** rolls inside `RebirthHandler.luau`'s `PerformRebirth`
+  — a fully server-only transaction already. Deliberately doubles only the
+  currency GRANT, never the rebirth count itself: bumping the count by 2
+  could let a lucky roll skip clean past a milestone.
+- **Second Wind** triggers inside `EssenceOrbController.Fire` (already
+  server-authoritative for HP) and reports the trigger back to
+  `OrbClickManager.server.luau`, which grants the boost — same
+  separation of concerns as `wasTrickle` already used: HP math stays in
+  one module, reward orchestration in the other.
+- **Shard Rain** rolls in `OrbClickManager.server.luau`'s existing
+  collection handler, right where crit/gold already do their own rolls —
+  independent odds, since it pays a completely different currency.
+
+Second Wind and Eclipse (the Sanctum relic) both grant their boost via
+the *same* `PotionTimerService` effect (`"EssenceX15"`) rather than
+registering a second one. That's intentional, not a missed opportunity to
+differentiate them: `PotionTimerService` currently has no guard against
+two *different* named effects stomping the same `EssenceMultiplier`
+attribute on expiry (see the Eclipse section above for the full
+reasoning) — reusing the one proven-safe effect sidesteps that gap
+entirely. Triggering one while the other is active just extends the
+shared timer, which is the correct behavior for two sources of the same
+conceptual boost.
+
+### Panel
+
+Near-identical structure to the Sanctum panel (same render / affordability-
+pulse / announce-once code shape) but a warm gold/amber "ascension" theme
+instead of the Sanctum's cool purple, so the two shops still read as
+distinct rooms despite sharing a layout. Button sits at
+`UDim2.fromScale(0.895, 0.377)` — one slot below the Sanctum button in the
+same manual left-edge column.
+
+### Relic bar gets a 6th member
+
+Gravity Well's countdown also registers into the shared bottom-center
+relic bar (`Juice.RegisterRelicPill`, `Order = 5`) even though it isn't a
+Sanctum relic — it's still a periodic, automatic, visual ability, and
+reusing the bar was the entire point of building it as a shared component.
+
+### Orb cap interaction
+
+`BASE_MAX_ACTIVE_ORBS` (40, see the Sanctum section above) directly
+affects how often Gravity Well finds clusters to fuse — more orbs on
+screen at once means more chances for same-type orbs to land within
+`MergeRadius` of each other. No extra tuning needed for this: the existing
+overflow upgrades (Earth tree's `overflow_capacity`, Sanctum's
+`sanctum_overflow`) already raise the cap for players who want denser
+fields, which now also means more frequent, bigger Gravity Well fusions —
+one more reason those upgrades stay worth buying.
+
+---
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
    ballgame. Click the orb, hover a drop, watch the counter. If it moves,
    the core bug is fixed.
-2. **Check the four new buttons** (🎁 Daily / 📜 Quests / 🎟️ Codes /
-   🌑 Sanctum) on the left edge don't overlap your existing UI. Positions
-   live in the `LAYOUT` table at the top of `ProgressionHud.client.luau`
-   and `SanctumPanel.client.luau` — one line each, no hunting.
+2. **Check the five new buttons** (🎁 Daily / 📜 Quests / 🎟️ Codes /
+   🌑 Sanctum / 🔮 Prestige Shop) on the left edge don't overlap your
+   existing UI. Positions live in the `LAYOUT` table at the top of
+   `ProgressionHud.client.luau`, `SanctumPanel.client.luau` and
+   `RebirthShopPanel.client.luau` — one line each, no hunting.
 3. **Try a code** (`LAUNCH`) to confirm the redeem flow works end to end.
 4. **Watch the Output window** for red errors on join.
 5. **Daily panel auto-opens** on a first join once the tutorial is done.

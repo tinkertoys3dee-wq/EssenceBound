@@ -222,6 +222,32 @@ function RebirthModule.CanRebirth(currentEssence: number, rebirthCount: number, 
 	return currentEssence >= RebirthModule.CalculateEssenceNeeded(rebirthCount, requirementReductionPercent)
 end
 
+-- Timed lookup with a graceful fallback, NOT a bare require -- Twin
+-- Ascension is a bonus on TOP of the rebirth grant, and a missing/broken
+-- RebirthShopUpgrades module must never be able to stop a rebirth (by far
+-- the single most important transaction in the game) from completing.
+-- Explicitly `any`, not a specific module type: this file is --!strict,
+-- and a dynamically require()'d ModuleScript has no static interface
+-- Luau can check anyway. `any` also means the nil-check at the call site
+-- is purely a runtime guard, exactly as intended -- it doesn't need the
+-- type checker's help to prove safety here, since GetPlayerLevelData is
+-- only ever called after that check passes.
+local function tryGetRebirthShopUpgrades(): any
+	local ReplicatedStorage = game:GetService("ReplicatedStorage")
+	local module = ReplicatedStorage:FindFirstChild("RebirthShopUpgrades")
+		or ReplicatedStorage:WaitForChild("RebirthShopUpgrades", 5)
+
+	if not module then
+		return nil
+	end
+
+	local ok, result = pcall(require, module)
+	if ok and type(result) == "table" then
+		return result
+	end
+	return nil
+end
+
 function RebirthModule.PerformRebirth(playerData, player)
 	local EssenceUpgrades = require(game:GetService("ReplicatedStorage"):WaitForChild("TreeUpgrades"))
 
@@ -232,7 +258,7 @@ function RebirthModule.PerformRebirth(playerData, player)
 	local essenceNeeded = RebirthModule.CalculateEssenceNeeded(rebirthCount, requirementReduction)
 
 	if essence < essenceNeeded then
-		return false
+		return false, false
 	end
 
 	local newRebirthCount = rebirthCount + 1
@@ -255,13 +281,29 @@ function RebirthModule.PerformRebirth(playerData, player)
 	playerData.Essences["EarthEssence"].savedEPM = 0
 	
 	-- ascension_insight: bonus RebirthCurrency on top of the base grant
-	
+
 	local grantedCurrency = RebirthModule.BASE_REBIRTH_CURRENCY_GRANT + bonusCurrency
+
+	-- rebirthshop_twinascension: a chance for THIS rebirth's currency grant
+	-- to be doubled. Deliberately only doubles the currency, not the
+	-- rebirth count itself -- bumping newRebirthCount by 2 would let a
+	-- lucky roll skip straight past a milestone (MILESTONES is keyed by
+	-- exact rebirth count), silently costing the player content instead of
+	-- rewarding them.
+	local wasTwinAscension = false
+	local shopUpgrades = tryGetRebirthShopUpgrades()
+	if shopUpgrades then
+		local twinData = shopUpgrades.GetPlayerLevelData(player, "rebirthshop_twinascension")
+		if twinData and twinData.ChancePercent and math.random() < twinData.ChancePercent then
+			wasTwinAscension = true
+			grantedCurrency *= 2
+		end
+	end
 
 	playerData.RebirthCurrency = (playerData.RebirthCurrency or 0) + grantedCurrency
 	player:SetAttribute("RebirthCurrency", playerData.RebirthCurrency)
-	
-	return true
+
+	return true, wasTwinAscension
 end
 
 return RebirthModule

@@ -29,6 +29,21 @@ do
 	end
 end
 
+-- Same defensive contract as SanctumUpgrades above, for the Prestige
+-- Shop's Momentum Core upgrade.
+local RebirthShopUpgrades
+do
+	local module = ReplicatedStorage:FindFirstChild("RebirthShopUpgrades")
+		or ReplicatedStorage:WaitForChild("RebirthShopUpgrades", 10)
+
+	if module then
+		local ok, result = pcall(require, module)
+		if ok and type(result) == "table" then
+			RebirthShopUpgrades = result
+		end
+	end
+end
+
 -- Rolls the double-crit chain for a single collection and returns the
 -- resulting crit multiplier contribution (1 = no crit bonus). Kept as its
 -- own function so CalculateMultiplier only ever rolls double-crit ONCE per
@@ -70,7 +85,23 @@ function EssenceMultiplier.CalculateMultiplier(plr, gold, crit)
 	if plr:GetAttribute("essence_convergence") then
 		multiplier *= 1 + plr:GetAttribute("essence_convergence")
 	end
-	
+
+	-- Prestige Shop: Momentum Core. MomentumStacks is maintained
+	-- server-side in OrbClickManager (sustained clicking builds it, a
+	-- pause decays it) -- read directly off the attribute rather than
+	-- recomputed here, same trust boundary as everything else in this
+	-- function reading a server-owned attribute.
+	if RebirthShopUpgrades then
+		local momentumLevel = RebirthShopUpgrades.GetPlayerLevel(plr, "rebirthshop_momentum")
+		if momentumLevel >= 1 then
+			local momentumData = RebirthShopUpgrades.GetLevelData("rebirthshop_momentum", momentumLevel)
+			local stacks = tonumber(plr:GetAttribute("MomentumStacks")) or 0
+			if momentumData then
+				multiplier *= 1 + (stacks * momentumData.PercentPerStack)
+			end
+		end
+	end
+
 	-- Shadow Sanctum: Umbral Focus is a flat additive bonus to everything.
 	-- Coerced so a missing effect can never turn the multiplier into a
 	-- non-number and zero out every reward in the game (which is exactly

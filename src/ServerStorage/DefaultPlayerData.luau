@@ -123,6 +123,13 @@ local DefaultPlayerData = {
 	-- Essence tree, never touches what Shadow Essence bought.
 	SanctumUpgrades = {},
 
+	-- [upgradeId] = level, for the Prestige Shop (see RebirthShopUpgrades).
+	-- Kept separate from Upgrades for the same reason as SanctumUpgrades --
+	-- RebirthCurrency itself is the one currency that ONLY ever accumulates
+	-- across rebirths, so what it buys has to survive the Earth tree wipe
+	-- a rebirth performs, or the whole currency would be pointless.
+	RebirthShopUpgrades = {},
+
 	-- Daily streak / daily quest state, driven by ProgressionService.
 	-- Quest progress is stored by SLOT INDEX (1..QuestsPerDay) rather than
 	-- by quest id on purpose: the save merge in PlayerDataHandler only
