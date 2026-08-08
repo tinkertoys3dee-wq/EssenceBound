@@ -288,6 +288,17 @@ local function loadPlayerData(player)
 	rebirths.Value = data.Rebirths or 0
 	rebirths.Parent = leaderstats
 
+	-- Was set once here and never again -- RebirthHandler.luau's
+	-- PerformRebirth updates player:GetAttribute("Rebirths") correctly
+	-- (everything server-side reads that live), but nothing mirrored it
+	-- back into this leaderstat's .Value, so the Roblox player list kept
+	-- showing whatever rebirth count a player joined with even after they
+	-- rebirthed several more times in the same session. Same mirror
+	-- pattern as the Prestige Shards leaderstat just below.
+	player:GetAttributeChangedSignal("Rebirths"):Connect(function()
+		rebirths.Value = tonumber(player:GetAttribute("Rebirths")) or 0
+	end)
+
 	-- ===== PRESTIGE SHARDS (RebirthCurrency) =====
 	-- The attribute itself (not this leaderstat) is the source of truth --
 	-- RebirthHandler.luau's PerformRebirth, and the Prestige Shop's own
