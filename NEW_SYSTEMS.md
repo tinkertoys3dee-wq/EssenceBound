@@ -1036,6 +1036,47 @@ Also removed a `print(playerData)` left in `StormController.luau`'s
 (automatic, manual, and purchased), so it was real console spam in a
 live server.
 
+## 20. Audited every OnServerEvent/OnServerInvoke handler in the codebase
+
+After fixing GrantBadge's exploit (section 19), the obvious follow-up
+question was "is that the only one?" -- so every remote handler in the
+game got checked against the same bar: does it trust anything from the
+client it shouldn't?
+
+All 13 files with a server-side remote handler:
+
+- `GrantBadge.server.luau` -- fixed (section 19)
+- `ProductPurchaseHandler.server.luau` -- fixed (section 18); the
+  `ProcessReceipt`/gamepass handlers themselves only ever receive
+  Roblox-verified purchase data, not arbitrary client input
+- `PotionTimerService.luau` -- fixed (section 17, the remote-folder
+  crash); `ApplyPotion` is only ever called from other SERVER scripts,
+  never exposed to the client directly
+- `UpdateData.server.luau` -- already correct: an explicit
+  `ALLOWED_ROOTS` allowlist gates which PlayerData keys a client can
+  touch at all
+- `UpgradeEvent.server.luau` -- fixed earlier this pass (type check +
+  trusting `PurchaseUpgrade`'s own validation)
+- `AchievementsService.server.luau`, `OrbClickManager.server.luau`,
+  `RebirthShopService.server.luau`, `SanctumService.server.luau`,
+  `ProgressionService.server.luau` -- all independently re-derive
+  level/cost/balance from server state and never trust a client-sent
+  number; RebirthShopService and SanctumService in particular are
+  excellent references for this pattern (debounced, type-checked,
+  re-validated against server data, never trusting a submitted price)
+- `RebirthHandler.server.luau`, `StormInitServer.server.luau` -- take
+  no client arguments at all beyond the implicit player, so there's no
+  forgeable input surface to begin with
+- `ReturnDataToClient.server.luau` -- read-only (returns the caller's
+  own PlayerData, nothing else), no validation needed; removed a
+  `print(data)` that fired on every single request (this remote gets
+  polled every 60s per client by `UIManagement.client.luau`, so it was
+  real, frequent console spam)
+
+Net result: one real vulnerability (GrantBadge), one debug-print
+cleanup here plus the one already fixed in `StormController.luau`
+(section 19), everything else already correct.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
