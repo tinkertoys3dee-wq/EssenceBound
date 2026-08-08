@@ -482,6 +482,25 @@ game:BindToClose(function()
 	for _, player in ipairs(players) do
 		task.spawn(function()
 			savePlayerData(player, true)
+
+			-- savePlayerData no-ops immediately if a save for this player
+			-- was ALREADY in flight (saveLocks -- see its own comment) --
+			-- almost always another autosave. Normally that's fine, since
+			-- another one runs in 2 minutes regardless. Here it isn't: if
+			-- this callback moved on believing the player is saved while
+			-- that pre-existing save is still actually running, it can get
+			-- killed by the process terminating right after BindToClose
+			-- returns, silently losing whatever it hadn't written yet.
+			-- Wait for it to actually finish before counting this player
+			-- as done. Capped so one stuck lock can't hang every other
+			-- player's own wait below it.
+			local userId = player.UserId
+			local lockWaited = 0
+			while saveLocks[userId] and lockWaited < 20 do
+				task.wait(0.5)
+				lockWaited += 0.5
+			end
+
 			remaining -= 1
 		end)
 	end

@@ -1548,6 +1548,46 @@ it again, with no cap. Moved the credit to right alongside the
 a receipt "count" exactly once -- now RobuxSpent shares that same
 one-time guarantee instead of running on every attempt.
 
+## 32. A narrow but real data-loss race between autosave and server shutdown
+
+`PlayerDataHandler.server.luau` -- the central load/save system, gone
+through carefully since a bug here risks actual player progress -- is
+mostly excellent: `applySavedData`'s recursive merge correctly handles
+schema changes in both directions (a new template field a player's old
+save doesn't have keeps its fresh default; a field removed from the
+template but present in an old save is just harmlessly ignored/carried
+along), and every mutation path reads well. One real race turned up in
+how it shuts down.
+
+`savePlayerData` uses a `saveLocks[userId]` flag so two saves for the
+same player can never run concurrently and corrupt each other's
+write -- if one's already in flight, a second call just no-ops
+immediately. That's exactly right for the common case: autosave firing
+again while a previous autosave is still finishing is fine to skip,
+since another one runs in 2 minutes regardless.
+
+It's NOT fine in `game:BindToClose`. The shutdown handler calls
+`savePlayerData(player, true)` for every player and decrements a
+`remaining` counter right after, so its own wait-loop knows when it's
+safe to let the server actually close. But if an autosave happened to
+be mid-flight for some player at the exact moment the server started
+shutting down, `savePlayerData` would hit the lock and return
+immediately -- `remaining` still decrements right away, `BindToClose`
+concludes everyone's saved and can return almost instantly, while the
+REAL in-flight save (the one actually holding the lock) keeps running
+as an independent, un-awaited coroutine that the process terminating
+shortly after could kill mid-write. The window is narrow and the loss
+when it happens is usually small (whatever changed in the last moment
+before that autosave's own snapshot), but it's real, it's silent, and
+losing progress is exactly the kind of thing that makes a player not
+come back.
+
+Fixed without touching the lock itself or the common autosave path:
+each `BindToClose` task now waits (capped at 20s) for `saveLocks
+[userId]` to actually clear before counting that player done, so a
+pre-existing in-flight save gets the time it needs instead of being
+silently treated as already finished.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
