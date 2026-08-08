@@ -157,6 +157,16 @@ local PRODUCT_HANDLERS = {
 	[3609555620] = function(player) -- 5 Minute Time Warp (e.g. +2000 Essence)
 		print(player.Name .. " bought the Mega Gem Pack")
 		local EPMS = EPMService.getEPM(player)
+		if not EPMS then
+			-- getEPM returns bare nil if EPMService.ActiveSessions has no
+			-- entry for this player yet (e.g. a receipt processed before
+			-- PlayerDataHandler finished its join sequence) -- pairs(nil)
+			-- would otherwise throw here and take a paid purchase down
+			-- with it. Same "return false, let Roblox retry" contract as
+			-- the Essence Rain handler above; nothing charged is lost.
+			warn(("ProductPurchaseHandler: no EPM session yet for %s, deferring Time Warp purchase"):format(player.Name))
+			return false
+		end
 		local data = require(player:WaitForChild("PlayerData"))
 		local leaderstats = player:WaitForChild("leaderstats")
 		for name, Quantity in pairs(EPMS) do
@@ -172,6 +182,12 @@ local PRODUCT_HANDLERS = {
 		print(player.Name .. " bought the 2x Essence Boost")
 		-- e.g. BoostService:Apply(player, "EssenceX2", 24 * 60 * 60)
 		local EPMS = EPMService.getEPM(player)
+		if not EPMS then
+			-- See the 5 Minute Time Warp handler above -- same missing-
+			-- session guard, same safe retry contract.
+			warn(("ProductPurchaseHandler: no EPM session yet for %s, deferring Time Warp purchase"):format(player.Name))
+			return false
+		end
 		local data = require(player:WaitForChild("PlayerData"))
 		local leaderstats = player:WaitForChild("leaderstats")
 		for name, Quantity in pairs(EPMS) do

@@ -954,6 +954,39 @@ a literal id copy-pasted from the group's own URL. **To turn it on,
 set `GroupRewardConfig.GroupId` to your real group id** -- that's the
 entire setup step.
 
+## 18. Fixed a purchase-crashing nil in ProductPurchaseHandler
+
+Continued the file-by-file audit into `ProductPurchaseHandler.server.
+luau` -- carefully, since this is the one file in the codebase this
+pass has consistently treated as higher-risk (real money), and the fix
+below is deliberately a pure crash-prevention change, not a pricing or
+design decision (same bar that kept this pass from guessing at the
+three non-functional gamepasses in section 0).
+
+Both Time Warp developer products (`3609555620` / `3609555653`) call
+`EPMService.getEPM(player)` and immediately `for name, Quantity in
+pairs(EPMS) do`. `getEPM` returns a bare `nil` -- not an empty table --
+whenever `EPMService.ActiveSessions` has no entry for that player yet
+(the "Absolute fallback" case in that file), which is a real
+reachable state: `PlayerDataHandler` populates `ActiveSessions` during
+its own join sequence, and `ProcessReceipt` can in principle fire
+before that's finished (a receipt that was already pending when the
+player rejoined, for instance). `pairs(nil)` throws immediately in
+that case, taking a *paid* purchase down with it.
+
+This codebase's own docstring for this file explains why that matters
+specifically here: Developer Products are supposed to keep retrying
+via `ProcessReceipt` until the handler cleanly returns a decision --
+that retry guarantee is what the Essence Rain handler already relies
+on a few lines up (`return false` deliberately, so Roblox tries again
+later instead of the storm silently eating the charge). An uncaught
+error is not the same as a clean `return false` and isn't a reliable
+way to get that retry -- so this crash risked the exact "took the
+Robux, granted nothing, and isn't guaranteed to retry" failure mode
+the rest of this file is deliberately careful to avoid. Fixed by
+guarding both handlers with the same "no session yet -> return false"
+pattern already established for the storm purchase.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
