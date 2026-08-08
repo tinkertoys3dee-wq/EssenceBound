@@ -601,6 +601,59 @@ note if you aren't -- deliberately doesn't claim an exact rank outside the
 cached top 50, since computing that would mean an expensive full-store
 scan for something that isn't worth the DataStore cost.
 
+## 11. Achievements panel (Badges finally have somewhere to live)
+
+The 13 Roblox badges this game already awards (BadgeService toast only,
+zero in-game visibility -- no way to see which exist, which you have, or
+what's left) plus a new set of in-game **Milestones** with real claimable
+rewards, since a checklist with no payoff is a weaker hook than one with
+an actual "claim +2,000 essence" button at the end of it.
+
+**`src/Shared/AchievementsConfig.luau`** (new) is pure data, same
+contract as every other `*Config`/`*Upgrades` module: the 13 badges (name/
+icon/description reconstructed by grepping every `BS:AwardBadgeAsync`
+call site in the codebase to find what actually triggers each one -- see
+the file's own comment block for the full map) plus 9 new Milestones.
+Every Milestone's trigger stat (`TotalEssenceGathered`, `CriticalEssence`,
+`Rebirths`, `ManualStormsSummoned`, `UniqueEssences`) is one that's
+already tracked, server-owned, and monotonic (never decreases), which is
+what makes it safe for a milestone to stay "complete" forever once
+crossed -- none of them key off RebirthCurrency's current balance, since
+that one's spendable and would let a milestone un-complete itself.
+
+The two Hollowed-ARG badges ("It Has Noticed You" / "Nothing Left
+Hidden") are marked `Secret = true` and rendered as "???" until earned --
+that content is deliberately mysterious (see the loading screen's horror
+tone, described elsewhere in this doc) and a public achievements list
+describing them up front would spoil it.
+
+Reward amounts were sized against the same tree-cost bands from the
+balance pass (section 9): 150-25,000 essence for the essence-reward
+milestones, 1-3 Prestige Shards for the rebirth-count ones, small enough
+to feel like a nice bonus for a goal you were already chasing rather than
+a way to skip the economy.
+
+**`src/Server/AchievementsService.server.luau`** (new) re-derives badge/
+milestone completion from server-owned stats on every claim request --
+the client can only ask, never claim for itself. Rewards pay out through
+the SAME paths every other grant in the game already uses (the Earth
+Essence leaderstat's `Quantity` attribute; `RebirthCurrency` for Shards),
+so there's exactly one source of truth for each currency, not a second
+one this file invented. Pushes a fresh sync to every online player every
+5 seconds (cheap -- pure in-memory reads, no DataStore calls) so progress
+bars creep forward live while the panel is open.
+
+**`src/Client/AchievementsPanel.client.luau`** (new) is the one panel
+this pass where rows are built ONCE and only ever have their properties
+**updated** on sync, never destroyed and rebuilt -- with a sync landing
+every 5 seconds, rebuilding ~22 instances each time would flicker and
+reset the scroll position out from under anyone with the panel open.
+New 🏅 "GOALS" button at `(0.895, 0.459)`, continuing the 0.082-apart
+rhythm the left-edge column already established (Prestige Shop 0.213 →
+Sanctum 0.295 → Leaderboard 0.377 → this one). Same affordability-badge
+pattern as Sanctum's "!" pip, but for "you have something to claim"
+instead of "you can afford something."
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
@@ -611,12 +664,12 @@ scan for something that isn't worth the DataStore cost.
    real collection and advances itself (with a short celebration) once
    one lands, and that the 14s/34s hints and the 58s fallback Next button
    show up if you deliberately do nothing.
-3. **Check the six new buttons** (🎁 Daily / 📜 Quests / 🎟️ Codes /
-   🌑 Sanctum / 🔮 Prestige Shop / 🏆 Ranks) on the left edge don't overlap
-   your existing UI. Positions live in the `LAYOUT` table at the top of
-   `ProgressionHud.client.luau`, `SanctumPanel.client.luau`,
-   `RebirthShopPanel.client.luau` and `LeaderboardPanel.client.luau` — one
-   line each, no hunting.
+3. **Check the seven new buttons** (🎁 Daily / 📜 Quests / 🎟️ Codes /
+   🌑 Sanctum / 🔮 Prestige Shop / 🏆 Ranks / 🏅 Goals) on the left edge
+   don't overlap your existing UI. Positions live in the `LAYOUT` table at
+   the top of `ProgressionHud.client.luau`, `SanctumPanel.client.luau`,
+   `RebirthShopPanel.client.luau`, `LeaderboardPanel.client.luau` and
+   `AchievementsPanel.client.luau` — one line each, no hunting.
 4. **Try a code** (`LAUNCH`) to confirm the redeem flow works end to end.
 5. **Watch the Output window** for red errors on join.
 6. **Daily panel auto-opens** on a first join once the tutorial is done.

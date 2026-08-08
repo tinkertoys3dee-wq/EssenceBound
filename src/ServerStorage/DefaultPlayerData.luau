@@ -135,6 +135,14 @@ local DefaultPlayerData = {
 	-- a rebirth performs, or the whole currency would be pointless.
 	RebirthShopUpgrades = {},
 
+	-- [milestoneId] = true, for AchievementsService. Kept independent of
+	-- the Badges table (Roblox platform badges) since Milestones are this
+	-- game's own goals with real claimable rewards -- once claimed, a
+	-- milestone must never pay out twice, and must survive a rebirth (the
+	-- goals it tracks, like TotalEssenceGathered, are lifetime stats that
+	-- a rebirth doesn't reset either).
+	ClaimedMilestones = {},
+
 	-- Daily streak / daily quest state, driven by ProgressionService.
 	-- Quest progress is stored by SLOT INDEX (1..QuestsPerDay) rather than
 	-- by quest id on purpose: the save merge in PlayerDataHandler only
