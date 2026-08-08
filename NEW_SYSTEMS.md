@@ -1480,6 +1480,38 @@ justify. `gold` had no equivalent derivation (a flat 3x isn't tied to
 any attribute at all), which is exactly why it -- unlike crit -- needed
 a fix.
 
+## 30. Hardened UpdateData against a crash (not an exploit -- checked carefully)
+
+While auditing every remaining `OnServerEvent`/`OnServerInvoke` handler
+after section 29's fix, `UpdateData.server.luau` -- the generic
+"write one of my own preference/flag fields" endpoint -- was worth a
+close look: a hand-rolled path-based mutator is exactly the shape a
+real exploit usually hides in.
+
+It doesn't. `ALLOWED_ROOTS` gates `path[1]` to exactly six fields
+(`Settings`, `SeenTutorial`, `SeenFirstCrit`, `SeenFavoritePrompt`,
+`SeenWhatsNewVersion`, `HollowedMilestones`), the traversal only ever
+descends from that root, and every one of those six is either a plain
+scalar or one flat table of booleans -- there's no path that reaches
+`Essences`, `Rebirths`, or anything else that actually matters. Traced
+this all the way through before concluding it's genuinely safe, the
+same way section 29 was traced through before concluding it wasn't.
+
+What it DID have: a client sending a path with more segments than the
+real data shape supports (e.g. a third segment under `SeenTutorial`,
+which is just `true`/`false`, not a table) would try to index that
+boolean and throw "attempt to index a boolean value" -- crashing that
+one call with an error in the output rather than the same clean reject
+every other malformed-input case in this codebase gets. Same for an
+arithmetic operator (`+`/`-`/`*`/`/`) against a non-numeric `Value`.
+Neither was reachable for any gain (the field you'd land on is your
+own settings toggle or "have I seen this popup" flag either way) --
+just a rough edge, not a hole. Added a `type(currentFolder) ~= "table"`
+guard before descending and a numeric check before the arithmetic
+operators, both rejecting with a `warn` instead of erroring. Also
+removed a leftover `print("Reached target data:", ...)` that fired on
+every single write.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
