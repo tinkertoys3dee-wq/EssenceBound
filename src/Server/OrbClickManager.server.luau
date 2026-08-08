@@ -189,11 +189,37 @@ end)
 
 
 -- crit: true if the specific orb being collected rolled a crit client-side
--- (CriticalsController.RollCrit, at spawn time). gold: true for golden-storm
--- orbs. EssenceMulti.CalculateMultiplier is the ONLY thing that turns "crit"
--- into an actual bonus amount, and it derives that amount from the player's
--- own CritMultiplierBonus attribute total -- so the client flagging crit
--- can't grant more than their real upgrades justify.
+-- (CriticalsController.RollCrit, at spawn time). EssenceMulti.
+-- CalculateMultiplier is the ONLY thing that turns "crit" into an actual
+-- bonus amount, and it derives that amount from the player's own
+-- CritMultiplierBonus attribute total -- so the client flagging crit can't
+-- grant more than their real upgrades justify (see CriticalsController's
+-- "DESIGN NOTE ON TRUST" for why that boolean itself doesn't need to be).
+--
+-- gold and quantity do NOT have that same protection, and both were being
+-- trusted outright until this pass:
+--
+--   - gold used to go straight into CalculateMultiplier's flat 3x with no
+--     check at all, even though StormController.luau's own header comment
+--     documents exactly the fix below ("checking player:GetAttribute(
+--     'StormIsGolden') at the moment of collection") as the intended
+--     design -- it just was never actually wired up here. Any client could
+--     FireServer with gold=true for a permanent, unconditional 3x on every
+--     collection with no storm ever active. Re-derived below instead of
+--     trusted directly.
+--   - quantity is an orb's base essence value, which is entirely client-
+--     owned data (orbs are purely client-side visual objects -- OrbClicker.
+--     client.luau sets EssenceValue locally, the server has no independent
+--     record of what any given collection "should" be worth). Unlike
+--     gold/crit, nothing bounds it: a direct FireServer call could claim
+--     any quantity at all, permanently inflating real, saved currency and
+--     poisoning the global leaderboard. MAX_QUANTITY_PER_COLLECTION is a
+--     generous sanity ceiling, not a precise recompute of the legitimate
+--     formula -- legitimate play (even a maxed root_awakening at 32x base,
+--     fused through a maxed Gravity Well's +20%) stays far under it; it
+--     exists purely to block the "claim an arbitrary huge number" exploit.
+local MAX_QUANTITY_PER_COLLECTION = 5000
+
 local BS = game:GetService("BadgeService")
 collected.OnServerEvent:Connect(function(plr, orbName, quantity, crit, gold)
 	-- Defensive validation: orbName/quantity come straight from the
@@ -211,11 +237,28 @@ collected.OnServerEvent:Connect(function(plr, orbName, quantity, crit, gold)
 	-- also guards this at the source (see CollectEffect in
 	-- CursorCollection.client.luau) so a legitimate client should never
 	-- trigger this branch at all -- this exists for whatever still can.
-	if (orbName ~= "Earth Essence" and orbName ~= "Shadow Essence") or type(quantity) ~= "number" then
-		warn(("[OrbClickManager] Rejected malformed collection from %s (%d): orbName=%s quantity=%s")
+	--
+	-- The quantity checks below (NaN/non-positive/over-ceiling) close the
+	-- forged-currency gap described above -- see MAX_QUANTITY_PER_
+	-- COLLECTION's comment for why 5000 is safe headroom, not a tight fit.
+	if (orbName ~= "Earth Essence" and orbName ~= "Shadow Essence")
+		or type(quantity) ~= "number"
+		or quantity ~= quantity -- NaN: the only number that's never equal to itself
+		or quantity <= 0
+		or quantity > MAX_QUANTITY_PER_COLLECTION
+	then
+		warn(("[OrbClickManager] Rejected malformed/out-of-range collection from %s (%d): orbName=%s quantity=%s")
 			:format(plr.Name, plr.UserId, tostring(orbName), tostring(quantity)))
 		return
 	end
+
+	-- Re-derived from the server's own storm state rather than trusting
+	-- the client's gold flag directly -- see the comment above this
+	-- handler for why. A real golden storm sets this attribute itself
+	-- (StormController:_mirrorAttributes), so legitimate play is
+	-- unaffected; a forged gold=true with no storm active now just does
+	-- nothing instead of granting a free permanent 3x.
+	local isGolden = gold and plr:GetAttribute("StormIsGolden") == true
 
 	local session = getOrInitPlayerSession(plr)
 	local userId = plr.UserId
@@ -238,7 +281,7 @@ collected.OnServerEvent:Connect(function(plr, orbName, quantity, crit, gold)
 	-- rolls double_crit internally when crit is true, so calling it twice
 	-- here would roll that independently each time and could credit a crit
 	-- to one number but not the other.
-	local multiplier = EssenceMulti.CalculateMultiplier(plr, gold, crit)
+	local multiplier = EssenceMulti.CalculateMultiplier(plr, isGolden, crit)
 	local essenceGained = math.floor(multiplier * quantity)
 	local temp = orbName
 	if orbName == "Earth Essence" then

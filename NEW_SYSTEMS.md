@@ -1426,6 +1426,60 @@ by the client -- `IsFriendsWith` is a server-only check against Roblox's
 own friends graph, so unlike some of this session's other additions,
 there's no new trust boundary here at all.
 
+## 29. Closed the most severe exploit found this session: forgeable currency and a free permanent 3x
+
+`OrbClickManager.server.luau`'s `collected` RemoteEvent handler --
+the ONE place every single essence reward in the game gets credited
+-- trusted two client-supplied values it had no business trusting
+outright: `quantity` (an orb's base essence value) and `gold`
+(whether it counts as a golden-storm orb, worth a flat 3x).
+
+**`quantity` had no bound at all.** Orbs are purely client-side visual
+objects: `OrbClicker.client.luau` computes and sets `EssenceValue` on
+each one locally, `CursorCollection.client.luau` reads it back off the
+orb and sends it straight to the server as `quantity`. The server has
+no independent record of what any given collection "should" be worth
+-- so a direct `FireServer("Earth Essence", 999999999, false, false)`
+call (no exploit sophistication required; this is closer to the
+*first* thing anyone probing a game's remotes tries) would have
+credited exactly that, permanently, straight into saved `PlayerData`
+and the "Top Essence" global leaderboard. Worse than the badge exploit
+in section 19: that one handed out cosmetic-ish achievements, this one
+is the entire economy this session spent real effort balancing (see
+sections 19-20 from earlier in this file). Fixed with
+`MAX_QUANTITY_PER_COLLECTION` (5000) -- a generous sanity ceiling, not
+a precise recompute of the legitimate formula. Legitimate play (even a
+maxed `root_awakening` at 32x base, fused through a maxed Gravity
+Well's +20% bonus) stays far under it; it exists purely to block the
+"claim an arbitrary huge number" case. Non-numeric, NaN, and
+non-positive quantities are rejected the same way the pre-existing
+`orbName` check already rejected malformed input.
+
+**`gold` went straight into a flat, unconditional 3x with no check at
+all** -- and this one isn't even a case of the codebase never having
+thought about it: `StormController.luau`'s own header comment
+documents the intended fix verbatim ("Applying the golden-storm reward
+multiplier to collected essence... by checking
+`player:GetAttribute('StormIsGolden')` at the moment of collection")
+-- it just was never actually wired up where collection is credited.
+Any client could `FireServer` with `gold=true` on every single
+collection for a permanent, unconditional 3x with no storm ever
+active. Fixed by re-deriving it server-side (`gold and
+plr:GetAttribute("StormIsGolden") == true`) instead of trusting the
+parameter -- `StormIsGolden` is already a real, server-authoritative
+attribute (`StormController:_mirrorAttributes` sets it, only the
+server ever calls that), so legitimate play is completely unaffected.
+
+**Deliberately left alone:** the `crit` boolean has the same shape as
+`gold` (a client-supplied flag) but isn't a bug -- `CriticalsController.
+luau`'s own "DESIGN NOTE ON TRUST" explains why: the flag only decides
+*whether* a bonus applies, and the bonus *amount* is always derived
+from the player's own `CritMultiplierBonus` attribute total, so a
+forged `crit=true` can never grant more than upgrades already bought
+justify. `gold` had no equivalent derivation (a flat 3x isn't tied to
+any attribute at all), which is exactly why it -- unlike crit -- needed
+a fix.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
@@ -1517,6 +1571,16 @@ there's no new trust boundary here at all.
     pops in top-right on BOTH accounts showing "+5% Essence / 1 Friend
     Online", and that it updates live (no rejoin needed) if one of them
     leaves.
+15. **Section 29's fix shouldn't change anything you can see or feel.**
+    Play normally -- click, collect, get a golden storm going (manual
+    summon or wait one out) -- and confirm essence still climbs exactly
+    as before. This fix only rejects requests a real client would never
+    send in the first place; if a legitimate collection ever gets
+    rejected (an `[OrbClickManager] Rejected malformed/out-of-range
+    collection` warning in the Output window during normal play, not
+    from you poking a remote directly), that's a sign
+    `MAX_QUANTITY_PER_COLLECTION` needs raising -- it's a single number
+    at the top of `OrbClickManager.server.luau`.
 
 ## ⚠️ One thing to be careful about
 
