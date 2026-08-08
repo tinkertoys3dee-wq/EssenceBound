@@ -1310,6 +1310,35 @@ the exact same `IsCrit` flag that file already reads for its own
 per-orb effects a few lines above -- one new local variable, one new
 `:Fire()` call, nothing existing reordered or changed.
 
+## 26. Three fixes in the Settings panel (Music/SFX toggles)
+
+Continued the file-by-file audit into `SettingsUIManagement.client.
+luau`, which had gone unchecked all pass. Found three real issues in
+its `applyButtonFeel` helper and click handler:
+
+1. **Unguarded nil UIScale.** `local UIScale = parent:FindFirstChild
+   ("UIScale")` had no fallback, and every hover/press handler
+   immediately does `TweenService:Create(UIScale, ...)` -- a nil
+   target there throws. If either toggle's parent didn't already have
+   a UIScale pre-built in Studio, hovering or pressing it would error
+   on every interaction (the actual on/off logic lives in a separate
+   `MouseButton1Click` connection, so this wouldn't have silently
+   broken the setting itself -- just spammed errors and killed the
+   hover feel). Fixed with a find-or-create fallback.
+2. **`hoverScale` was accepted as a parameter and then completely
+   ignored** -- every call already passes `1.3`, but the hover tween
+   hardcoded `1.05` instead. Restored so the parameter does what its
+   name says. Also removed a `baseSize`/`scaled()` helper that was
+   defined but never called anywhere -- leftover from an earlier
+   Size-based tweening approach, replaced at some point by the
+   UIScale-based one visible now, never cleaned up.
+3. **The actual toggle logic** (`MouseButton1Click`) read `button.
+   Parent:FindFirstChild("TextLabel").Text` with no nil-check, twice,
+   once per branch. Unlike the hover-feel issue above, a missing label
+   HERE would have broken the setting's actual on/off behavior on
+   every click, not just its animation. Deduplicated into one guarded
+   lookup shared by both branches.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
