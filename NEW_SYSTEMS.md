@@ -987,6 +987,39 @@ the rest of this file is deliberately careful to avoid. Fixed by
 guarding both handlers with the same "no session yet -> return false"
 pattern already established for the storm purchase.
 
+## 19. Closed a real "claim any badge instantly" exploit
+
+`GrantBadge.server.luau` is a tiny, generic RemoteEvent handler:
+whatever badge id the client sends, it sets the matching attribute,
+writes `PlayerData.Badges[id] = true`, and calls Roblox's real
+`BadgeService:AwardBadgeAsync` for it. **It had no validation on that
+id at all.** Any client -- not just the legitimate caller -- could
+`FireServer` with any of this game's 13 badge ids (all listed in
+`AchievementsConfig.Badges`, which is in `ReplicatedStorage` and
+therefore fully readable by an exploit) and be instantly, permanently
+awarded that badge, including the two secret Hollowed One ARG badges
+that are supposed to require reaching real essence milestones
+(1,000 / 10,000,000 essence) through actual play.
+
+The only legitimate caller is `TheHollowGlitch.client.luau`, and it
+only ever asks for exactly two ids -- the secret badges, fired the
+moment its own client-side lore event reaches Tier 1 / Tier 6. Every
+other badge (First Steps, Essence Baron, Storm Caller, ...) is awarded
+by direct server-side calls elsewhere (e.g. `RebirthHandler.server.
+luau` awards the rebirth badges inline, never through this remote) --
+so this generic remote was never *supposed* to be able to grant
+anything but those two.
+
+Fixed with an explicit allowlist of exactly those two ids; anything
+else is rejected and logged. This doesn't re-verify the essence
+threshold server-side (that would mean duplicating
+`TheHollowGlitch.client.luau`'s own eligibility logic, which reads
+lifetime vs. current essence in a way I didn't want to guess at and
+risk blocking a legitimate player) -- so a forged call can still claim
+one of these two specific badges a little early. What it closes is the
+much bigger hole: claiming literally any badge in the game, on demand,
+with zero validation.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
