@@ -910,6 +910,50 @@ auto-popup is pending, this one tends to land after, not simultaneously.
 Given it only fires once per version bump, occasional overlap is a minor
 cosmetic risk, not a broken experience.
 
+## 17. Fixed a real button collision, added an (inert until configured) Group Reward
+
+**The bug.** While picking a screen position for a new button (below),
+I checked every existing right-edge button's coordinates against each
+other for the first time this session and found a real one:
+`ProgressionHud.client.luau`'s Daily/Quests/Codes stack was built at
+`x=0.92`, centered at `y=0.2`, rendering roughly `y=0.09..0.32`.
+`RebirthShopPanel.client.luau`'s button sits at `(0.895, 0.213)` and
+`SanctumPanel.client.luau`'s at `(0.895, 0.295)` -- a different column,
+but only `0.025` away in x against `0.062`-wide buttons, so the two
+columns overlapped in **both** axes across two of the four buttons.
+None of these are gated behind rebirth count or anything else -- all
+four are visible from a player's very first session, so this wasn't an
+edge case. Fixed by moving `ProgressionHud`'s stack down to `y=0.63`,
+clear of the whole Sanctum/Prestige Shop/Leaderboard/Achievements
+column (which bottoms out around `0.49-0.51`) -- one line, one file,
+rather than renumbering four already-shipped buttons for one collision.
+**I can't render Roblox UI from here, so this was fixed from source
+math, not a screenshot** -- please eyeball it in Studio (checklist item
+3 below).
+
+**The new feature.** `GroupRewardConfig.luau` + `GroupRewardService.
+server.luau` + `GroupRewardPrompt.client.luau` add a standard, free,
+permanent essence bonus (+10% by default) for players who've joined the
+game's Roblox group -- unlike a gamepass, group membership actively
+helps the game itself (shouts, wall posts reach every member). Checked
+once per join server-side (`Player:IsInGroup`, cached to a `GroupMember`
+attribute so `EssenceMultiplier.CalculateMultiplier` -- which runs on
+every single collection -- never makes a live API call) and folded into
+the multiplier stack the same way every other bonus in that function
+already works. The client button (👥, +N% shown live from config) opens
+the group's page via `GuiService:OpenBrowserWindowAsync` and disappears
+once the player is actually a member.
+
+**Ships fully inert:** `GroupRewardConfig.GroupId` defaults to `0`,
+which every piece of this feature treats as "disabled" -- no API calls,
+no attribute, no button. This is a different situation from the three
+non-functional gamepasses flagged in section 0: those needed an actual
+product decision I can't make (what should "Lucky Finder" *do*?); this
+one's design is just the genre standard, and the only missing piece is
+a literal id copy-pasted from the group's own URL. **To turn it on,
+set `GroupRewardConfig.GroupId` to your real group id** -- that's the
+entire setup step.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
@@ -920,12 +964,18 @@ cosmetic risk, not a broken experience.
    real collection and advances itself (with a short celebration) once
    one lands, and that the 14s/34s hints and the 58s fallback Next button
    show up if you deliberately do nothing.
-3. **Check the seven new buttons** (🎁 Daily / 📜 Quests / 🎟️ Codes /
-   🌑 Sanctum / 🔮 Prestige Shop / 🏆 Ranks / 🏅 Goals) on the left edge
-   don't overlap your existing UI. Positions live in the `LAYOUT` table at
-   the top of `ProgressionHud.client.luau`, `SanctumPanel.client.luau`,
-   `RebirthShopPanel.client.luau`, `LeaderboardPanel.client.luau` and
-   `AchievementsPanel.client.luau` — one line each, no hunting.
+3. **Check the new buttons** (🌑 Sanctum / 🔮 Prestige Shop / 🏆 Ranks /
+   🏅 Goals, then 🎁 Daily / 📜 Quests / 🎟️ Codes lower down, plus 👥 Group
+   if you've configured a Group ID) on the right edge don't overlap your
+   existing UI. **Section 17 below has a real collision this pass fixed**
+   between the Daily/Quests/Codes stack and the Sanctum/Prestige Shop
+   buttons -- worth confirming the fix actually looks right on your real
+   screen size, since this was corrected from source math, not a visual
+   check. Positions live in the `LAYOUT` table at the top of
+   `ProgressionHud.client.luau`, `SanctumPanel.client.luau`,
+   `RebirthShopPanel.client.luau`, `LeaderboardPanel.client.luau`,
+   `AchievementsPanel.client.luau` and `GroupRewardPrompt.client.luau` —
+   one line each, no hunting.
 4. **Try a code** (`LAUNCH`) to confirm the redeem flow works end to end.
 5. **Watch the Output window** for red errors on join.
 6. **Daily panel auto-opens** on a first join once the tutorial is done.
@@ -943,6 +993,11 @@ cosmetic risk, not a broken experience.
    account -- the popup should appear a few seconds after join. To re-test
    repeatedly after that, just bump `WhatsNewConfig.CurrentVersion` by 1
    each time rather than trying to reset the save.
+9. **Group Reward is invisible until you configure it, on purpose.** Set
+   `GroupRewardConfig.GroupId` to your real group id to turn it on (see
+   section 17), then confirm the 👥 button opens the right group page
+   and disappears once your test account actually joins that group and
+   rejoins the game.
 
 ## ⚠️ One thing to be careful about
 

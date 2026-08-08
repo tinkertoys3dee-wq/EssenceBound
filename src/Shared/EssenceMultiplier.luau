@@ -4,6 +4,7 @@ local EssenceMultiplier = {}
 local rebirthModule = require(ReplicatedStorage:WaitForChild("RebirthHandler"))
 local IdleUpgrades = require(ReplicatedStorage:WaitForChild("IdleUpgrades"))
 local Criticals = require(ReplicatedStorage:WaitForChild("CriticalsController"))
+local GroupRewardConfig = require(ReplicatedStorage:WaitForChild("GroupRewardConfig"))
 -- Timed lookup with a graceful fallback, NOT a bare WaitForChild.
 --
 -- Every essence reward in the game flows through CalculateMultiplier. If
@@ -73,6 +74,14 @@ function EssenceMultiplier.CalculateMultiplier(plr, gold, crit)
 		multiplier *= rebirthModule.CalculateTotalMultiplier(plr:GetAttribute("Rebirths"))
 	end
 	multiplier *= IdleUpgrades.GetGlobalEssenceMultiplier(plr)
+
+	-- Group membership bonus. GroupMember is only ever set when
+	-- GroupRewardConfig.GroupId is actually configured (see
+	-- GroupRewardService) -- inert otherwise, same as every other
+	-- attribute-gated branch in this function.
+	if plr:GetAttribute("GroupMember") then
+		multiplier *= GroupRewardConfig.BonusMultiplier
+	end
 
 	if gold then
 		multiplier *= 3

@@ -80,9 +80,19 @@ local THEME = {
 }
 
 local LAYOUT = {
-	-- Vertical button stack (Daily + Quests). Anchored to the left edge,
-	-- below the currency panel that occupies the top-left.
-	ButtonsPosition = UDim2.fromScale(0.92, 0.2),
+	-- Vertical button stack (Daily + Quests + Codes). Anchored to the right
+	-- edge, below the currency panel that occupies the top-left.
+	--
+	-- Y=0.63 rather than the original 0.2: this 3-button stack (rendered
+	-- via UIListLayout, ~0.09-0.32 tall when centered at 0.2) was overlapping
+	-- RebirthShopPanel's (0.895, 0.213) and SanctumPanel's (0.895, 0.295)
+	-- buttons -- a different column at x=0.895 vs this one's 0.92, but only
+	-- 0.025 apart against a 0.062-wide button, so they overlapped in both
+	-- axes. Moved this stack below the whole RebirthShop/Sanctum/
+	-- Leaderboard/Achievements column (which bottoms out around 0.49-0.51)
+	-- with margin to spare, rather than renumbering four already-placed
+	-- buttons in four other files for one collision.
+	ButtonsPosition = UDim2.fromScale(0.92, 0.63),
 	ButtonsAnchor = Vector2.new(0, 0.5),
 	ButtonSize = UDim2.fromScale(0.062, 0.062),
 
