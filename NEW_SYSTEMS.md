@@ -1620,6 +1620,40 @@ into the `PendingStreak` preview so the panel never shows a number the
 claim itself wouldn't actually produce); `ProgressionHud.client.luau`
 only adds the one status-line suffix, no new panel or button.
 
+## 34. The collection floating text could show a number that didn't match what you actually got
+
+Found while reading `CursorCollection.client.luau` end to end (it
+hadn't had a full pass since the exploit fixes in sections 29/31 --
+worth checking the CLIENT half of that same boundary too). The "+N"
+text that floats up off a collected orb calls
+`EssenceMultiplier.CalculateMultiplier` client-side to compute what to
+show -- purely for that animation, since the real grant only ever
+happens through `OrbClickManager.server.luau`'s own, separate call to
+the same function.
+
+The problem: `CalculateMultiplier` rolls `double_crit` internally
+(`math.random()`, inside `RollCritMultiplier`) whenever `crit` is
+true. Calling it client-side for the preview and server-side for the
+real grant means TWO independent rolls of the same coin for what's
+supposed to be one crit -- `EssenceMultiplier.luau`'s own comment
+already warned about calling this function twice for one collection
+event, just for the case of calling it twice within one script. This
+was the same mistake, split across the client/server boundary instead.
+For any player who owns `double_crit` and lands a crit, the floating
+number and the leaderstat's actual increase could disagree -- exactly
+the kind of small inconsistency that undermines the single most
+important feedback signal in an idle game.
+
+Fixed with an optional 4th parameter, `skipDoubleCritRoll`, defaulting
+to unset so the one real grant path (`OrbClickManager.server.luau`)
+is completely unaffected. When a caller passes `true`, the crit
+contribution is computed deterministically with `double_crit` off
+instead of rolled -- an honest floor (occasionally shows a little
+LESS than double-crit ends up granting, never more), and, since
+nothing reads this return value as an actual credit, not something a
+forged client could exploit for a real payout either way.
+`CursorCollection.client.luau`'s one call site now passes it.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole

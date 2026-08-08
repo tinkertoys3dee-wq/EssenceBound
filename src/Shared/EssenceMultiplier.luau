@@ -47,20 +47,38 @@ do
 end
 
 -- Rolls the double-crit chain for a single collection and returns the
--- resulting crit multiplier contribution (1 = no crit bonus). Kept as its
--- own function so CalculateMultiplier only ever rolls double-crit ONCE per
+-- resulting crit multiplier contribution (1 = no bonus). Kept as its own
+-- function so CalculateMultiplier only ever rolls double-crit ONCE per
 -- call -- callers must not call CalculateMultiplier twice for the same
 -- collection event, or they'll get two independent (and possibly
 -- inconsistent) double-crit rolls for what should be one crit. See
 -- OrbClickServerScript.lua's "collected" handler for the correct pattern:
 -- compute the multiplier once, reuse it for every number that derives
 -- from it.
+--
+-- That warning applies just as much ACROSS the client/server boundary as
+-- it does within one script: CursorCollection.client.luau used to call
+-- CalculateMultiplier client-side to render the floating "+N" collection
+-- text, which is a SECOND, independent double-crit roll from the one
+-- OrbClickManager's server-side call makes for the real grant -- the two
+-- can disagree, showing a number that doesn't match what the leaderstat
+-- actually increases by. skipDoubleCritRoll below exists for exactly that
+-- caller: a deterministic (no-double-crit) multiplier for preview/display
+-- use, never for anything that actually credits currency.
 local function RollCritMultiplier(plr, crit)
 	local isDoubleCrit = Criticals.RollDoubleCrit(plr, crit)
 	return Criticals.GetCritMultiplier(plr, crit, isDoubleCrit)
 end
 
-function EssenceMultiplier.CalculateMultiplier(plr, gold, crit)
+-- skipDoubleCritRoll: optional, defaults to false/nil (unchanged rolling
+-- behavior for every existing caller, including the one real grant path
+-- in OrbClickManager.server.luau). Pass true ONLY for a display-only
+-- preview that must never itself grant anything -- see the note above
+-- RollCritMultiplier for why this exists and why it's never safe to use
+-- for a real payout (it deliberately under-predicts rather than rolling,
+-- so it can never be exploited into over-crediting anything -- nothing
+-- reads this return value as an actual grant anyway).
+function EssenceMultiplier.CalculateMultiplier(plr, gold, crit, skipDoubleCritRoll)
 	local multiplier = 1
 	if plr:GetAttribute("EssenceMultiplier") then
 		multiplier *= plr:GetAttribute("EssenceMultiplier")
@@ -98,7 +116,11 @@ function EssenceMultiplier.CalculateMultiplier(plr, gold, crit)
 	end
 
 	if crit then
-		multiplier *= RollCritMultiplier(plr, crit)
+		if skipDoubleCritRoll then
+			multiplier *= Criticals.GetCritMultiplier(plr, crit, false)
+		else
+			multiplier *= RollCritMultiplier(plr, crit)
+		end
 	end
 	
 	if plr:GetAttribute("essence_convergence") then

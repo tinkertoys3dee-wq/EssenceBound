@@ -422,7 +422,13 @@ local function CollectEffect(orb)
 	local TextLabel = orb:FindFirstChild("Gain")
 	local Stroke = TextLabel:WaitForChild("UIStroke")
 
-	TextLabel.Text = "+"..formatNumber(math.floor(EssenceMulti.CalculateMultiplier(player,orb:GetAttribute("IsGolden"),orb:GetAttribute("IsCrit")) * essenceValue))
+	-- skipDoubleCritRoll=true: this is a preview for the floating text
+	-- only, never the real grant (that's OrbClickManager's server-side
+	-- call) -- rolling double_crit again here would be a second,
+	-- independent random roll from the server's own, which could show a
+	-- number that doesn't match what the leaderstat actually increases
+	-- by. See EssenceMultiplier.luau's note above RollCritMultiplier.
+	TextLabel.Text = "+"..formatNumber(math.floor(EssenceMulti.CalculateMultiplier(player,orb:GetAttribute("IsGolden"),orb:GetAttribute("IsCrit"),true) * essenceValue))
 	local container = orb.Parent
 	local imageLabel = orb:FindFirstChildWhichIsA("ImageLabel", true)
 		or orb:FindFirstChild("MainClickable")
