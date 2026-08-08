@@ -1272,7 +1272,12 @@ local function SpawnFallingOrb(EssenceType, isGolden)
 	Orb:SetAttribute("Collectable", false)
 	Orb:SetAttribute("Collectible", false) -- CollectionRing.lua's ring watches THIS attribute
 	Orb:SetAttribute("IsGolden",isGolden)
-Orb:SetAttribute("OrbType",EssenceType)
+	-- Matches SpawnOrb's pattern above (EssenceTypes[EssenceType]["Name"],
+	-- not the raw EssenceType param) so both spawners write the exact same
+	-- value CollectEffect/the server validate against, even if a future
+	-- essenceTypePool ever passes something that isn't already an
+	-- EssenceTypes key spelled exactly like its own .Name.
+	Orb:SetAttribute("OrbType", EssenceTypes[EssenceType]["Name"])
 	-- === CRIT ROLL ===
 	-- Falling storm orbs are "real" orbs same as a direct click (unlike
 	-- shatter_force fragments), so they roll same as SpawnOrb's non-fragment

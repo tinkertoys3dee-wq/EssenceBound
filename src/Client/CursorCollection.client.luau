@@ -366,6 +366,23 @@ end
 
 local function CollectEffect(orb)
 	if not orb or not orb.Parent then return end
+
+	-- Every real orb sets this at spawn (SpawnOrb / SpawnFallingOrb in
+	-- OrbClicker.client.luau both set it before the orb is ever parented
+	-- into OrbClickables), so this should never actually be nil/unknown.
+	-- Guarding it anyway: this is the exact value FireServer sends
+	-- straight to the "collected" handler as `orbName`, which indexes
+	-- PlayerDatas[...].Essences[orbName] server-side -- an unrecognized
+	-- value used to reach that lookup and error out mid-handler (see
+	-- OrbClickManager's matching server-side check). Reject up front,
+	-- before touching the orb at all, so a stray/misconfigured instance
+	-- can't be "collected" (Bail/FX/reparent) OR reach the network at all.
+	local orbType = orb:GetAttribute("OrbType")
+	if orbType ~= "Earth Essence" and orbType ~= "Shadow Essence" then
+		warn("[CursorCollection] Skipped a collection with an unrecognized OrbType: " .. tostring(orbType) .. " (" .. orb:GetFullName() .. ")")
+		return
+	end
+
 	orb:SetAttribute("Bail", true)
 
 	local essenceValue = orb:GetAttribute("EssenceValue") or 1
@@ -378,17 +395,17 @@ local function CollectEffect(orb)
 	pcall(playCollectFeel, orb, isCrit, isGolden)
 
 	orb.Parent = Destro
-	collectionFireable:FireServer(orb:GetAttribute("OrbType"), essenceValue, isCrit, isGolden)
-	
-	if orb:GetAttribute("OrbType") == "Shadow Essence" then
+	collectionFireable:FireServer(orbType, essenceValue, isCrit, isGolden)
+
+	if orbType == "Shadow Essence" then
 		local discovered = player:GetAttribute("ShadowEssenceDiscovered") or false
 		if not discovered then
-			newDiscovery:Fire(orb:GetAttribute("OrbType"), GetEssences.GetOddsText(orb:GetAttribute("OrbType")))
+			newDiscovery:Fire(orbType, GetEssences.GetOddsText(orbType))
 		end
-	elseif orb:GetAttribute("OrbType") == "Earth Essence" then
+	elseif orbType == "Earth Essence" then
 		local discovered = player:GetAttribute("EarthEssenceDiscovered") or false
 		if not discovered then
-			newDiscovery:Fire(orb:GetAttribute("OrbType"), GetEssences.GetOddsText(orb:GetAttribute("OrbType")))
+			newDiscovery:Fire(orbType, GetEssences.GetOddsText(orbType))
 		end
 	end
 	if orb:FindFirstChild("Shadow") then

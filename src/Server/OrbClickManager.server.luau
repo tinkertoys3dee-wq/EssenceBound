@@ -196,6 +196,27 @@ end)
 -- can't grant more than their real upgrades justify.
 local BS = game:GetService("BadgeService")
 collected.OnServerEvent:Connect(function(plr, orbName, quantity, crit, gold)
+	-- Defensive validation: orbName/quantity come straight from the
+	-- client's FireServer call, and everything below indexes off orbName
+	-- directly (Essences[temp], the "<orbName> leaderstat" session key).
+	-- An unrecognized orbName (nil, or anything that isn't one of the two
+	-- real essence types -- seen in practice, cause not fully confirmed,
+	-- but a direct/malformed FireServer call from an exploit would
+	-- produce exactly this) used to reach the Essences[temp]["Quantity"]
+	-- lookup below with temp == nil, which errors (indexing nil) and
+	-- aborts the handler PARTWAY THROUGH -- after the crit-count/badge
+	-- state above had already been applied, so a player could end up
+	-- credited for a crit whose essence gain never actually landed.
+	-- Reject up front instead, before any state changes. The client now
+	-- also guards this at the source (see CollectEffect in
+	-- CursorCollection.client.luau) so a legitimate client should never
+	-- trigger this branch at all -- this exists for whatever still can.
+	if (orbName ~= "Earth Essence" and orbName ~= "Shadow Essence") or type(quantity) ~= "number" then
+		warn(("[OrbClickManager] Rejected malformed collection from %s (%d): orbName=%s quantity=%s")
+			:format(plr.Name, plr.UserId, tostring(orbName), tostring(quantity)))
+		return
+	end
+
 	local session = getOrInitPlayerSession(plr)
 	local userId = plr.UserId
 	if not plr:GetAttribute("3032854636359044") then
