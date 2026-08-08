@@ -156,16 +156,15 @@ brand-new, upgrade-less player was actually experiencing:
   was 2.25s + 1.5s regardless of theme. Trimmed to 1.4s + 0.8s. This is a
   pacing change only — none of the ominous content itself was touched.
 
-**Found but deliberately not touched:** `root_awakening` levels 2–5 (the
-literal first node in the tree) cost up to 428,415 essence and do
-*nothing* — its `EffectType = "UnlockTree"` is defined but never read
-anywhere in the codebase, despite the in-game description promising it
-"doubles base essence reward for each level." Not an early-game issue
-(a new player can't reach 195 essence for level 2 for a while), but it's
-real false advertising sitting at the root of your upgrade tree and worth
-a conscious call: either wire up a real effect, or fix the description.
-I didn't want to invent tree-wide balance numbers without being able to
-playtest them.
+**Correction (balance pass, see section 9):** an earlier version of this
+doc claimed `root_awakening`'s effect was dead/unwired. That was wrong —
+re-checked while auditing the whole tree's numbers this pass, and
+`src/Client/OrbClicker.client.luau`'s `SpawnOrb` has always read
+`player:GetAttribute("root_awakening")` and applied `2^power` to every
+orb's `EssenceValue` (present since the very first commit, verified via
+`git log -S`). The upgrade genuinely doubles essence per level exactly as
+its description says. Leaving this note here so nobody re-"discovers"
+the same false alarm.
 
 ## 7. Shadow Sanctum (Shadow Essence finally has a use)
 
@@ -466,19 +465,119 @@ one more reason those upgrades stay worth buying.
 
 ---
 
+## 9. Balance pass + the real onboarding fix (this pass)
+
+Two separate asks this time: audit every price in the game against every
+other price ("balanced" meaning internally consistent, not necessarily
+cheap — this is an incremental game, huge numbers are the point), and fix
+the tutorial's collection step, because of everyone who has ever played,
+only 427 of 1,260 (34%) have ever collected a single Earth Essence.
+
+### 9a. Why the 66% never-collect number is (almost certainly) a UX bug,
+not an economy bug
+
+Traced the actual collection mechanic end to end
+(`src/Client/CursorCollection.client.luau`): collecting a drop isn't the
+click — it's hovering your cursor over the drop and holding still while a
+ring charges (`BASE_CHARGE_TIME`), on a hit-target only `BASE_RING_SIZE`
+pixels wide, that moves the whole time (every landed orb idly orbits its
+resting spot). Nothing in the game tells you currency only moves on a
+*successful hover*, not a click — clicking the great orb LOOKS like it
+did something (it visibly shatters, drops fly out, a pop plays), so nobody
+gets an error, they just... don't get essence, and don't know why. The
+old tutorial's first step described hovering in text but only ever showed
+a *scripted* cursor doing it automatically — a player could sit through
+the whole tutorial, hit Next five times, and never once have attempted a
+real collection themselves. That gap is almost certainly the 66%.
+
+Two fixes, one in each file that actually owns the mechanic:
+
+- **`CursorCollection.client.luau`**: `BASE_RING_SIZE` 20 → 30 and
+  `BASE_CHARGE_TIME` 0.5 → 0.4. Same "raise the floor, keep the upgrades
+  meaningful" pattern as the section 6 pacing pass — `collection_radius_1/2`
+  and `swift_collection_1/2` still add on top of this exactly as before,
+  this only makes the very first, un-upgraded attempt more forgiving.
+  Couldn't playtest the actual pixel feel (see the Argon syncback warning
+  below — the orb template's real on-screen size isn't in this repo), so
+  this is a deliberately modest bump, not a redesign.
+- **`Tutorial.client.luau`**: the Large Orb step no longer advances on a
+  button or a timer. It now watches the player's own `leaderstats` for a
+  *real* collection (`Earth Essence` or `Shadow Essence`'s `Quantity`
+  attribute increasing — the exact same signal `PlayerDataHandler` reacts
+  to, so this can't drift out of sync with what "collected" actually
+  means) and only proceeds once that happens for real. Hints escalate at
+  14s and 34s if nothing's landed yet, and a fallback "Next" button
+  appears at 58s so nobody gets hard-walled — the goal is a forced first
+  success, not a wall. Text was also rewritten to lead with the actual
+  two-step action ("click... THEN hover and hold") instead of burying
+  "hovering" as one word in a longer sentence, and calls out touch input
+  explicitly ("press and hold your finger on the drop") since nothing
+  previously mentioned mobile at all.
+
+Implementation note: the new watch logic (`startFirstCollectionWatch`)
+is defined *before* `TUTORIAL_STEPS`, but needs `dialogueText`/
+`nextButton`/`updateProgressDots`, which are built *after* — normal Lua
+upvalue scoping would've had it silently close over stray globals. Fixed
+by forward-declaring those three as locals near the top of the file and
+assigning (never re-declaring with `local`) at their real definition
+sites further down.
+
+### 9b. Full Earth-tree cost audit
+
+Wrote a script that computes `BaseCost * CostGrowth^level` summed across
+every level for all 49 upgrades, then compared totals within each tier
+(same `Tier`, so same rough power band) to find anything wildly out of
+line with its siblings. Two things stood out, and only one was a bug:
+
+- `global_multiplier_1`/`global_multiplier_2` ("Essence Affinity I/II")
+  cost 10.8M and 2.56B respectively to fully max. **Left alone** — pass 4
+  (section above, already in this file) explicitly designed these two as
+  late-game control valves specifically so a flat global multiplier can't
+  be maxed early and trivialize the rest of the tree. Early levels are
+  still cheap (46 and 850 respectively); the escalation is the point.
+- `collection_radius_1`/`collection_radius_2` cost 42,079 and 2,259,831 —
+  10-20x any other tier-1/tier-2 node **except** the two intentional
+  outliers above, with no design note anywhere claiming that was on
+  purpose. Root cause: both carry an unusually high `MaxLevel` (20 and 25,
+  vs. the usual 8-10 everywhere else in the tree) that survived multiple
+  rounds of "multiply every `CostGrowth` by ~1.45x" blanket passes without
+  ever being re-checked individually — more levels compounds a flat growth
+  rate much harder, and nobody re-derived what growth rate 20-25 levels
+  actually needs to land in the same band as everything else. Fixed by
+  lowering `CostGrowth` only (1.46 → 1.272, 1.45 → 1.185) — `BaseCost`,
+  `MaxLevel`, and `EffectPerLevel` are untouched, so it's still the same
+  smooth 20/25-step radius curve, just no longer costing more than
+  literally every other upgrade in the game combined to finish.
+- Fixed `ascension_insight`'s description, which still had a literal red
+  `[WIP] [WIP] [WIP]` tag in it — cosmetic leftover from before the
+  Prestige Shop (section 8) actually existed; the system it describes has
+  worked since that pass, the text just never got updated to say so.
+
+Everything else — Sanctum costs, Prestige Shop costs, rebirth cost curve,
+daily/quest/chest rewards — was re-checked against this same "does it sit
+in a sane band relative to its neighbors and to realistic income at that
+stage" standard and left alone; no other outliers found.
+
+---
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
    ballgame. Click the orb, hover a drop, watch the counter. If it moves,
    the core bug is fixed.
-2. **Check the five new buttons** (🎁 Daily / 📜 Quests / 🎟️ Codes /
+2. **Play through the tutorial's first step as a genuinely new player
+   would** — don't just click Next. Confirm the step actually waits for a
+   real collection and advances itself (with a short celebration) once
+   one lands, and that the 14s/34s hints and the 58s fallback Next button
+   show up if you deliberately do nothing.
+3. **Check the five new buttons** (🎁 Daily / 📜 Quests / 🎟️ Codes /
    🌑 Sanctum / 🔮 Prestige Shop) on the left edge don't overlap your
    existing UI. Positions live in the `LAYOUT` table at the top of
    `ProgressionHud.client.luau`, `SanctumPanel.client.luau` and
    `RebirthShopPanel.client.luau` — one line each, no hunting.
-3. **Try a code** (`LAUNCH`) to confirm the redeem flow works end to end.
-4. **Watch the Output window** for red errors on join.
-5. **Daily panel auto-opens** on a first join once the tutorial is done.
+4. **Try a code** (`LAUNCH`) to confirm the redeem flow works end to end.
+5. **Watch the Output window** for red errors on join.
+6. **Daily panel auto-opens** on a first join once the tutorial is done.
    If you'd rather it didn't, delete the "FIRST-SESSION NUDGE" block at
    the bottom of `ProgressionHud.client.luau`.
 

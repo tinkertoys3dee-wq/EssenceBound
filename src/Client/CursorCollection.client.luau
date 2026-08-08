@@ -23,7 +23,15 @@ local SEARCH_ROOT = MainGui:WaitForChild("Center", 5)
 	and MainGui.Center:WaitForChild("LargeOrbFolder", 5)
 	and MainGui.Center.LargeOrbFolder:WaitForChild("OrbClickables", 5)
 
-local BASE_RING_SIZE = 20 -- diameter before any collection_radius upgrades are applied
+-- Was 20. This is the actual hit-target for the single skill the whole
+-- game gates its first reward behind: hovering the ring over a moving,
+-- idly-orbiting drop. At 20px (10px radius) that target was small enough
+-- that a huge share of new players -- by measured data, roughly two thirds
+-- of everyone who's ever played -- never once landed a collection, click
+-- the great orb though they might. collection_radius_1/2 still add on top
+-- of this exactly as before; this only raises the un-upgraded floor so a
+-- first attempt has a real chance of landing.
+local BASE_RING_SIZE = 30 -- diameter before any collection_radius upgrades are applied
 local RING_COLOR = Color3.fromRGB(229, 229, 229)
 local RING_THICKNESS = 3
 local FOLLOW_LERP = 1
@@ -34,14 +42,17 @@ local FOLLOW_LERP = 1
 -- swift_collection_1/2 (GetCollectionSpeedBonus) shave time off this.
 -- essence_magnet_field (HasAutoCollect) skips the charge entirely.
 -- ============================================================
--- Was 0.9. This sits directly in the path of every single reward in the
--- game, from a brand-new player's very first orb through to a maxed
+-- Was 0.9, then 0.5. This sits directly in the path of every single reward
+-- in the game, from a brand-new player's very first orb through to a maxed
 -- account's ten-thousandth -- it's the single biggest lever on how snappy
 -- the whole core loop feels. swift_collection_1/2 can shave off up to
 -- 2.3s combined (10*0.09 + 10*0.14), so the upgrade path still comfortably
 -- reaches MIN_CHARGE_TIME well before being maxed; this change doesn't
--- reduce how meaningful that upgrade line is.
-local BASE_CHARGE_TIME = 0.5 -- seconds to fill the ring with 0 swift_collection levels
+-- reduce how meaningful that upgrade line is. Lowered again alongside the
+-- BASE_RING_SIZE bump above -- a bigger target that still takes half a
+-- second to fill is easy to lose to the orb's own idle-orbit drift before
+-- a first-time player even realizes the ring is charging.
+local BASE_CHARGE_TIME = 0.4 -- seconds to fill the ring with 0 swift_collection levels
 local MIN_CHARGE_TIME = 0.15 -- charge time can never be reduced below this
 local PROGRESS_RING_COLOR = Color3.fromRGB(255, 221, 84)
 local PROGRESS_RING_THICKNESS = RING_THICKNESS + 1

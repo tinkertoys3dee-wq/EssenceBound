@@ -60,6 +60,17 @@ local UpdData = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("UpdateDa
 -- Cloneable demo orb used by the "collect orbs" tutorial step
 local orbTemplate = ReplicatedStorage:WaitForChild("Cloneables"):WaitForChild("OrbClickableTemplate")
 
+-- Forward-declared: actually built in section 2 (UI CONSTRUCTION) below.
+-- startFirstCollectionWatch, in section 1b, is defined and referenced by
+-- TUTORIAL_STEPS BEFORE section 2 runs -- but it only ever CALLS these at
+-- runtime (once the tutorial is already showing), by which point section 2
+-- has already assigned them. Declaring the locals here (and assigning,
+-- never re-declaring, below) is what lets that closure see the real values
+-- instead of silently capturing nil/a stray global.
+local dialogueText
+local nextButton
+local updateProgressDots
+
 --============================================================
 -- 1. DEFINE YOUR TUTORIAL STEPS HERE
 --============================================================
@@ -472,6 +483,113 @@ local function startOrbCollectDemo(targetFrame, screenGui)
 	return cleanup
 end
 
+--============================================================
+-- 1b. REAL FIRST-COLLECTION WATCH (used by the Large Orb step's Extra fn)
+--============================================================
+-- THE reason this step exists at all: of everyone who has ever played,
+-- roughly two thirds have never once collected a single Earth Essence --
+-- meaning they click the giant orb (which is obvious) but never discover
+-- that hovering over what it drops is a SEPARATE, required action. The old
+-- version of this step just played a passive animation and let the player
+-- hit "Next" whenever, so it was entirely possible to sit through the
+-- whole tutorial without ever attempting a real collection yourself.
+--
+-- This version doesn't advance on its own -- it watches the player's own
+-- leaderstats for a REAL collection (the exact same signal the server
+-- writes when collectionFireable actually lands, see OrbClickManager's
+-- "collected" handler / PlayerDataHandler's Quantity mirror) and only
+-- lets the tutorial continue once the player has done it themselves at
+-- least once. Escalating hints kick in if they're stuck, and a fallback
+-- "Next" button appears after a generous wait so nobody gets hard-walled.
+--
+-- Watches BOTH essence leaderstats (not just Earth) because orbs are a
+-- 50/50 roll between the two (see GetEssence.lua) -- a player who
+-- happens to collect a Shadow Essence drop first still just proved they
+-- understand the mechanic, which is the actual thing this step is
+-- teaching. Returns a cleanup() function, same contract as the demo above.
+local function startFirstCollectionWatch(ctx)
+	local cancelled = false
+	local succeeded = false
+	local connections = {}
+
+	local function disconnectAll()
+		for _, conn in ipairs(connections) do
+			conn:Disconnect()
+		end
+		connections = {}
+	end
+
+	local leaderstats = player:WaitForChild("leaderstats")
+	local earthStat = leaderstats:WaitForChild("Earth Essence")
+	local shadowStat = leaderstats:WaitForChild("Shadow Essence")
+
+	-- Baseline captured NOW, not assumed to be 0 -- defensive in case this
+	-- step somehow re-runs or a player already has a balance for any reason.
+	local baselineEarth = earthStat:GetAttribute("Quantity") or 0
+	local baselineShadow = shadowStat:GetAttribute("Quantity") or 0
+
+	local function onSuccess()
+		if cancelled or succeeded then
+			return
+		end
+		succeeded = true
+		disconnectAll()
+
+		dialogueText.Text = "🎉  You got it! Click to shatter the orb, hover to gather the drops -- that's the whole loop."
+		updateProgressDots(1) -- keep dot 1 lit while the success beat plays
+
+		-- A short celebratory beat before moving on, so the win actually
+		-- registers instead of the UI yanking away the moment it happens.
+		task.delay(1.3, function()
+			if not cancelled then
+				ctx.Advance()
+			end
+		end)
+	end
+
+	table.insert(connections, earthStat:GetAttributeChangedSignal("Quantity"):Connect(function()
+		if (earthStat:GetAttribute("Quantity") or 0) > baselineEarth then
+			onSuccess()
+		end
+	end))
+	table.insert(connections, shadowStat:GetAttributeChangedSignal("Quantity"):Connect(function()
+		if (shadowStat:GetAttribute("Quantity") or 0) > baselineShadow then
+			onSuccess()
+		end
+	end))
+
+	-- Escalating hints, then an escape hatch -- generous waits since the
+	-- goal is genuine comprehension, not speed, but nobody should ever be
+	-- permanently stuck here if something about their input isn't landing.
+	task.spawn(function()
+		task.wait(14)
+		if cancelled or succeeded then
+			return
+		end
+		dialogueText.Text = "🖱️  Still working on it? Clicking makes the drops appear, but you have to "
+			.. "<font color='#FFFF00'><b>hold your cursor still on top of one</b></font> to actually collect it. "
+			.. "Aim for the center of a glowing dot!"
+
+		task.wait(20)
+		if cancelled or succeeded then
+			return
+		end
+		dialogueText.Text = "💛  No rush, take your time. Move slowly onto a drop and don't click again -- just "
+			.. "<font color='#FFFF00'><b>hover and wait</b></font> until the ring around your cursor fills all the way."
+
+		task.wait(24)
+		if cancelled or succeeded then
+			return
+		end
+		nextButton.Visible = true -- fallback: never hard-wall a stuck player
+	end)
+
+	return function()
+		cancelled = true
+		disconnectAll()
+	end
+end
+
 -- Order matters: teach the actual thing the player needs to do (click,
 -- hover, collect, watch the energy bar) FIRST, before any menu tour --
 -- previously Shop was step 1, so a first-time player's very first guided
@@ -481,10 +599,27 @@ local TUTORIAL_STEPS = {
 	{
 		Frame = LargeOrbFrame,
 		Emoji = "🌀",
-		Text = "Collect Orbs By Clicking the giant orb and <font color='#FFFF00'><b><i>hovering</i></b></font> over its drops! Watch the <font color='#FF5A5A'><b>energy bar</b></font> under the orb -- it refills on its own, so just give it a moment if it runs low!",
+		Text = "Click the giant orb -- it shatters into glowing essence drops! Then "
+			.. "<font color='#FFFF00'><b><i>HOVER</i></b></font> your cursor "
+			.. "<font color='#FFFF00'><b>directly over a drop and hold still</b></font> for a moment -- "
+			.. "that's the part that actually collects it, not the click. (On mobile: press and hold your finger on the drop.) "
+			.. "Watch the <font color='#FF5A5A'><b>energy bar</b></font> under the orb -- it refills on its own, so give it a moment if it runs low. "
+			.. "<b>Try it now!</b>",
+		-- This step doesn't auto-advance on a timer or a button -- it only
+		-- moves on once the player has actually collected something for
+		-- real (see startFirstCollectionWatch above). That's the fix for the
+		-- measured problem: most players who never come back never
+		-- collected a single essence, because clicking alone LOOKS like it
+		-- did something (the orb pops, drops fly out) but doesn't bank
+		-- anything until you hover one of the drops.
+		AdvanceOn = "Extra",
 		Extra = function(step, ctx)
-			local cleanup = startOrbCollectDemo(step.Frame, ctx.ScreenGui)
-			ctx.SetCleanup(cleanup)
+			local cleanupDemo = startOrbCollectDemo(step.Frame, ctx.ScreenGui)
+			local cleanupWatch = startFirstCollectionWatch(ctx)
+			ctx.SetCleanup(function()
+				cleanupDemo()
+				cleanupWatch()
+			end)
 		end,
 	},
 	{
@@ -729,7 +864,7 @@ task.spawn(function()
 	end
 end)
 
-local dialogueText = Instance.new("TextLabel")
+dialogueText = Instance.new("TextLabel")
 dialogueText.Name = "DialogueText"
 dialogueText.BackgroundTransparency = 1
 dialogueText.Position = UDim2.new(0.22, 0, 0.32, 0)
@@ -787,7 +922,7 @@ end
 
 local progressDots = buildProgressDots(#TUTORIAL_STEPS)
 
-local function updateProgressDots(index)
+function updateProgressDots(index)
 	for i, dot in ipairs(progressDots) do
 		local targetColor = (i <= index) and COLOR_PRIMARY or Color3.fromRGB(255, 255, 255)
 		local targetTransparency = (i <= index) and 0 or 0.7
@@ -819,7 +954,7 @@ local function makeBouncyButton(button)
 	end)
 end
 
-local nextButton = Instance.new("TextButton")
+nextButton = Instance.new("TextButton")
 nextButton.Name = "NextButton"
 nextButton.AnchorPoint = Vector2.new(1, 1)
 nextButton.Position = UDim2.new(0.98, 0, 0.86, 0)
