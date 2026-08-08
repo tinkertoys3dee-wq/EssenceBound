@@ -1095,6 +1095,45 @@ moment that's specifically meant to feel good. Changed "essence type"
 to "reward", which reads naturally and is correct regardless of what's
 actually in the table.
 
+## 22. Fixed a hard game-breaking risk in the loading screen
+
+`LoadingScreen.client.luau` is the one script every player has to get
+through before they can play at all -- so it deserved a check despite
+being 1700+ lines of intentionally-stylized horror/glitch effects
+(see "Not done deliberately" below). Found this near the top:
+
+```lua
+local sounds = game:GetService("SoundService"):WaitForChild("SFX"):WaitForChild("GlitchSounds")
+local glitchSound1 = sounds:WaitForChild("Sound1")
+```
+
+Bare `WaitForChild`, no timeout, running at the TOP LEVEL of the
+script -- not inside the `task.spawn` a few lines below it. That means
+it blocks every single line after it, for every player, until
+`SFX/GlitchSounds/Sound1/2/3` all exist. If any one of those five
+instances were ever missing or renamed in Studio -- an easy mistake,
+especially since this repo's Argon syncback doesn't even show these
+sound assets exist, so there's nothing here warning a future edit
+would break them -- **every player would hang on the loading screen
+forever**, with no error in the output and no way to fix it without a
+redeploy. That's the single highest-consequence place in the entire
+codebase for a fragile asset lookup to live, since it gates 100% of
+play, not just one feature.
+
+(Given the game already has real players, this almost certainly isn't
+currently happening -- if it were, nobody could have ever gotten in.
+But "probably fine today" isn't the same as "safe," and this is
+exactly the failure mode every other defensive lookup in this codebase
+this pass already guards against, just never applied here.)
+
+Fixed with a timed lookup (5s, falling back to `nil` rather than
+hanging) plus a `safePlay(sound)` helper -- all 15 existing call sites
+across the file called `glitchSound1:Play()` etc. unconditionally, so
+swapping the lookup alone would have just moved the crash to whichever
+of those fired first instead of fixing it. A missing sound now costs
+only that one glitch effect's audio, never the ability to load into
+the game.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
@@ -1139,6 +1178,13 @@ actually in the table.
    section 17), then confirm the 👥 button opens the right group page
    and disappears once your test account actually joins that group and
    rejoins the game.
+10. **Confirm the loading screen still plays its glitch sounds** (see
+    section 22) -- the fix should be silent/invisible if
+    `SFX/GlitchSounds/Sound1-3` are already set up correctly in Studio.
+    If you ever DON'T hear them, that now means one of those five
+    instances is actually missing or misnamed -- worth fixing in Studio
+    directly, since previously that same problem would have hung the
+    loading screen for every player with no clue why.
 
 ## ⚠️ One thing to be careful about
 
