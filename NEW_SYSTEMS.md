@@ -681,6 +681,41 @@ every single rebirth). Two real gaps were left:
   with it -- so an ordinary rebirth is unchanged and a milestone one gets
   something extra on top.
 
+## 13. Essence Rush -- the first server-wide timed event
+
+Every existing timed boost in the game (Second Wind, Daily Day 7,
+Playtime chests, Shadow Eclipse) is personal -- it happens to YOU,
+whenever your own progress happens to trigger it. Nothing ever happened
+to the whole server at once, which is a specific, well-known retention
+lever ("something's happening right now, everyone's in on it") this game
+had zero of.
+
+**`src/Server/EssenceRushService.server.luau`** (new) fires roughly every
+20-35 minutes (randomized so it doesn't read as a predictable metronome),
+giving EVERY currently-online player a 4-minute 1.5x essence boost at the
+same moment. Reuses the exact same `"EssenceX15"` PotionTimerService
+effect every other temporary boost in the game already shares -- this is
+a deliberate, previously-established rule (see the Shadow Eclipse /
+Second Wind sections above): two differently-named effects both writing
+the shared `EssenceMultiplier` attribute could clobber each other, so
+anything granting a temporary essence multiplier reuses this one name. A
+player who joins mid-Rush still gets whatever time is left rather than
+missing out purely on bad timing.
+
+**`src/Client/EssenceRushBanner.client.luau`** (new) gives the moment two
+things the existing generic Potion Timer HUD card doesn't: an arrival
+flourish (same Flash/FloatText/sound language the Essence Storm
+announcement already established) framing it as a real event, and a
+persistent top-of-screen banner with its own live countdown for the
+whole 4 minutes -- positioned at `0.155` scale specifically to clear the
+`0.055-0.14` zone `ProgressionHud`'s own reward toast uses, so the two
+can't collide if a daily/quest toast happens to land during a Rush. The
+existing small potion card at the bottom of the screen will still show
+too (it's the same underlying effect) -- that's fine, the two serve
+different purposes: one is the ongoing personal status indicator every
+other potion already uses, the other is "this is a shared event
+happening for everyone right now."
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
