@@ -57,7 +57,7 @@ local LAYOUT = {
 	-- One slot below the Sanctum button (0.895, 0.295) in the same manual
 	-- left-edge column -- move this one line if it ever collides with
 	-- anything on a given screen size.
-	ButtonPosition = UDim2.fromScale(0.895, 0.377),
+	ButtonPosition = UDim2.fromScale(0.895, 0.213),
 	ButtonAnchor = Vector2.new(0, 0.5),
 	ButtonSize = UDim2.fromScale(0.062, 0.062),
 	-- Five upgrades, one section header -- shorter list than the Sanctum's
