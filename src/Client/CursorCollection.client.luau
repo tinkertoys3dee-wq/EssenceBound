@@ -636,7 +636,6 @@ local function updateCollection(ringCenterX, ringCenterY, deltaTime)
 		setProgressGradient(chargeProgress)
 
 		if chargeProgress >= 1 then
-			print("done")
 			-- Ring complete: collect everything currently inside the radius.
 			for _, obj in ipairs(collectibleObjects) do
 				if CurrentlyInside[obj] then
