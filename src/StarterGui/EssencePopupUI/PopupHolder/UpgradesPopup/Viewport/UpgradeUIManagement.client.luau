@@ -22,17 +22,15 @@ if not uiScale then
 end
 uiScale.Scale = 1 -- Default scale
 
-local isDragging = false
-local lastInputPos = Vector2.new()
-
--- Track input starting on the viewport
-viewport.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		isDragging = true
-		lastInputPos = Vector2.new(input.Position.X, input.Position.Y)
-	end
-end)
-
+-- Was declared + wired up twice (isDragging/lastInputPos redeclared
+-- below, plus a second InputBegan handler) -- Lua's `local` shadows
+-- rather than reassigns, so this first pair of declarations and their
+-- InputBegan handler were writing to variables nothing else in the file
+-- could ever read; every other reference (the InputChanged drag logic,
+-- the real InputBegan handler below) already used the second, shadowing
+-- declarations. Confirmed dead via that scoping before removing it --
+-- the surviving handler below is the complete one (it also syncs the
+-- virtual position trackers the drag math depends on).
 local isDragging = false
 local lastInputPos = Vector2.new()
 
@@ -450,7 +448,16 @@ local function onRebirth(trueReset)
 		end
 	end
 
-	for index, IndexData in tree do
+	-- Was `for index, IndexData in tree do` -- `tree` is a plain array
+	-- table (TreeUpgrades.GetVisibleTree builds it via table.insert, no
+	-- metatable), and Lua's generic for loop needs an actual iterator
+	-- function in that slot, not a table -- calling `tree` as a function
+	-- errors immediately. This function runs unconditionally at the
+	-- bottom of this script (`onRebirth(false)`), so this would fire the
+	-- moment the Upgrades popup's script loads for every player, every
+	-- session. `ipairs` is correct here since GetVisibleTree returns a
+	-- dense array and `index` (unused in the loop body) doesn't matter.
+	for index, IndexData in ipairs(tree) do
 		local frame = canvas:WaitForChild(IndexData.Id)
 		local imageLabel = frame:FindFirstChild("ImageLabel")
 

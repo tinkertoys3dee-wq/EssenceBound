@@ -837,6 +837,33 @@ the primary fix -- but the comment directly above the buggy line
 literally said "Safely find the main child," so it's worth having the
 code actually do that.
 
+Kept reading the same file (it's the whole Upgrades tree's UI
+controller) and found two more things worth fixing:
+
+- **Dead duplicate code.** `isDragging`/`lastInputPos` were declared
+  TWICE near the top, with a full `viewport.InputBegan` handler wired to
+  each. Lua's `local` shadows rather than reassigns, so the first
+  declaration and its handler were provably disconnected from everything
+  else in the file (confirmed via the scoping before touching it, not
+  guessed) -- pure dead code, removed.
+- **`for index, IndexData in tree do` is missing `pairs`/`ipairs`.**
+  `tree` is a plain array table (`TreeUpgrades.GetVisibleTree` builds it
+  with `table.insert`, no metatable), and Lua's generic `for` loop needs
+  an actual iterator function in that slot -- calling a table value
+  errors immediately. **This function (`onRebirth(false)`) runs
+  unconditionally at the bottom of the script**, so as committed in this
+  repo, this would fire the instant the Upgrades popup's script loads,
+  for every player, every session. I can't confirm from here whether
+  this exact line is what's actually live in Studio right now (per the
+  Argon syncback warning elsewhere in this doc, this repo isn't
+  guaranteed to be a perfect mirror of what's deployed) -- but the fix
+  (`ipairs(tree)`) is unambiguously correct Lua and safe to apply
+  regardless of which case it turns out to be: if this was live-broken,
+  it's now fixed; if Studio already had a working version, this just
+  makes the repo match it. **Worth an explicit test in Studio** given
+  the severity if it was real: open the Upgrades tree and confirm it
+  populates/updates at all.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
