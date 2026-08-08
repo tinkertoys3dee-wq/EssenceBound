@@ -230,16 +230,35 @@ MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, gameP
 		return
 	end
 	safePlaySound()
-	require(player:WaitForChild("PlayerData")).RobuxSpent += MarketplaceService:GetProductInfoAsync(gamePassId).PriceInRobux
+
+	-- GetProductInfoAsync is a real network call to Roblox and can fail
+	-- (rate limit, transient outage) -- was unguarded and ran BEFORE the
+	-- handler lookup/call below, so a failure here used to skip the
+	-- actual grant entirely for this event. Unlike ProcessReceipt (which
+	-- Roblox itself keeps retrying until PurchaseGranted),
+	-- PromptGamePassPurchaseFinished fires exactly once with no retry --
+	-- the only safety net is grantOwnedGamePassesOnJoin re-checking
+	-- ownership on this player's NEXT join, which means a transient
+	-- failure here would have delayed a paying player's purchase rather
+	-- than applying it immediately. Wrapped so a failure here costs only
+	-- the RobuxSpent stat, never the grant.
+	local ok, err = pcall(function()
+		local info = MarketplaceService:GetProductInfoAsync(gamePassId)
+		require(player:WaitForChild("PlayerData")).RobuxSpent += info.PriceInRobux
+	end)
+	if not ok then
+		warn(("Could not record RobuxSpent for GamePass id %d: %s"):format(gamePassId, tostring(err)))
+	end
+
 	local handler = GAMEPASS_HANDLERS[gamePassId]
 	if not handler then
 		warn(("No handler registered for GamePass id %d"):format(gamePassId))
 		return
 	end
 
-	local ok, err = pcall(handler, player)
-	if not ok then
-		warn(("GamePass handler for id %d errored: %s"):format(gamePassId, tostring(err)))
+	local grantOk, grantErr = pcall(handler, player)
+	if not grantOk then
+		warn(("GamePass handler for id %d errored: %s"):format(gamePassId, tostring(grantErr)))
 	end
 end)
 
@@ -304,14 +323,13 @@ MarketplaceService.ProcessReceipt = function(receiptInfo)
 
 	safePlaySound()
 	local handler = PRODUCT_HANDLERS[receiptInfo.ProductId]
-	require(player:WaitForChild("PlayerData")).RobuxSpent += receiptInfo.CurrencySpent
 
 	if not handler then
 		warn(("No handler registered for Developer Product id %d"):format(receiptInfo.ProductId))
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
-	
-	
+
+
 	local success, result = pcall(handler, player)
 	if not success then
 		warn(("Product handler for id %d errored: %s"):format(receiptInfo.ProductId, tostring(result)))
@@ -323,11 +341,23 @@ MarketplaceService.ProcessReceipt = function(receiptInfo)
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 
+	-- RobuxSpent used to be credited BEFORE the handler-exists/succeeds
+	-- checks above, which meant every automatic Roblox retry of an
+	-- unregistered product id (or a handler that legitimately keeps
+	-- returning false, like Essence Rain waiting for a valid storm slot)
+	-- re-credited it again -- unbounded over enough retries. Moved here,
+	-- right alongside the "receipt fully granted" store write below, so
+	-- it only ever counts once per receipt, same guarantee that write
+	-- already has.
+	pcall(function()
+		require(player:WaitForChild("PlayerData")).RobuxSpent += receiptInfo.CurrencySpent
+	end)
+
 	-- record that this receipt has been granted so a retry never double-grants
 	pcall(function()
 		purchaseHistoryStore:SetAsync(receiptKey, true)
 	end)
-	
+
 
 	return Enum.ProductPurchaseDecision.PurchaseGranted
 end

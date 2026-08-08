@@ -1512,6 +1512,42 @@ operators, both rejecting with a `warn` instead of erroring. Also
 removed a leftover `print("Reached target data:", ...)` that fired on
 every single write.
 
+## 31. Two more ProductPurchaseHandler bugs -- a delayed grant and a stat that could inflate on retry
+
+A third pass over `ProductPurchaseHandler.server.luau` (after section
+18's nil guard and section 23's hang-risk fix -- this file has now had
+more individual bugs than any other single file this session) turned
+up two more, both in the RobuxSpent bookkeeping rather than the
+purchase-granting logic itself.
+
+**`PromptGamePassPurchaseFinished` ran an unguarded
+`GetProductInfoAsync`** -- a real network call to Roblox, with the
+documented failure modes any network call has -- BEFORE looking up and
+calling the actual grant handler. A transient failure there aborted
+the whole connected function, so the player's gamepass simply didn't
+get applied for that purchase. Not a permanent loss -- Roblox already
+recorded the sale on its own side regardless of what this script does,
+and `grantOwnedGamePassesOnJoin` re-checks real ownership on every
+join -- but `PromptGamePassPurchaseFinished` itself fires exactly once
+with no Roblox-level retry (unlike `ProcessReceipt`, which Roblox
+explicitly keeps retrying), so the practical effect was: a player who
+just paid would see nothing until they rejoined. Fixed by wrapping
+just the RobuxSpent bookkeeping in its own `pcall`, separate from the
+handler lookup/call, so a failure there can never skip the actual
+grant.
+
+**`ProcessReceipt` credited RobuxSpent before confirming the purchase
+would actually be granted.** An unregistered product id, or a handler
+that legitimately returns `false` to ask Roblox for a retry (Essence
+Rain does this on purpose when a storm can't start yet), both return
+`NotProcessedYet` -- which means Roblox calls `ProcessReceipt` again
+later for the exact same purchase. Since the RobuxSpent line ran
+before either of those checks, every one of those retries re-credited
+it again, with no cap. Moved the credit to right alongside the
+`purchaseHistoryStore` write that already exists specifically to make
+a receipt "count" exactly once -- now RobuxSpent shares that same
+one-time guarantee instead of running on every attempt.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
