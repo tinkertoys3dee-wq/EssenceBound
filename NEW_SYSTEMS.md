@@ -654,6 +654,33 @@ Sanctum 0.295 → Leaderboard 0.377 → this one). Same affordability-badge
 pattern as Sanctum's "!" pip, but for "you have something to claim"
 instead of "you can afford something."
 
+## 12. Two more celebration moments
+
+Checked whether "celebrate crossing a big number" already existed before
+building anything -- it did, for essence balance (`UIManagement.client.luau`'s
+`celebrateMilestone`, thresholds 100 through 1e14) and for rebirths in
+general (`RebirthEffect.luau`'s full-screen sequence, already fires on
+every single rebirth). Two real gaps were left:
+
+- **Badges had zero celebration beyond Roblox's own small, easy-to-miss
+  toast.** New `src/Client/BadgeCelebration.client.luau` watches the same
+  per-badge player Attributes every grant site already sets (see
+  AchievementsConfig's comment block for the full map) and plays a full
+  Ring/Burst/FloatText/sound moment the instant one flips to earned --
+  purely client-side, reads nothing it doesn't already trust. Has the same
+  join-time settle guard as the existing essence-milestone system (4
+  second grace window before it starts watching) so a returning player
+  with several badges already earned doesn't get every single one
+  replayed at them on login.
+- **Milestone rebirths (1/5/10/25/50, see RebirthHandler's MILESTONES
+  table) got the exact same effect as an ordinary rebirth**, despite
+  granting a permanent bonus on top of the normal one. Added
+  `celebrateMilestoneIfAny` to `RebirthUIManagement.client.luau`, firing
+  a second, bigger banner ("⭐ MILESTONE: Ascended" + its description)
+  right after the existing RebirthEffect finishes rather than competing
+  with it -- so an ordinary rebirth is unchanged and a milestone one gets
+  something extra on top.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
