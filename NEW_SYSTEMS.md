@@ -560,6 +560,47 @@ stage" standard and left alone; no other outliers found.
 
 ---
 
+## 10. Global Leaderboards (Top Essence / Top Rebirths)
+
+Started an open-ended "keep adding engagement systems" pass. First up:
+the game had zero social comparison anywhere -- no leaderboard, no rank,
+nothing to compare yourself against another player with. That's one of
+the strongest retention levers an incremental game can have and it was
+entirely missing.
+
+**`src/Server/LeaderboardService.server.luau`** (new) owns two
+`OrderedDataStore`s -- `EssenceLeaderboard` (lifetime `TotalEssenceGathered`,
+both essence types combined) and `RebirthsLeaderboard`. Deliberately
+conservative on DataStore budget since this is a pure social/cosmetic
+feature that must never risk anything else:
+
+- Each online player's own score is written **at most once every 60s**,
+  and only if it actually changed -- the server does the writing
+  (`SetAsync(tostring(player.UserId), value)`), never the client.
+- The top 50 of each board is re-read (`GetSortedAsync`) and broadcast to
+  every online client **once every 3 minutes**, not per-request -- nobody
+  polls the store themselves, so DataStore load stays flat regardless of
+  player count.
+- Player names are resolved from UserIds via `GetNameFromUserIdAsync` and
+  cached in memory, so a player sitting in the top 50 across multiple
+  refreshes doesn't cost a repeat name lookup.
+- Every DataStore call is `pcall`-wrapped with a `warn` on failure and a
+  silent no-op otherwise -- if DataStoreService is unavailable (Studio
+  without "Enable Studio Access to API Services" on), the leaderboards
+  are just empty, nothing else in the game is affected.
+
+**`src/Client/LeaderboardPanel.client.luau`** (new) is a pure viewer, same
+contract as Sanctum/Prestige Shop: draws whatever the server last
+broadcast, computes nothing itself. New 🏆 "RANKS" button at
+`(0.895, 0.377)` -- the exact slot the Prestige Shop button occupied
+before it was manually moved to `(0.895, 0.213)`, so it's already proven
+not to collide with anything on that column. Two tabs (Total Essence /
+Rebirths), top 3 get medal icons, your own row is gold-highlighted with a
+★ if you're in the visible top 50, and a quiet "not in the Top 50 yet"
+note if you aren't -- deliberately doesn't claim an exact rank outside the
+cached top 50, since computing that would mean an expensive full-store
+scan for something that isn't worth the DataStore cost.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
@@ -570,16 +611,22 @@ stage" standard and left alone; no other outliers found.
    real collection and advances itself (with a short celebration) once
    one lands, and that the 14s/34s hints and the 58s fallback Next button
    show up if you deliberately do nothing.
-3. **Check the five new buttons** (🎁 Daily / 📜 Quests / 🎟️ Codes /
-   🌑 Sanctum / 🔮 Prestige Shop) on the left edge don't overlap your
-   existing UI. Positions live in the `LAYOUT` table at the top of
-   `ProgressionHud.client.luau`, `SanctumPanel.client.luau` and
-   `RebirthShopPanel.client.luau` — one line each, no hunting.
+3. **Check the six new buttons** (🎁 Daily / 📜 Quests / 🎟️ Codes /
+   🌑 Sanctum / 🔮 Prestige Shop / 🏆 Ranks) on the left edge don't overlap
+   your existing UI. Positions live in the `LAYOUT` table at the top of
+   `ProgressionHud.client.luau`, `SanctumPanel.client.luau`,
+   `RebirthShopPanel.client.luau` and `LeaderboardPanel.client.luau` — one
+   line each, no hunting.
 4. **Try a code** (`LAUNCH`) to confirm the redeem flow works end to end.
 5. **Watch the Output window** for red errors on join.
 6. **Daily panel auto-opens** on a first join once the tutorial is done.
    If you'd rather it didn't, delete the "FIRST-SESSION NUDGE" block at
    the bottom of `ProgressionHud.client.luau`.
+7. **Leaderboards need DataStore access to show anything.** In Studio,
+   turn on Game Settings → Security → "Enable Studio Access to API
+   Services", or test in a real server -- without it, the panel will
+   correctly show "No rankings yet" forever rather than erroring, but you
+   won't see real data until that's on (or the game is published/live).
 
 ## ⚠️ One thing to be careful about
 
