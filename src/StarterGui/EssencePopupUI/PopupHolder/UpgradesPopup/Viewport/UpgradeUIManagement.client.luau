@@ -330,11 +330,11 @@ BuyRemote.OnClientEvent:Connect(function(upgradeName, tier, newdata)
 	UpgradeSound:Play()
 	-- 1. Safely find the main child and its ImageLabel
 	local child = frame:FindFirstChild(upgradeName)
-	child:SetAttribute("Unlocked", true)
 	if not child then
 		warn("Could not find upgrade frame for:", upgradeName)
 		return -- Exit early if the frame doesn't exist
 	end
+	child:SetAttribute("Unlocked", true)
 
 	local imageLabel = child:FindFirstChild("ImageLabel")
 	if imageLabel then

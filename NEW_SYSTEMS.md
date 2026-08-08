@@ -825,6 +825,18 @@ and returns `false, reason` instead of erroring. Simplified to just call
 the correct single source of truth, the pre-check was both redundant and
 the one place actually missing a guard.
 
+Same audit turned up a second, related crash on the CLIENT side:
+`UpgradeUIManagement.client.luau`'s `BuyRemote.OnClientEvent` handler did
+`local child = frame:FindFirstChild(upgradeName); child:SetAttribute(...)`
+-- with the `if not child then return end` guard sitting on the line
+*after* the SetAttribute call it was supposed to protect, i.e. after the
+crash it was meant to prevent. Reordered so the check actually runs
+first. Server-side, `upgradeName` is now always a real, valid tree
+upgrade id (see the fix above), so this is defense in depth rather than
+the primary fix -- but the comment directly above the buggy line
+literally said "Safely find the main child," so it's worth having the
+code actually do that.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
