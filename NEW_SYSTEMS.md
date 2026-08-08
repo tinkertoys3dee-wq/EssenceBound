@@ -864,6 +864,52 @@ controller) and found two more things worth fixing:
   the severity if it was real: open the Upgrades tree and confirm it
   populates/updates at all.
 
+## 16. "What's New" popup (so all of the above actually gets discovered)
+
+Everything in sections 10-14 (leaderboards, achievements, Essence Rush, the
+comeback bonus) shipped purely additively -- nothing in-game ever told an
+existing player any of it showed up. Someone who played before this pass
+would come back to a handful of new side-buttons and zero explanation. This
+is the fix.
+
+**`WhatsNewConfig.luau`** (`ReplicatedStorage`) is pure data: a
+`CurrentVersion` number plus a short `Highlights` list (icon + one-line
+description each). To announce something new later, bump `CurrentVersion`
+and replace `Highlights` -- there's no history log, a player who's several
+versions behind just gets caught up with the latest list in one popup
+rather than replaying a stack of old ones.
+
+**`WhatsNewPopup.client.luau`** builds a small closable modal (same
+build-in-code + THEME pattern as `ProgressionHud`/`AchievementsPanel`) and
+shows it once per version bump. Closing it any way (the CTA button, the X,
+the backdrop, Escape) marks it seen via the same `UpdateData` remote every
+other `Seen*` flag already uses (`SeenWhatsNewVersion`, added to
+`UpdateData`'s `ALLOWED_ROOTS` allowlist and `DefaultPlayerData`, mirrored
+to a player attribute in `PlayerDataHandler` next to `SeenFavoritePrompt`)
+-- there's no reward to gate, it's pure announcement.
+
+**Deliberately never shown on a player's first-ever session.** "What's
+New" implies "since you last played," which is confusing framing for
+someone who's never played, and would stack a third automatic popup on top
+of the tutorial and `ProgressionHud`'s first-session Daily nudge. The
+script reads `SeenTutorial` the moment it first appears -- which
+`PlayerDataHandler` sets from the *saved* value at join, before
+`Tutorial.client`'s own logic runs -- so the first value observed is
+whatever it was before this session started. `false` means this is their
+first-ever session (popup skipped entirely, this session only); `true`
+means they've played before (gate passes). Next time a truly-new player
+joins, `SeenTutorial` is `true` from having finished it, so they catch the
+popup then -- exactly the "welcome back, here's what you missed" moment
+this exists for.
+
+Doesn't perfectly sequence against `ProgressionHud`'s Daily nudge or the
+offline-earnings popup (no central popup queue exists in this codebase to
+coordinate that) -- it just waits noticeably longer (6s vs. Progression's
+~2s) before showing itself, so on the rare join where more than one
+auto-popup is pending, this one tends to land after, not simultaneously.
+Given it only fires once per version bump, occasional overlap is a minor
+cosmetic risk, not a broken experience.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
@@ -890,6 +936,13 @@ controller) and found two more things worth fixing:
    Services", or test in a real server -- without it, the panel will
    correctly show "No rankings yet" forever rather than erroring, but you
    won't see real data until that's on (or the game is published/live).
+8. **"What's New" popup won't appear on a fresh account** in Studio
+   testing by design (see section 16 -- first-ever sessions skip it). To
+   see it: play through the tutorial once so `SeenTutorial` saves as
+   `true`, stop the server, then press play again with the same test
+   account -- the popup should appear a few seconds after join. To re-test
+   repeatedly after that, just bump `WhatsNewConfig.CurrentVersion` by 1
+   each time rather than trying to reset the save.
 
 ## ⚠️ One thing to be careful about
 

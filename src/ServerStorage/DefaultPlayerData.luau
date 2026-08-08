@@ -44,6 +44,12 @@ local DefaultPlayerData = {
 	-- persisted memory at all -- this flag is what makes "one time" actually
 	-- mean once, across rejoins too, not just within a single session.
 	SeenFavoritePrompt = false,
+	-- Gates the "What's New" popup (WhatsNewConfig.CurrentVersion). Starts
+	-- at 0 so every existing save is behind version 1 and sees it once;
+	-- bumping CurrentVersion later re-triggers the popup for everyone,
+	-- same mechanism as a streak or tutorial flag, just numeric instead
+	-- of boolean so it can track which version was last acknowledged.
+	SeenWhatsNewVersion = 0,
 	Badges = {
 		[3032854636359044] = false, --- First Steps
 		[4008378896042305] = false, -- Welcome to the grind
