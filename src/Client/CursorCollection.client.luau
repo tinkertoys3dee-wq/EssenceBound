@@ -282,6 +282,13 @@ local EssenceMulti = require(RP:WaitForChild("EssenceMultiplier"))
 local newDiscovery = game:GetService("ReplicatedStorage"):WaitForChild("EssenceDiscovered")
 local GetEssences = require(game:GetService("ReplicatedStorage"):WaitForChild("GetEssence"))
 
+-- Same pattern as newDiscovery/EssenceDiscovered above: owned/created by
+-- the consumer (CritStreakCombo.client.luau), this file just waits for
+-- and fires it. Purely a cosmetic broadcast -- IsCrit here is the exact
+-- same client-known flag playCollectFeel already reads a few lines
+-- below, not a new trust boundary.
+local critLanded = game:GetService("ReplicatedStorage"):WaitForChild("CritLanded")
+
 -- =========================================================================
 -- COLLECTION FEEL
 -- =========================================================================
@@ -396,6 +403,7 @@ local function CollectEffect(orb)
 
 	orb.Parent = Destro
 	collectionFireable:FireServer(orbType, essenceValue, isCrit, isGolden)
+	critLanded:Fire(isCrit == true)
 
 	if orbType == "Shadow Essence" then
 		local discovered = player:GetAttribute("ShadowEssenceDiscovered") or false

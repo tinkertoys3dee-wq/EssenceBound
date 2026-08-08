@@ -1283,6 +1283,33 @@ directly, so the aura starts in exactly the same rectangle as the orb
 regardless of how it's really anchored, and stays centered on it when
 scaled up rather than risking a lopsided drift to one side.
 
+## 25. Crit Streak Combo -- a luck-based escalating callout
+
+A "COMBO x3!" / "MEGA COMBO x5!" / ... up to "LEGENDARY x20!" callout
+for landing several criticals in a row, escalating in color, text
+size and burst intensity at each tier. Resets silently on the first
+non-crit -- no punishment beat, just no reward beat, matching how
+Momentum already just quietly zeroes out rather than announcing a
+combo ending.
+
+**Deliberately not a third copy of an existing streak system.** This
+codebase already has two: Momentum (`rebirthshop_momentum`) is a
+CADENCE streak (how fast you're clicking) that feeds a real gameplay
+bonus, and `collectStreak` in `CursorCollection.client.luau` is also
+cadence-based, purely for audio pitch, reset by a pause. This one is a
+LUCK streak -- consecutive criticals, independent of timing, reset
+only by a non-crit landing -- and it's purely cosmetic. Crits already
+pay out correctly server-side (`EssenceMultiplier`/
+`CriticalsController`) whether or not this script exists.
+
+**One small, minimal addition to `CursorCollection.client.luau`** was
+needed to make this possible: a new `CritLanded` BindableEvent
+(created/owned by the new script, same ownership convention already
+used by `EssenceDiscovered`/`NewDiscovery.client.luau`), fired with
+the exact same `IsCrit` flag that file already reads for its own
+per-orb effects a few lines above -- one new local variable, one new
+`:Fire()` call, nothing existing reordered or changed.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
@@ -1354,6 +1381,12 @@ scaled up rather than risking a lopsided drift to one side.
     real `AnchorPoint` turned out to need more than a copy of its
     Position/Size/AnchorPoint (see section 24's note on why this was
     derived rather than hardcoded).
+12. **Crit Streak Combo (section 25)** needs a real crit-heavy run to
+    see escalate -- land 3+ criticals in a row (a high `CritChance`
+    upgrade or Shadow Sanctum's Dark Fortune makes this fast to test)
+    and confirm the "COMBO x3!" callout appears at the orb, growing
+    more dramatic at 5/8/12/20, and disappears silently (no callout at
+    all) the moment a non-crit breaks the streak.
 
 ## ⚠️ One thing to be careful about
 
