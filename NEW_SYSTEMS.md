@@ -215,7 +215,7 @@ not just a brief flash. Now waits for the actual leaderstat via
 `WaitForChild` before ever reading it, and the panel also fires a
 `RequestSanctumSync` every time it opens as a self-healing backstop.
 
-### The full upgrade list (11 total)
+### The full upgrade list (12 total)
 
 **Enhancements** (linear stat boosts):
 
@@ -238,14 +238,15 @@ clamped. Umbral Fracture's clamp matters most: combined with
 
 ### Relics — periodic, automatic, highly visual events
 
-Two new Sanctum purchases that aren't stat bumps — they're timed events
-that fire on their own and demand attention when they do:
+Four Sanctum purchases that aren't stat bumps — they're timed events that
+fire on their own and demand attention when they do:
 
 | Relic | Cost | Interval (lvl 1 → 2) | Effect |
 |---|---|---|---|
 | 🔨 Shadow Hammer | 500 → 3000 | 45s → 28s | Telegraphed slam on the great orb, +4 → +7 bonus real orbs |
 | 🌌 Void Laser | 700 → 4200 | 55s → 32s | Beam sweeps the field, instantly collects everything active |
 | ⌛ Chrono Rift | 900 → 5400 | 70s → 45s | 6s → 10s window where collection is instant, no hover charge |
+| 🌘 Shadow Eclipse | 1100 → 6600 | 90s → 60s | Sky darkens, 25s → 40s of 1.5x essence on everything earned |
 
 Chrono Rift grants a temporary *state* rather than a one-shot payout, so
 for its duration the whole loop plays differently — sweep the cursor and
@@ -254,19 +255,38 @@ instant-collect path `essence_magnet_field` permanently unlocks, so the
 two can't drift apart, and a full-screen tint makes the altered state
 unmistakable.
 
-Both fire through the **exact same functions** a real click/collection
-already uses (`SpawnOrb`, `CollectEffect`) — no new trust surface, payout
-validated server-side through the identical path everything else uses.
+Hammer, Laser and Rift all fire through the **exact same functions** a
+real click/collection already uses (`SpawnOrb`, `CollectEffect`) — no new
+trust surface, payout validated server-side through the identical path
+everything else uses.
 
-Each gets a **live countdown pill** (top-center, Hammer above Laser) built
-into the same loop that fires the ability, ticking in 1-second steps so
-display and timing can never drift apart. Positions are one-line moves —
-`HAMMER_PILL_POSITION` in `OrbClicker.client.luau`, `LASER_PILL_POSITION`
-in `CursorCollection.client.luau`.
+**Shadow Eclipse is the odd one out, deliberately.** It grants a real
+essence *multiplier* (via the existing `PotionTimerService`, reusing the
+`EssenceX15` effect that potions already use) rather than routing through
+an already-trusted gameplay remote — so unlike the other three, its
+timing has to be owned by the **server**, not the client. If the client
+timed its own Eclipse, a forged "trigger now" request could be spammed to
+stack `PotionTimerService`'s "Extend" mode into an unbounded free boost.
+`SanctumService.server.luau` runs one bounded per-player loop that ticks
+the interval, applies the boost, and tells the client only "a cycle of N
+seconds just started" / "the boost is live for N seconds now" — cosmetic
+countdown and screen effect, never a decision. That server loop uses
+bounded polling rather than a bare `GetAttributeChangedSignal():Wait()`
+to gate on relic ownership, since a server-side coroutine (unlike a
+client one) is *not* torn down automatically when the player leaves and
+would otherwise leak forever for anyone who never buys the relic.
+
+Every relic gets a **live countdown pill**, all four sharing one bar via
+`Juice.RegisterRelicPill` / `Juice.GetRelicBar` in `Juice.luau` — bottom-
+center, auto-laid-out left to right (Hammer, Laser, Rift, Eclipse) by a
+`UIListLayout` rather than each ability hand-building and independently
+positioning its own `ScreenGui`. Adding a fifth relic pill in the future
+is a single `Juice.RegisterRelicPill(...)` call with the next
+`Order` — no new positioning math, and no risk of two pills overlapping.
 
 ### Panel layout
 
-With eleven upgrades the list needed real structure:
+With twelve upgrades the list needed real structure:
 
 - **`UIPadding` on the scroll frame** instead of negative row widths. The
   right inset clears the scrollbar so rows can't slide underneath it, and
@@ -283,11 +303,25 @@ With eleven upgrades the list needed real structure:
   reads as "these are the ones you can buy."
 
 Extending `SanctumUpgrades.luau`'s schema with `Kind = "Relic"` +
-`Levels[level] = {Interval, BurstCount?/WindowSeconds?}` was the only
-change needed —
+`Levels[level] = {Interval, BurstCount?/WindowSeconds?/BoostSeconds?}` was
+the only change needed —
 `SanctumService` and `SanctumPanel` already read costs/levels/
 descriptions generically, so the whole server + panel pipeline picked
-these up with zero changes to either file.
+these up with zero changes to either file. Shadow Eclipse's own server
+loop was the one genuinely new piece of plumbing, for the server-owned-
+timing reason above.
+
+### Orb cap was silently making paid upgrades pointless
+
+`BASE_MAX_ACTIVE_ORBS` in `OrbClicker.client.luau` was **400** — high
+enough that a player would essentially never hit it during normal play.
+That quietly made two real, purchasable upgrades (`overflow_capacity` on
+the Earth tree, `sanctum_overflow` in the Sanctum) worth buying in name
+only, since their whole effect is raising a cap nobody was ever close to.
+Dropped to **40**, so the base cap is something a busy screen can
+actually reach, and the overflow upgrades (+60 / +24 respectively) go
+back to being a real, felt increase in how much can be on screen at once
+rather than a number that never mattered.
 
 ### Storm arrival now announces itself
 

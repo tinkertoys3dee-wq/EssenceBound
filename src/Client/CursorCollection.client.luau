@@ -731,66 +731,22 @@ end
 -- =========================================================================
 -- Same reasoning as the Hammer's countdown in OrbClicker.client.luau:
 -- watching a timer count down is most of what makes a periodic ability
--- feel worth having. Sits directly under the Hammer pill by default --
--- LASER_PILL_POSITION is a one-line move if that collides with anything.
+-- feel worth having.
+--
+-- Registered into Juice's shared relic bar (bottom-center, auto-laid-out)
+-- rather than built as a one-off ScreenGui here -- see the Hammer's
+-- equivalent comment in OrbClicker.client.luau for why. Order 2 = second
+-- from the left, after the Hammer.
 
-local RELIC_HUD_GUI = Instance.new("ScreenGui")
-RELIC_HUD_GUI.Name = "RelicCountdownsLaser"
-RELIC_HUD_GUI.ResetOnSpawn = false
-RELIC_HUD_GUI.IgnoreGuiInset = true
-RELIC_HUD_GUI.DisplayOrder = 45
-RELIC_HUD_GUI.Parent = playerGui
-
-local LASER_PILL_POSITION = UDim2.fromScale(0.5, 0.062)
-
-local laserPill = Instance.new("Frame")
-laserPill.Name = "LaserCountdown"
-laserPill.AnchorPoint = Vector2.new(0.5, 0)
-laserPill.Position = LASER_PILL_POSITION
-laserPill.Size = UDim2.fromScale(0.13, 0.032)
-laserPill.BackgroundColor3 = Color3.fromRGB(28, 17, 48)
-laserPill.BackgroundTransparency = 0.1
-laserPill.Visible = false
-laserPill.ZIndex = 44
-laserPill.Parent = RELIC_HUD_GUI
-
-local laserPillCorner = Instance.new("UICorner")
-laserPillCorner.CornerRadius = UDim.new(0.5, 0)
-laserPillCorner.Parent = laserPill
-
-local laserPillStroke = Instance.new("UIStroke")
-laserPillStroke.Color = LASER_COLOR
-laserPillStroke.Thickness = 1.5
-laserPillStroke.Transparency = 0.3
-laserPillStroke.Parent = laserPill
-
-local laserPillFill = Instance.new("Frame")
-laserPillFill.Name = "Fill"
-laserPillFill.Size = UDim2.fromScale(0, 1)
-laserPillFill.BackgroundColor3 = LASER_COLOR
-laserPillFill.BackgroundTransparency = 0.75
-laserPillFill.BorderSizePixel = 0
-laserPillFill.ZIndex = 44
-laserPillFill.Parent = laserPill
-
-local laserPillFillCorner = Instance.new("UICorner")
-laserPillFillCorner.CornerRadius = UDim.new(0.5, 0)
-laserPillFillCorner.Parent = laserPillFill
-
-local laserPillLabel = Instance.new("TextLabel")
-laserPillLabel.Name = "Label"
-laserPillLabel.Size = UDim2.fromScale(1, 1)
-laserPillLabel.BackgroundTransparency = 1
-laserPillLabel.Font = Enum.Font.GothamBold
-laserPillLabel.Text = "🌌 --"
-laserPillLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-laserPillLabel.TextScaled = true
-laserPillLabel.ZIndex = 45
-laserPillLabel.Parent = laserPill
-
-local laserPillTextConstraint = Instance.new("UITextSizeConstraint")
-laserPillTextConstraint.MaxTextSize = 15
-laserPillTextConstraint.Parent = laserPillLabel
+local laserParts = Juice.RegisterRelicPill(playerGui, {
+	Name = "Laser",
+	Icon = "🌌",
+	Color = LASER_COLOR,
+	Order = 2,
+})
+local laserPill = laserParts.Pill
+local laserPillFill = laserParts.Fill
+local laserPillLabel = laserParts.Label
 
 task.spawn(function()
 	-- Blocks here, no polling, until the player owns any level of the
@@ -847,60 +803,26 @@ end)
 -- touches is gathered immediately.
 
 local RIFT_COLOR = Color3.fromRGB(120, 255, 235)
-local RIFT_PILL_POSITION = UDim2.fromScale(0.5, 0.099)
 
-local riftPill = Instance.new("Frame")
-riftPill.Name = "RiftCountdown"
-riftPill.AnchorPoint = Vector2.new(0.5, 0)
-riftPill.Position = RIFT_PILL_POSITION
-riftPill.Size = UDim2.fromScale(0.13, 0.032)
-riftPill.BackgroundColor3 = Color3.fromRGB(28, 17, 48)
-riftPill.BackgroundTransparency = 0.1
-riftPill.Visible = false
-riftPill.ZIndex = 44
-riftPill.Parent = RELIC_HUD_GUI
-
-local riftPillCorner = Instance.new("UICorner")
-riftPillCorner.CornerRadius = UDim.new(0.5, 0)
-riftPillCorner.Parent = riftPill
-
-local riftPillStroke = Instance.new("UIStroke")
-riftPillStroke.Color = RIFT_COLOR
-riftPillStroke.Thickness = 1.5
-riftPillStroke.Transparency = 0.3
-riftPillStroke.Parent = riftPill
-
-local riftPillFill = Instance.new("Frame")
-riftPillFill.Name = "Fill"
-riftPillFill.Size = UDim2.fromScale(0, 1)
-riftPillFill.BackgroundColor3 = RIFT_COLOR
-riftPillFill.BackgroundTransparency = 0.75
-riftPillFill.BorderSizePixel = 0
-riftPillFill.ZIndex = 44
-riftPillFill.Parent = riftPill
-
-local riftPillFillCorner = Instance.new("UICorner")
-riftPillFillCorner.CornerRadius = UDim.new(0.5, 0)
-riftPillFillCorner.Parent = riftPillFill
-
-local riftPillLabel = Instance.new("TextLabel")
-riftPillLabel.Name = "Label"
-riftPillLabel.Size = UDim2.fromScale(1, 1)
-riftPillLabel.BackgroundTransparency = 1
-riftPillLabel.Font = Enum.Font.GothamBold
-riftPillLabel.Text = "⌛ --"
-riftPillLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-riftPillLabel.TextScaled = true
-riftPillLabel.ZIndex = 45
-riftPillLabel.Parent = riftPill
-
-local riftPillTextConstraint = Instance.new("UITextSizeConstraint")
-riftPillTextConstraint.MaxTextSize = 15
-riftPillTextConstraint.Parent = riftPillLabel
+-- Registered into Juice's shared relic bar, same as the Hammer and Laser
+-- above -- see the Hammer's comment in OrbClicker.client.luau for why.
+-- Order 3 = third from the left.
+local riftParts = Juice.RegisterRelicPill(playerGui, {
+	Name = "Rift",
+	Icon = "⌛",
+	Color = RIFT_COLOR,
+	Order = 3,
+})
+local riftPill = riftParts.Pill
+local riftPillFill = riftParts.Fill
+local riftPillLabel = riftParts.Label
 
 -- Full-screen tint shown only while the rift window is open, so the
 -- altered state is unmistakable rather than something the player has to
--- infer from orbs behaving differently.
+-- infer from orbs behaving differently. Parented into the shared FX layer
+-- rather than the relic bar's ScreenGui -- it isn't a bar element, and
+-- juiceLayer already exists in this file for exactly this kind of
+-- transient full-screen effect.
 local riftOverlay = Instance.new("Frame")
 riftOverlay.Name = "RiftOverlay"
 riftOverlay.Size = UDim2.fromScale(1, 1)
@@ -909,7 +831,7 @@ riftOverlay.BackgroundTransparency = 1
 riftOverlay.BorderSizePixel = 0
 riftOverlay.Visible = false
 riftOverlay.ZIndex = 1
-riftOverlay.Parent = RELIC_HUD_GUI
+riftOverlay.Parent = juiceLayer
 
 local function openChronoRift(windowSeconds)
 	chronoRiftActive = true

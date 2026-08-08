@@ -171,9 +171,20 @@ end
 -- rather than in CollectionRing.lua, which only owns overlap detection.
 -- =========================================================================
 
--- Base cap before any overflow_capacity levels are applied. Tune to taste -
--- this is a design choice, not something EssenceUpgrades specifies.
-local BASE_MAX_ACTIVE_ORBS = 400
+-- Base cap before any overflow_capacity/sanctum_overflow levels are
+-- applied. Tune to taste -- this is a design choice, not something
+-- EssenceUpgrades specifies.
+--
+-- Was 400. At that size the cap was effectively decorative: overflow_capacity
+-- (+10/level, max 6 = +60) and sanctum_overflow (+3/level, max 8 = +24) are
+-- both REAL paid upgrades meant to raise this, but a fully maxed account
+-- only reaches 484 -- a difference nobody would ever notice, since normal
+-- play never gets remotely close to 400 concurrent orbs anyway. The cap
+-- was doing two things badly at once: never actually limiting screen
+-- clutter during a big burst (shatter_force + a Hammer slam + a storm, all
+-- at once, could legitimately approach it), and making two purchased
+-- upgrades pointless since the number they raise was already absurd.
+local BASE_MAX_ACTIVE_ORBS = 40
 
 -- How strongly MagnetStrength pulls orbs toward the cursor, in scale-units
 -- of homing speed per point of MagnetStrength. Tune to taste.
@@ -1696,68 +1707,23 @@ end
 -- Watching a timer count down to a reward is most of what makes a
 -- periodic ability like this feel worth having equipped -- without a
 -- visible countdown, a slam would just be an unpredictable surprise the
--- player can't anticipate or plan around. Position is a LAYOUT-style
--- constant so it's a one-line move if it collides with anything.
+-- player can't anticipate or plan around.
+--
+-- Registered into Juice's shared relic bar (bottom-center, auto-laid-out)
+-- rather than built as a one-off ScreenGui here: with four relics now
+-- spread across three different LocalScripts, each picking its own screen
+-- position independently is exactly how pills end up overlapping the
+-- moment a new relic is added. Order 1 = leftmost.
 
-local RELIC_HUD_GUI = Instance.new("ScreenGui")
-RELIC_HUD_GUI.Name = "RelicCountdowns"
-RELIC_HUD_GUI.ResetOnSpawn = false
-RELIC_HUD_GUI.IgnoreGuiInset = true
-RELIC_HUD_GUI.DisplayOrder = 45
-RELIC_HUD_GUI.Parent = Gui
-
-local HAMMER_PILL_POSITION = UDim2.fromScale(0.5, 0.025)
-
-local hammerPill = Instance.new("Frame")
-hammerPill.Name = "HammerCountdown"
-hammerPill.AnchorPoint = Vector2.new(0.5, 0)
-hammerPill.Position = HAMMER_PILL_POSITION
-hammerPill.Size = UDim2.fromScale(0.13, 0.032)
-hammerPill.BackgroundColor3 = Color3.fromRGB(28, 17, 48)
-hammerPill.BackgroundTransparency = 0.1
-hammerPill.Visible = false
-hammerPill.ZIndex = 44
-hammerPill.Parent = RELIC_HUD_GUI
-
-local hammerPillCorner = Instance.new("UICorner")
-hammerPillCorner.CornerRadius = UDim.new(0.5, 0)
-hammerPillCorner.Parent = hammerPill
-
-local hammerPillStroke = Instance.new("UIStroke")
-hammerPillStroke.Color = HAMMER_COLOR
-hammerPillStroke.Thickness = 1.5
-hammerPillStroke.Transparency = 0.3
-hammerPillStroke.Parent = hammerPill
-
--- Fill sweeps from empty to full as the wait elapses, same visual language
--- as the playtime chest pill elsewhere in the game.
-local hammerPillFill = Instance.new("Frame")
-hammerPillFill.Name = "Fill"
-hammerPillFill.Size = UDim2.fromScale(0, 1)
-hammerPillFill.BackgroundColor3 = HAMMER_COLOR
-hammerPillFill.BackgroundTransparency = 0.75
-hammerPillFill.BorderSizePixel = 0
-hammerPillFill.ZIndex = 44
-hammerPillFill.Parent = hammerPill
-
-local hammerPillFillCorner = Instance.new("UICorner")
-hammerPillFillCorner.CornerRadius = UDim.new(0.5, 0)
-hammerPillFillCorner.Parent = hammerPillFill
-
-local hammerPillLabel = Instance.new("TextLabel")
-hammerPillLabel.Name = "Label"
-hammerPillLabel.Size = UDim2.fromScale(1, 1)
-hammerPillLabel.BackgroundTransparency = 1
-hammerPillLabel.Font = Enum.Font.GothamBold
-hammerPillLabel.Text = "🔨 --"
-hammerPillLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-hammerPillLabel.TextScaled = true
-hammerPillLabel.ZIndex = 45
-hammerPillLabel.Parent = hammerPill
-
-local hammerPillTextConstraint = Instance.new("UITextSizeConstraint")
-hammerPillTextConstraint.MaxTextSize = 15
-hammerPillTextConstraint.Parent = hammerPillLabel
+local hammerParts = Juice.RegisterRelicPill(Gui, {
+	Name = "Hammer",
+	Icon = "🔨",
+	Color = HAMMER_COLOR,
+	Order = 1,
+})
+local hammerPill = hammerParts.Pill
+local hammerPillFill = hammerParts.Fill
+local hammerPillLabel = hammerParts.Label
 
 task.spawn(function()
 	-- Blocks here, no polling, until the player owns any level of the
@@ -1811,5 +1777,148 @@ task.spawn(function()
 			end
 		end
 	end
+end)
+
+-- =========================================================================
+-- SHADOW ECLIPSE (Sanctum relic: sanctum_eclipse)
+-- =========================================================================
+-- Unlike Hammer above, Eclipse's timing is owned by the SERVER (see
+-- SanctumService.server.luau for why -- it grants a real essence
+-- multiplier, not something that routes through an already-trusted
+-- gameplay remote). This side only ever reacts to what the server says:
+-- EclipseCycleRemote means "a new countdown of N seconds just started",
+-- EclipseTriggerRemote means "the boost is live for N seconds, play the
+-- effect." Nothing here decides when the boost actually applies.
+
+local ECLIPSE_COLOR = Color3.fromRGB(140, 90, 220)
+
+local sanctumRemotesFolder = ReplicatedStorage:WaitForChild("SanctumRemotes")
+local EclipseCycleRemote = sanctumRemotesFolder:WaitForChild("EclipseCycle")
+local EclipseTriggerRemote = sanctumRemotesFolder:WaitForChild("EclipseTrigger")
+
+local eclipseParts = Juice.RegisterRelicPill(Gui, {
+	Name = "Eclipse",
+	Icon = "🌘",
+	Color = ECLIPSE_COLOR,
+	Order = 4,
+})
+local eclipsePill = eclipseParts.Pill
+local eclipsePillFill = eclipseParts.Fill
+local eclipsePillLabel = eclipseParts.Label
+
+local eclipseTintFrame = nil
+
+local function getEclipseTint()
+	if eclipseTintFrame and eclipseTintFrame.Parent then
+		return eclipseTintFrame
+	end
+
+	local screenGui = Instance.new("ScreenGui")
+	screenGui.Name = "EclipseTint"
+	screenGui.ResetOnSpawn = false
+	screenGui.IgnoreGuiInset = true
+	screenGui.DisplayOrder = 5 -- well below the relic bar / panels
+	screenGui.Parent = Gui
+
+	local tint = Instance.new("Frame")
+	tint.Name = "Tint"
+	tint.Size = UDim2.fromScale(1, 1)
+	tint.BackgroundColor3 = Color3.fromRGB(20, 8, 40)
+	tint.BackgroundTransparency = 1
+	tint.BorderSizePixel = 0
+	tint.ZIndex = 0
+	tint.Parent = screenGui
+
+	eclipseTintFrame = tint
+	return tint
+end
+
+-- Big, unmissable "the sky just went dark" beat -- comparable in
+-- spectacle to the Hammer slam / Laser sweep, but screen-wide instead of
+-- orb-centered, since this boost affects everything the player does for
+-- its whole duration rather than a single burst.
+local function playEclipseEffect(boostSeconds)
+	local tint = getEclipseTint()
+	local center = juiceLayer and Juice.CenterOf(LargeOrb, juiceLayer)
+
+	local darkenTween = TweenService:Create(tint, TweenInfo.new(0.35, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+		BackgroundTransparency = 0.72,
+	})
+	darkenTween:Play()
+
+	task.delay(math.max(0.5, boostSeconds - 0.6), function()
+		if tint.Parent then
+			TweenService:Create(tint, TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.In), {
+				BackgroundTransparency = 1,
+			}):Play()
+		end
+	end)
+
+	local sound = Juice.FindSound("SFX/UI/UIPop")
+	if sound then
+		-- Pitched low, like the Hammer slam, so this reads as heavier and
+		-- more ominous than a routine collection pop.
+		Juice.PlaySound(sound, { Pitch = 0.5, Volume = 0.7 })
+	end
+
+	if center then
+		Juice.Ring(juiceLayer, center, {
+			Color = ECLIPSE_COLOR, StartSize = 40, EndSize = 340, Duration = 0.9, Thickness = 6,
+		})
+		Juice.Burst(juiceLayer, center, {
+			Count = 22, Colors = { ECLIPSE_COLOR, Color3.fromRGB(255, 255, 255) },
+			Distance = 260, Duration = 1, Size = { 4, 10 },
+		})
+		Juice.FloatText(juiceLayer, center - UDim2.fromOffset(0, 40), "SHADOW ECLIPSE!", {
+			Color = ECLIPSE_COLOR, Duration = 1.2, Rise = 70, TextSize = 30,
+		})
+		Juice.FloatText(juiceLayer, center + UDim2.fromOffset(0, 10), "1.5x ESSENCE", {
+			Color = Color3.fromRGB(255, 255, 255), Duration = 1.2, Rise = 50, TextSize = 20,
+		})
+	end
+end
+
+task.spawn(function()
+	-- No relic-ownership gate needed client-side: the server only ever
+	-- fires these two remotes once Eclipse is actually owned, so simply
+	-- waiting on the events is enough.
+	eclipsePill.Visible = false
+
+	EclipseCycleRemote.OnClientEvent:Connect(function(intervalSeconds)
+		intervalSeconds = tonumber(intervalSeconds)
+		if not intervalSeconds or intervalSeconds <= 0 then
+			return
+		end
+
+		eclipsePill.Visible = true
+
+		task.spawn(function()
+			local remaining = intervalSeconds
+			while remaining > 0 do
+				eclipsePillLabel.Text = ("🌘 %ds"):format(math.ceil(remaining))
+				eclipsePillFill.Size = UDim2.fromScale(math.clamp(1 - (remaining / intervalSeconds), 0, 1), 1)
+
+				local step = math.min(1, remaining)
+				task.wait(step)
+				remaining -= step
+			end
+			eclipsePillLabel.Text = "🌘 NOW!"
+			eclipsePillFill.Size = UDim2.fromScale(1, 1)
+		end)
+	end)
+
+	EclipseTriggerRemote.OnClientEvent:Connect(function(boostSeconds)
+		boostSeconds = tonumber(boostSeconds) or 0
+		if boostSeconds <= 0 then
+			return
+		end
+
+		Juice.Punch(Juice.GetScale(eclipsePill), 0.25, 0.3)
+
+		local ok, err = pcall(playEclipseEffect, boostSeconds)
+		if not ok then
+			warn("[OrbClicker] Eclipse effect errored: " .. tostring(err))
+		end
+	end)
 end)
 

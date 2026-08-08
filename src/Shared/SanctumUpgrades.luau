@@ -212,6 +212,25 @@ local UPGRADES = {
 			[2] = { Interval = 45, WindowSeconds = 10 },
 		},
 	},
+	{
+		Id = "sanctum_eclipse",
+		Name = "Shadow Eclipse",
+		Description = "Periodically veils the sky in shadow, surging your essence power while the eclipse lasts.",
+		Icon = "🌘",
+		Kind = "Relic",
+		MaxLevel = 2,
+		BaseCost = 1100,
+		CostGrowth = 6, -- level 2 costs 6600
+		-- BoostSeconds instead of BurstCount/WindowSeconds: this relic
+		-- grants a temporary ESSENCE MULTIPLIER rather than orbs, a
+		-- collection burst, or a collection-speed state -- see
+		-- SanctumService.server.luau for why that makes this the only
+		-- relic whose timing is server-owned rather than client-owned.
+		Levels = {
+			[1] = { Interval = 90, BoostSeconds = 25 },
+			[2] = { Interval = 60, BoostSeconds = 40 },
+		},
+	},
 }
 
 SanctumUpgrades.List = UPGRADES
@@ -318,6 +337,9 @@ function SanctumUpgrades.DescribeEffect(id: string, level: number): string
 		end
 		if data.WindowSeconds then
 			return ("Activates every %ds (%ds of instant collection)"):format(data.Interval, data.WindowSeconds)
+		end
+		if data.BoostSeconds then
+			return ("Activates every %ds (%ds of 1.5x essence)"):format(data.Interval, data.BoostSeconds)
 		end
 		return ("Activates every %ds (collects everything active)"):format(data.Interval)
 	end

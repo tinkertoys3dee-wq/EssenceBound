@@ -24,6 +24,7 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
 
 local SanctumUpgrades = require(ReplicatedStorage:WaitForChild("SanctumUpgrades"))
 
@@ -56,6 +57,14 @@ local SyncRemote = ensureRemote("RemoteEvent", "SanctumSync")
 -- future timing edge case producing the same "stuck showing 0" bug the
 -- join-time race above just caused.
 local RequestSyncRemote = ensureRemote("RemoteEvent", "RequestSanctumSync")
+
+-- Shadow Eclipse's two client-facing events (see the ECLIPSE section
+-- below): CycleRemote (re)starts the client's own local countdown pill
+-- display, TriggerRemote tells it to play the big screen effect right now.
+-- Split into two events rather than one, so the client's purely-cosmetic
+-- countdown logic can't be confused with "a real boost was just granted."
+local EclipseCycleRemote = ensureRemote("RemoteEvent", "EclipseCycle")
+local EclipseTriggerRemote = ensureRemote("RemoteEvent", "EclipseTrigger")
 
 -- =========================================================================
 -- HELPERS
@@ -256,6 +265,89 @@ RequestSyncRemote.OnServerEvent:Connect(function(player)
 end)
 
 -- =========================================================================
+-- SHADOW ECLIPSE (Sanctum relic: sanctum_eclipse)
+-- =========================================================================
+-- Hammer/Laser/Rift all time themselves on the CLIENT -- safe, because
+-- whatever they actually pay out (bonus orbs, a force-collect) still has
+-- to go through the same server-validated remotes normal play uses. Eclipse
+-- is different: it grants a real, stackable essence multiplier straight
+-- through PotionTimerService. If the client owned that timer, a forged
+-- "trigger now" request could spam PotionTimerService.ApplyPotion's
+-- "Extend" stacking into an unbounded free boost. So this is the one relic
+-- whose interval is tracked here, server-side; the client only ever gets
+-- told "a cycle of N seconds just started" and "the boost is live for N
+-- seconds" -- cosmetic countdown and screen effect, never a decision.
+
+local function getPotionTimerService()
+	local ok, service = pcall(function()
+		local moduleScript = ServerScriptService:FindFirstChild("PotionTimerService")
+		if not moduleScript then
+			return nil
+		end
+		return require(moduleScript)
+	end)
+	if ok then
+		return service
+	end
+	return nil
+end
+
+local function runEclipseLoop(player)
+	-- Bounded polling rather than a bare GetAttributeChangedSignal():Wait().
+	-- This thread is server-side, so unlike an equivalent client loop it is
+	-- NOT torn down automatically when the player leaves -- a player who
+	-- never buys this relic and then leaves would otherwise leak a
+	-- coroutine parked forever on an event that will never fire again.
+	-- Re-checking player.Parent every couple seconds bounds the leak to at
+	-- most one more sleep cycle after they've actually gone.
+	while player.Parent and (player:GetAttribute("sanctum_eclipse") or 0) <= 0 do
+		task.wait(2)
+	end
+
+	while player.Parent do
+		local level = player:GetAttribute("sanctum_eclipse") or 0
+		local relicData = SanctumUpgrades.GetRelicLevelData("sanctum_eclipse", level)
+
+		if not relicData then
+			-- Shouldn't happen once level >= 1, but never busy-loop on a
+			-- bad read.
+			task.wait(5)
+		else
+			-- Tells the client's purely-decorative countdown pill to start
+			-- a fresh cycle. Ticking in small steps (rather than one
+			-- blocking wait) costs nothing here and keeps this loop
+			-- responsive to the player leaving mid-cycle.
+			EclipseCycleRemote:FireClient(player, relicData.Interval)
+
+			local remaining = relicData.Interval
+			while remaining > 0 and player.Parent do
+				local step = math.min(2, remaining)
+				task.wait(step)
+				remaining -= step
+			end
+
+			if player.Parent then
+				-- Re-read rather than trust the closed-over `level`: an
+				-- upgrade purchased mid-wait sizes the NEXT eclipse
+				-- correctly, matching how Hammer/Laser/Rift behave
+				-- client-side.
+				local currentLevel = player:GetAttribute("sanctum_eclipse") or 0
+				local currentData = SanctumUpgrades.GetRelicLevelData("sanctum_eclipse", currentLevel)
+				if currentData then
+					local PotionTimerService = getPotionTimerService()
+					if PotionTimerService then
+						PotionTimerService.ApplyPotion(player, "EssenceX15", currentData.BoostSeconds)
+					else
+						warn("SanctumService: PotionTimerService unavailable, Eclipse boost not applied for " .. player.Name)
+					end
+					EclipseTriggerRemote:FireClient(player, currentData.BoostSeconds)
+				end
+			end
+		end
+	end
+end
+
+-- =========================================================================
 -- LIFECYCLE
 -- =========================================================================
 
@@ -299,6 +391,12 @@ local function onPlayerAdded(player)
 			end
 		end)
 	end)
+
+	-- Separate spawn from the state-sync one above: Eclipse's own
+	-- "wait until owned" gate means this thread does nothing at all for
+	-- the vast majority of players who never buy the relic, and it
+	-- shouldn't be entangled with (or blocked by) the sync logic.
+	task.spawn(runEclipseLoop, player)
 end
 
 Players.PlayerAdded:Connect(onPlayerAdded)

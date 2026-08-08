@@ -670,6 +670,144 @@ function Juice.GetLayer(playerGui: Instance): Frame?
 end
 
 -- =========================================================================
+-- SHARED RELIC BAR
+-- =========================================================================
+-- One shared, auto-laid-out row that every Sanctum relic's countdown pill
+-- registers into, rather than each relic script hand-picking its own
+-- screen position. Relics currently live across three different
+-- LocalScripts (OrbClicker, CursorCollection, and any future one) --
+-- coordinates picked independently in each file are exactly how pills
+-- silently overlap the moment a new relic is added or the bar needs to
+-- move. A UIListLayout lays every registered pill out automatically, in
+-- registration order, so there's exactly one place to reposition the
+-- whole group.
+
+local relicBarLayer = nil
+
+local function getRelicBar(playerGui: Instance): Frame?
+	if not playerGui then
+		return nil
+	end
+
+	if relicBarLayer and relicBarLayer.Parent then
+		return relicBarLayer
+	end
+
+	local existingGui = playerGui:FindFirstChild("RelicBar")
+	if existingGui then
+		local existingBar = existingGui:FindFirstChild("Bar")
+		if existingBar then
+			relicBarLayer = existingBar
+			return relicBarLayer
+		end
+	end
+
+	local screenGui = Instance.new("ScreenGui")
+	screenGui.Name = "RelicBar"
+	screenGui.ResetOnSpawn = false
+	screenGui.IgnoreGuiInset = true
+	screenGui.DisplayOrder = 45
+	screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	screenGui.Parent = playerGui
+
+	-- Bottom-center, sized as a fixed-height horizontal strip. Individual
+	-- pills size themselves in offset (see Juice.RegisterRelicPill) and the
+	-- UIListLayout below packs them left-to-right in registration order.
+	local bar = Instance.new("Frame")
+	bar.Name = "Bar"
+	bar.AnchorPoint = Vector2.new(0.5, 1)
+	bar.Position = UDim2.new(0.5, 0, 1, -18)
+	bar.Size = UDim2.new(0, 0, 0, 30)
+	bar.AutomaticSize = Enum.AutomaticSize.X
+	bar.BackgroundTransparency = 1
+	bar.Parent = screenGui
+
+	local layout = Instance.new("UIListLayout")
+	layout.FillDirection = Enum.FillDirection.Horizontal
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.VerticalAlignment = Enum.VerticalAlignment.Center
+	layout.Padding = UDim.new(0, 10)
+	layout.Parent = bar
+
+	relicBarLayer = bar
+	return relicBarLayer
+end
+
+Juice.GetRelicBar = getRelicBar
+
+-- Builds one countdown pill (icon-prefixed label + fill bar) and parents
+-- it into the shared relic bar, returning the pieces the caller's own
+-- countdown loop needs to update. `order` controls left-to-right position
+-- among other registered pills -- callers should use a stable, distinct
+-- number per relic so the bar doesn't reshuffle between sessions.
+--
+-- Returns nil if playerGui isn't available yet; callers should treat that
+-- as "try again later" rather than erroring, same as every other Juice
+-- function.
+function Juice.RegisterRelicPill(playerGui: Instance, opts)
+	local bar = getRelicBar(playerGui)
+	if not bar then
+		return nil
+	end
+
+	opts = opts or {}
+	local color = opts.Color or Color3.fromRGB(190, 140, 255)
+
+	local pill = Instance.new("Frame")
+	pill.Name = (opts.Name or "Relic") .. "Countdown"
+	pill.Size = UDim2.fromOffset(122, 30)
+	pill.BackgroundColor3 = Color3.fromRGB(28, 17, 48)
+	pill.BackgroundTransparency = 0.1
+	pill.Visible = false
+	pill.LayoutOrder = opts.Order or 0
+	pill.Parent = bar
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0.5, 0)
+	corner.Parent = pill
+
+	local pillStroke = Instance.new("UIStroke")
+	pillStroke.Color = color
+	pillStroke.Thickness = 1.5
+	pillStroke.Transparency = 0.3
+	pillStroke.Parent = pill
+
+	local fill = Instance.new("Frame")
+	fill.Name = "Fill"
+	fill.Size = UDim2.fromScale(0, 1)
+	fill.BackgroundColor3 = color
+	fill.BackgroundTransparency = 0.75
+	fill.BorderSizePixel = 0
+	fill.Parent = pill
+
+	local fillCorner = Instance.new("UICorner")
+	fillCorner.CornerRadius = UDim.new(0.5, 0)
+	fillCorner.Parent = fill
+
+	local label = Instance.new("TextLabel")
+	label.Name = "Label"
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.GothamBold
+	label.Text = (opts.Icon or "") .. " --"
+	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	label.TextScaled = true
+	label.ZIndex = 2
+	label.Parent = pill
+
+	local textConstraint = Instance.new("UITextSizeConstraint")
+	textConstraint.MaxTextSize = 15
+	textConstraint.Parent = label
+
+	return {
+		Pill = pill,
+		Fill = fill,
+		Label = label,
+		Stroke = pillStroke,
+	}
+end
+
+-- =========================================================================
 -- HELPERS
 -- =========================================================================
 
