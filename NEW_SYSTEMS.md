@@ -1379,6 +1379,53 @@ UIScale, use the actual `hoverScale` argument). `ShopUITweens.client.
 luau` was already checked earlier (section 23) and uses a different,
 unaffected technique (tweens `Size` directly, no `UIScale` involved).
 
+## 28. Friend Bonus -- a free, zero-setup essence bonus for playing with real friends
+
+A small, permanent essence bonus for having real Roblox friends present in
+the same server -- the other proven social/viral mechanic in this genre,
+alongside Group Reward (section 17), and deliberately simpler to turn on:
+Group Reward needs a real Group ID before it does anything, but
+`Player:IsFriendsWith` needs no setup at all, so this is live for every
+player from the moment it's synced in.
+
+**How it works.** `FriendBonusService.server.luau` recomputes, on every
+`PlayerAdded`/`PlayerRemoving`, how many of the OTHER players currently in
+the server are real friends of each player, and mirrors the count onto a
+`FriendsInServer` attribute. `EssenceMultiplier.luau` reads it exactly like
+every other multiplicative bonus in that file (+5% per friend present,
+capped at 4 friends / +20% -- see `FriendBonusConfig.luau`, the single
+source of truth both the multiplier and the client display read from so
+they can't drift apart). A small badge (`FriendBonusIndicator.client.
+luau`) appears top-right whenever the count is above zero, showing the
+live "+N% Essence / N Friends Online" -- and stays completely hidden
+otherwise, since there's nothing to explain in the common case of playing
+solo or with strangers.
+
+**Why this can't be a "compute once at join" cache like Group Reward.**
+Group membership only ever depends on the player being checked. Friend
+presence depends on who ELSE is in the server -- one player joining or
+leaving changes the correct answer for everyone else already there. So
+every join/leave recomputes the whole server's counts (O(players²)
+`IsFriendsWith` calls per event), which is trivial at this game's server
+sizes and only ever runs on the join/leave event itself, never a poll or
+a per-frame loop.
+
+**A real race I found and fixed before committing this.** `IsFriendsWith`
+yields (it's a genuine network call), so two joins/leaves within the same
+second or two produce two overlapping recompute passes -- and without a
+guard, the slower one can finish last and overwrite a newer, more complete
+recompute with stale data. Fixed with the same token-supersession pattern
+`Juice.CountUp` already uses for concurrent count-up animations: a pass
+that's been superseded by a newer one stops writing instead of racing it.
+Self-healing either way (the next join/leave corrects it), but there was
+no reason to ship the race when the fix already existed as a codebase
+idiom.
+
+Neither `FriendsInServer` nor anything about this system is ever written
+by the client -- `IsFriendsWith` is a server-only check against Roblox's
+own friends graph, so unlike some of this session's other additions,
+there's no new trust boundary here at all.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
@@ -1462,6 +1509,14 @@ unaffected technique (tweens `Size` directly, no `UIScale` involved).
     see "Rarity: ... / Discovered: true/false" follow your cursor, and
     that hovering/pressing the popup's buttons scales smoothly instead
     of throwing (same for the Inventory and Zones popups).
+14. **Friend Bonus (section 28) needs a second real Roblox account that's
+    actually friends with your test account** -- Studio's multi-client
+    test (or two Roblox windows logged into two real, friended accounts)
+    is the only way to see it fire; a solo Studio playtest will correctly
+    show nothing. Once both are in the same server, confirm the 👥 badge
+    pops in top-right on BOTH accounts showing "+5% Essence / 1 Friend
+    Online", and that it updates live (no rejoin needed) if one of them
+    leaves.
 
 ## ⚠️ One thing to be careful about
 

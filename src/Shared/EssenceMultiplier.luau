@@ -5,6 +5,7 @@ local rebirthModule = require(ReplicatedStorage:WaitForChild("RebirthHandler"))
 local IdleUpgrades = require(ReplicatedStorage:WaitForChild("IdleUpgrades"))
 local Criticals = require(ReplicatedStorage:WaitForChild("CriticalsController"))
 local GroupRewardConfig = require(ReplicatedStorage:WaitForChild("GroupRewardConfig"))
+local FriendBonusConfig = require(ReplicatedStorage:WaitForChild("FriendBonusConfig"))
 -- Timed lookup with a graceful fallback, NOT a bare WaitForChild.
 --
 -- Every essence reward in the game flows through CalculateMultiplier. If
@@ -81,6 +82,15 @@ function EssenceMultiplier.CalculateMultiplier(plr, gold, crit)
 	-- attribute-gated branch in this function.
 	if plr:GetAttribute("GroupMember") then
 		multiplier *= GroupRewardConfig.BonusMultiplier
+	end
+
+	-- Friend bonus. FriendsInServer is maintained by FriendBonusService,
+	-- recomputed on every join/leave -- tonumber-guarded the same way as
+	-- MomentumStacks/umbralFocus below, since a nil/missing attribute must
+	-- cost this bonus and nothing else, never turn the multiplier non-numeric.
+	local friendsInServer = tonumber(plr:GetAttribute("FriendsInServer")) or 0
+	if friendsInServer > 0 then
+		multiplier *= FriendBonusConfig.GetMultiplierFor(friendsInServer)
 	end
 
 	if gold then
