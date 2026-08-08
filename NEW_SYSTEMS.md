@@ -1134,6 +1134,35 @@ of those fired first instead of fixing it. A missing sound now costs
 only that one glitch effect's audio, never the ability to load into
 the game.
 
+**A second, more severe instance of the exact same bug turned up right
+after fixing the first one.** Near the bottom of the same file:
+
+```lua
+local ready = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("LoadingDone")
+```
+
+Same problem (bare, untimed, blocking) -- but `LoadingDone` isn't a
+sound effect. It's the BindableEvent this script fires
+(`ready:Fire("Done")`) to tell every OTHER script that loading has
+finished. Four separate files -- `SoundController.client.luau`,
+`TheHollowGlitch.client.luau`, `Tutorial.client.luau`, and
+`UpgradeUIManagement.client.luau` -- each independently `WaitForChild`
+this exact same instance, also with no timeout, also with no fallback
+anywhere in the codebase. If it were ever missing, potentially **all
+five scripts** would hang forever, not just this one: no music, no
+Hollowed One ARG system, no tutorial, no Upgrades tree UI, and no way
+past the loading screen to begin with.
+
+Fixed by making this script -- the one that actually fires the event,
+so the natural owner -- create it (and its parent `Remotes` folder) if
+missing, as the very first thing it does after grabbing `PlayerGui`,
+before any of the loading screen's own setup runs. The other four
+scripts' existing `WaitForChild` calls need no changes: as long as
+this one reliably creates the instance early, their waits resolve
+immediately regardless of which script happens to start first --
+`WaitForChild` blocks until an instance appears, it doesn't matter
+which script created it or in what order the scripts started.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
@@ -1178,13 +1207,18 @@ the game.
    section 17), then confirm the 👥 button opens the right group page
    and disappears once your test account actually joins that group and
    rejoins the game.
-10. **Confirm the loading screen still plays its glitch sounds** (see
-    section 22) -- the fix should be silent/invisible if
-    `SFX/GlitchSounds/Sound1-3` are already set up correctly in Studio.
-    If you ever DON'T hear them, that now means one of those five
-    instances is actually missing or misnamed -- worth fixing in Studio
-    directly, since previously that same problem would have hung the
-    loading screen for every player with no clue why.
+10. **Confirm the loading screen still plays its glitch sounds AND still
+    reaches the game** (see section 22, both fixes). Both should be
+    silent/invisible if everything's already set up correctly in
+    Studio -- press play once and confirm you hear the glitch sounds
+    during loading, then confirm the loading screen actually fades out
+    and drops you into the game, the music starts (`SoundController`),
+    and (if you've played through the tutorial before on that account)
+    the Hollowed One ambient effects are running. If loading ever
+    hangs and never fades out, check that `ReplicatedStorage.Remotes.
+    LoadingDone` actually exists -- this fix creates it automatically
+    now, so that specific failure shouldn't be possible anymore, but
+    it's worth knowing what to look for if loading ever seems stuck.
 
 ## ⚠️ One thing to be careful about
 

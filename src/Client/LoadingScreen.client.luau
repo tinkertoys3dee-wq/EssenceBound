@@ -43,6 +43,31 @@ local UserInputService = game:GetService("UserInputService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
+-- "LoadingDone" (a BindableEvent under ReplicatedStorage.Remotes, despite
+-- living alongside the real client-server RemoteEvents/Functions -- it's
+-- purely a local, same-client signal) is what this script fires once
+-- loading finishes, and FOUR other scripts (SoundController, TheHollow-
+-- Glitch, Tutorial, UpgradeUIManagement) all separately WaitForChild it
+-- with no timeout and no fallback anywhere in the codebase. If it was
+-- ever missing, all five scripts would hang forever waiting on it (this
+-- one included, further down) -- so this script, as the one that
+-- actually fires it, takes ownership of guaranteeing it exists, as early
+-- as possible so the other four scripts' own WaitForChild calls resolve
+-- immediately regardless of which script happens to start first.
+local remotesFolder = game:GetService("ReplicatedStorage"):FindFirstChild("Remotes")
+if not remotesFolder then
+	remotesFolder = Instance.new("Folder")
+	remotesFolder.Name = "Remotes"
+	remotesFolder.Parent = game:GetService("ReplicatedStorage")
+end
+
+local loadingDoneEvent = remotesFolder:FindFirstChild("LoadingDone")
+if not loadingDoneEvent then
+	loadingDoneEvent = Instance.new("BindableEvent")
+	loadingDoneEvent.Name = "LoadingDone"
+	loadingDoneEvent.Parent = remotesFolder
+end
+
 --============================================================
 -- SECTION 2: CONFIG
 --============================================================
@@ -1639,7 +1664,9 @@ Lifecycle:track(task.spawn(function()
 end))
 
 local inputConnection
-local ready = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("LoadingDone")
+-- Reuses the reference resolved (and created if missing) up in SECTION 1,
+-- rather than a second WaitForChild lookup for the same instance.
+local ready = loadingDoneEvent
 
 inputConnection = UserInputService.InputBegan:Connect(function(_, gameProcessed)
 	if gameProcessed or playerReady or not acceptAnyKeyInput then return end
