@@ -1163,6 +1163,65 @@ immediately regardless of which script happens to start first --
 `WaitForChild` blocks until an instance appears, it doesn't matter
 which script created it or in what order the scripts started.
 
+## 23. The most severe finding this pass: a hang risk that could have silently disabled every purchase in the game
+
+While checking the Shop UI (`ShopUITweens.client.luau`, under
+`src/StarterGui`) for how it talks to `ProductPurchaseHandler.server.
+luau`, the same "bare WaitForChild, no fallback" bug class turned up
+twice more in that file -- and one of them is arguably the worst thing
+this whole pass found, worse than the loading-screen ones.
+
+```lua
+local sound = game:GetService("SoundService"):WaitForChild("SFX"):WaitForChild("UI"):WaitForChild("RobuxPurchase")
+-------------------------------------------------------------------
+-- 2) GAME PASS PURCHASE HANDLING
+-------------------------------------------------------------------
+MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, gamePassId, wasPurchased)
+```
+
+This lookup for a purchase-confirmation sound effect sits **before**
+`MarketplaceService.ProcessReceipt` gets assigned further down the same
+script, and before `PromptGamePassPurchaseFinished` gets connected. If
+`SFX/UI/RobuxPurchase` were ever missing or renamed in Studio, this
+would hang here forever -- and since Lua runs a script's top level in
+order, NONE of the purchase-granting logic below it would ever get
+wired up. Not "this one sound doesn't play" -- **every gamepass and
+every developer product in the entire game would silently stop
+working**, for as long as the server ran, with nothing in the output
+to explain why. Whether Roblox holds unprocessed receipts for a retry
+once a server eventually restarts with a fixed script is not something
+I want to bet real purchases on finding out.
+
+Fixed with the same timed-lookup + `safePlaySound()` guard pattern as
+the loading screen sounds (section 22) -- a missing sound now costs
+only that one sound effect, never the game's ability to process a
+single purchase.
+
+**Second, smaller finding in the same file:** further down, the
+RemoteEvent that lets the Shop UI trigger a purchase prompt
+(`ReplicatedStorage.Remotes.RequestPurchase`) was also looked up with
+a bare `FindFirstChild` and no creation fallback, immediately followed
+by `.OnServerEvent:Connect(...)` on the result. This one sits AFTER
+`ProcessReceipt` is assigned, so a crash here wouldn't have broken
+real purchase granting -- but it would have silently broken the Shop
+UI's ability to ever open a purchase prompt at all. Fixed with the
+same `ensureRemote`-style fallback used everywhere else in this
+codebase.
+
+**Scope note, so this doesn't oversell itself:** there are roughly 326
+bare/untimed `WaitForChild(` calls across this codebase in total --
+nowhere near all of them have been individually audited. What this
+pass specifically targeted was the highest-consequence category: a
+lookup sitting at the top level of a script that gates something
+critical for every player (loading in at all; every purchase in the
+game) before anything else in that script gets wired up. Those two
+scripts (`LoadingScreen.client.luau`, `ProductPurchaseHandler.server.
+luau`) are now clean of that specific failure mode. The bulk of the
+326 are almost certainly fine -- `WaitForChild("PlayerGui")`,
+`WaitForChild("PlayerData")` and similar fundamental/always-present
+lookups appear dozens of times each -- but "almost certainly fine"
+isn't the same as verified, and a full pass wasn't attempted here.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole

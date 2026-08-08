@@ -200,7 +200,28 @@ local PRODUCT_HANDLERS = {
 	end,
 }
 
-local sound = game:GetService("SoundService"):WaitForChild("SFX"):WaitForChild("UI"):WaitForChild("RobuxPurchase")
+-- Was a bare WaitForChild chain with no timeout, and -- critically --
+-- this runs BEFORE ProcessReceipt gets assigned further down. If
+-- SFX/UI/RobuxPurchase were ever missing or renamed in Studio, this
+-- would hang here forever and NONE of the purchase-granting logic
+-- below it (ProcessReceipt, PromptGamePassPurchaseFinished, the
+-- join-time gamepass re-grant) would ever get wired up -- silently
+-- disabling every gamepass and developer product in the game, not
+-- just this one sound effect. Timed lookup + a safePlay guard at both
+-- call sites (this codebase's established pattern) means a missing
+-- sound now costs only its own sound effect, never the game's ability
+-- to process a single purchase.
+local sfxFolder = game:GetService("SoundService"):FindFirstChild("SFX")
+	or game:GetService("SoundService"):WaitForChild("SFX", 5)
+local uiFolder = sfxFolder and (sfxFolder:FindFirstChild("UI") or sfxFolder:WaitForChild("UI", 5))
+local sound = uiFolder and (uiFolder:FindFirstChild("RobuxPurchase") or uiFolder:WaitForChild("RobuxPurchase", 5))
+
+local function safePlaySound()
+	if sound then
+		sound:Play()
+	end
+end
+
 -------------------------------------------------------------------
 -- 2) GAME PASS PURCHASE HANDLING
 -------------------------------------------------------------------
@@ -208,7 +229,7 @@ MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, gameP
 	if not wasPurchased then
 		return
 	end
-	sound:Play()
+	safePlaySound()
 	require(player:WaitForChild("PlayerData")).RobuxSpent += MarketplaceService:GetProductInfoAsync(gamePassId).PriceInRobux
 	local handler = GAMEPASS_HANDLERS[gamePassId]
 	if not handler then
@@ -280,8 +301,8 @@ MarketplaceService.ProcessReceipt = function(receiptInfo)
 	if historyOk and alreadyGranted then
 		return Enum.ProductPurchaseDecision.PurchaseGranted
 	end
-	
-	sound:Play()
+
+	safePlaySound()
 	local handler = PRODUCT_HANDLERS[receiptInfo.ProductId]
 	require(player:WaitForChild("PlayerData")).RobuxSpent += receiptInfo.CurrencySpent
 
@@ -314,9 +335,29 @@ end
 -------------------------------------------------------------------
 -- 4) CLIENT-FACING REMOTE (lets your Shop UI trigger purchase prompts)
 -------------------------------------------------------------------
+-- Was two bare FindFirstChild calls with no creation fallback, then
+-- indexing straight into requestPurchaseRemote.OnServerEvent below --
+-- if "Remotes" or "RequestPurchase" didn't already exist, this would
+-- crash the whole script right here. Everything ABOVE this point
+-- (ProcessReceipt, PromptGamePassPurchaseFinished, the join-time
+-- gamepass re-grant) is already wired up by the time execution reaches
+-- this line, so a crash here wouldn't have broken real purchase
+-- granting -- but it would silently break the Shop UI's ability to
+-- ever prompt a purchase in the first place. ensureRemote-style
+-- fallback, same pattern used everywhere else in this codebase.
 local remotesFolder = ReplicatedStorage:FindFirstChild("Remotes")
+if not remotesFolder then
+	remotesFolder = Instance.new("Folder")
+	remotesFolder.Name = "Remotes"
+	remotesFolder.Parent = ReplicatedStorage
+end
 
 local requestPurchaseRemote = remotesFolder:FindFirstChild("RequestPurchase")
+if not requestPurchaseRemote then
+	requestPurchaseRemote = Instance.new("RemoteEvent")
+	requestPurchaseRemote.Name = "RequestPurchase"
+	requestPurchaseRemote.Parent = remotesFolder
+end
 
 requestPurchaseRemote.OnServerEvent:Connect(function(player, purchaseType, id)
 	id = tonumber(id)
