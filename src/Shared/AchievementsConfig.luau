@@ -97,6 +97,17 @@ AchievementsConfig.Milestones = {
 		Reward = { Type = "Essence", Amount = 300 },
 	},
 	{
+		Id = "milestone_dedicated_player", Name = "Dedicated Player", Icon = "⏳",
+		Description = "Play EssenceBound for 3 hours total.",
+		-- PlayTime is seconds, already tracked and monotonic. Only actually
+		-- increments on a save cycle (leave, or the 120s autosave in
+		-- PlayerDataHandler's savePlayerData) rather than continuously, so
+		-- this milestone's progress bar updates in ~2-minute steps, not
+		-- live -- fine at a 3-hour target, imperceptible in practice.
+		Stat = "PlayTime", Target = 3 * 60 * 60,
+		Reward = { Type = "Essence", Amount = 800 },
+	},
+	{
 		Id = "milestone_essence_adept", Name = "Essence Adept", Icon = "🍀",
 		Description = "Gather 50,000 essence in total (lifetime).",
 		Stat = "TotalEssenceGathered", Target = 50000,

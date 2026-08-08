@@ -627,13 +627,18 @@ an actual "claim +2,000 essence" button at the end of it.
 contract as every other `*Config`/`*Upgrades` module: the 13 badges (name/
 icon/description reconstructed by grepping every `BS:AwardBadgeAsync`
 call site in the codebase to find what actually triggers each one -- see
-the file's own comment block for the full map) plus 9 new Milestones.
+the file's own comment block for the full map) plus 10 new Milestones.
 Every Milestone's trigger stat (`TotalEssenceGathered`, `CriticalEssence`,
-`Rebirths`, `ManualStormsSummoned`, `UniqueEssences`) is one that's
-already tracked, server-owned, and monotonic (never decreases), which is
-what makes it safe for a milestone to stay "complete" forever once
-crossed -- none of them key off RebirthCurrency's current balance, since
-that one's spendable and would let a milestone un-complete itself.
+`Rebirths`, `ManualStormsSummoned`, `UniqueEssences`, `PlayTime`) is one
+that's already tracked, server-owned, and monotonic (never decreases),
+which is what makes it safe for a milestone to stay "complete" forever
+once crossed -- none of them key off RebirthCurrency's current balance,
+since that one's spendable and would let a milestone un-complete itself.
+(`PlayTime` was added in a follow-up to this section, once its update
+cadence was confirmed -- it only actually increments on a save cycle,
+leave or the 120s autosave, not continuously, so that one milestone's
+progress bar moves in ~2-minute steps rather than live. Fine at a 3-hour
+target.)
 
 The two Hollowed-ARG badges ("It Has Noticed You" / "Nothing Left
 Hidden") are marked `Secret = true` and rendered as "???" until earned --
