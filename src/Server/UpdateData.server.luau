@@ -10,6 +10,7 @@ local ALLOWED_ROOTS = {
 	Settings = true,
 	SeenTutorial = true,
 	SeenFirstCrit = true,
+	SeenFavoritePrompt = true,
 	HollowedMilestones = true,
 }
 
@@ -53,6 +54,9 @@ UpdateData.OnServerEvent:Connect(function(plr, Value, Operator, ...)
 				end
 				if path[1] == "SeenFirstCrit" then
 					plr:SetAttribute("SeenFirstCrit", Value)
+				end
+				if path[1] == "SeenFavoritePrompt" then
+					plr:SetAttribute("SeenFavoritePrompt", Value)
 				end
 			else
 				-- Otherwise, dig deeper into the hierarchy structure

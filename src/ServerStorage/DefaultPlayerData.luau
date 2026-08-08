@@ -31,6 +31,11 @@ local DefaultPlayerData = {
 	-- taste of the game's biggest visual payoff instead of leaving it to
 	-- a 0% base crit chance and a 20-click guaranteed-streak wait.
 	SeenFirstCrit = false,
+	-- Gates PromptFav.client.luau's one-time favorite prompt. Was previously
+	-- an unconditional loop re-prompting every 5 minutes forever with no
+	-- persisted memory at all -- this flag is what makes "one time" actually
+	-- mean once, across rejoins too, not just within a single session.
+	SeenFavoritePrompt = false,
 	Badges = {
 		[3032854636359044] = false, --- First Steps
 		[4008378896042305] = false, -- Welcome to the grind
