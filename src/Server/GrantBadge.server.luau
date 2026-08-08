@@ -23,7 +23,19 @@ badgefunc.OnServerEvent:Connect(function(plr, ID)
 
 	if not plr:GetAttribute(ID) then
 		plr:SetAttribute(ID, true)
-		require(plr:WaitForChild("PlayerData")).Badges[ID] = true
-		BS:AwardBadgeAsync(plr.UserId,ID)
+
+		-- Every other AwardBadgeAsync call in this codebase (StormController,
+		-- RebirthHandler) uses the badge id as a NUMBER, both for the
+		-- Badges[id] table write and the API call itself -- matching
+		-- DefaultPlayerData.Badges' own numeric keys. This handler's `ID`
+		-- arrives as the STRING the client sent, which would silently create
+		-- a SEPARATE string-keyed entry alongside the real numeric-keyed
+		-- default instead of updating it. tonumber() here can only make this
+		-- more consistent with every other badge grant, never less --
+		-- SetAttribute above intentionally keeps the string, since Roblox
+		-- attribute names must be strings regardless.
+		local numericId = tonumber(ID) or ID
+		require(plr:WaitForChild("PlayerData")).Badges[numericId] = true
+		BS:AwardBadgeAsync(plr.UserId, numericId)
 	end
 end)

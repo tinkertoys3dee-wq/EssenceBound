@@ -1020,6 +1020,22 @@ one of these two specific badges a little early. What it closes is the
 much bigger hole: claiming literally any badge in the game, on demand,
 with zero validation.
 
+**Related, smaller fix in the same file:** every other `AwardBadgeAsync`
+call in this codebase (`StormController.luau`, `RebirthHandler.server.
+luau`) passes the badge id as a NUMBER, matching `DefaultPlayerData.
+Badges`' own numeric keys -- `GrantBadge.server.luau` was the only one
+using the raw STRING the client sent, which would write a separate,
+string-keyed entry into `PlayerData.Badges` instead of updating the
+real numeric-keyed default. `tonumber()`'d before the `Badges[...]`
+write and the `AwardBadgeAsync` call now (the `SetAttribute` call
+correctly keeps the string -- Roblox attribute names must be strings
+regardless of what the id conceptually is).
+
+Also removed a `print(playerData)` left in `StormController.luau`'s
+`_startStorm` -- harmless, but it fires on every single storm
+(automatic, manual, and purchased), so it was real console spam in a
+live server.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole

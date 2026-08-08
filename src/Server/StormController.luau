@@ -148,7 +148,6 @@ end
 
 function StormController:_startStorm(isManual)
 	local playerData = self.GetPlayerData(self.Player)
-print(playerData)
 	local duration = isManual and MANUAL_STORM_DURATION or getDurationSeconds(playerData)
 	local spawnInterval = getSpawnInterval(playerData)
 	-- Manual summons don't roll golden - that stays a reward tied to the
