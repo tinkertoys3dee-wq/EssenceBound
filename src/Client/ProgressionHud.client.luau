@@ -969,18 +969,25 @@ function refreshDaily()
 		)
 	end
 
+	-- Only shown once a freeze is actually banked -- nothing to explain
+	-- (and nothing about being "at risk") when there isn't one yet.
+	local freezeSuffix = ""
+	if (daily.StreakFreezes or 0) > 0 then
+		freezeSuffix = ("  •  🛡️ x%d"):format(daily.StreakFreezes)
+	end
+
 	if daily.CanClaim then
 		dailyClaimButton.Text = "CLAIM DAY " .. tostring(daily.PendingStreak or 1)
 		dailyClaimButton.BackgroundColor3 = THEME.Green
 		dailyClaimButton.Active = true
-		dailyStatusLabel.Text = ("Current streak: %d day(s)  •  Best: %d")
-			:format(daily.Streak or 0, daily.BestStreak or 0)
+		dailyStatusLabel.Text = ("Current streak: %d day(s)  •  Best: %d%s")
+			:format(daily.Streak or 0, daily.BestStreak or 0, freezeSuffix)
 	else
 		dailyClaimButton.Text = "CLAIMED TODAY"
 		dailyClaimButton.BackgroundColor3 = THEME.Locked
 		dailyClaimButton.Active = false
-		dailyStatusLabel.Text = ("Streak: %d day(s)  •  Next reward in %s")
-			:format(daily.Streak or 0, ProgressionConfig.FormatDuration(daily.SecondsUntilReset or 0))
+		dailyStatusLabel.Text = ("Streak: %d day(s)  •  Next reward in %s%s")
+			:format(daily.Streak or 0, ProgressionConfig.FormatDuration(daily.SecondsUntilReset or 0), freezeSuffix)
 	end
 end
 

@@ -168,6 +168,7 @@ local function getProgression(player)
 	progression.QuestRebirths = tonumber(progression.QuestRebirths) or 0
 	progression.TotalQuestsCompleted = tonumber(progression.TotalQuestsCompleted) or 0
 	progression.TotalDailiesClaimed = tonumber(progression.TotalDailiesClaimed) or 0
+	progression.StreakFreezes = tonumber(progression.StreakFreezes) or 0
 
 	if type(progression.QuestProgress) ~= "table" then
 		progression.QuestProgress = {}
@@ -352,11 +353,16 @@ local function pushState(player)
 	-- A streak is "claimable today" if they haven't already claimed today.
 	local canClaimDaily = progression.LastClaimDay ~= today
 	-- What they'd be claiming: continuing the streak if yesterday was the
-	-- last claim, otherwise starting fresh at day 1.
+	-- last claim (or the day before, if a banked freeze would cover the
+	-- gap -- kept in sync with the claim handler's own condition below so
+	-- this preview never shows something the claim itself wouldn't
+	-- actually do), otherwise starting fresh at day 1.
 	local pendingStreak = 1
 	if progression.LastClaimDay == today then
 		pendingStreak = math.max(1, progression.Streak)
 	elseif progression.LastClaimDay == today - 1 then
+		pendingStreak = progression.Streak + 1
+	elseif progression.LastClaimDay == today - 2 and progression.StreakFreezes > 0 then
 		pendingStreak = progression.Streak + 1
 	end
 
@@ -366,6 +372,7 @@ local function pushState(player)
 			Streak = progression.Streak,
 			BestStreak = progression.BestStreak,
 			PendingStreak = pendingStreak,
+			StreakFreezes = progression.StreakFreezes,
 			SecondsUntilReset = ProgressionConfig.GetSecondsUntilNextDay(),
 		},
 		Quests = questState,
@@ -494,9 +501,19 @@ ClaimDailyRemote.OnServerEvent:Connect(function(player)
 		return -- already claimed today
 	end
 
-	-- Consecutive day continues the streak; any longer gap starts over.
+	-- Consecutive day continues the streak. Exactly one missed day still
+	-- continues it if a freeze is banked -- see ProgressionConfig's
+	-- "STREAK FREEZES" note for why this stays consistent with the
+	-- existing "deliberately gentle" design rather than working against
+	-- it. Two or more missed days is still a full reset regardless: a
+	-- freeze forgives one bad day, not an extended absence.
+	local usedFreeze = false
 	if progression.LastClaimDay == today - 1 then
 		progression.Streak += 1
+	elseif progression.LastClaimDay == today - 2 and progression.StreakFreezes > 0 then
+		progression.StreakFreezes -= 1
+		progression.Streak += 1
+		usedFreeze = true
 	else
 		progression.Streak = 1
 	end
@@ -504,6 +521,17 @@ ClaimDailyRemote.OnServerEvent:Connect(function(player)
 	progression.LastClaimDay = today
 	progression.BestStreak = math.max(progression.BestStreak, progression.Streak)
 	progression.TotalDailiesClaimed += 1
+
+	-- Earned automatically, same cadence as the day-7 "standout" reward
+	-- (every 7/14/21/... days of streak) -- capped so this stays a safety
+	-- net for one bad day rather than unlimited insurance.
+	local earnedFreeze = false
+	if progression.Streak % ProgressionConfig.StreakFreezeEveryNDays == 0
+		and progression.StreakFreezes < ProgressionConfig.MaxStreakFreezes
+	then
+		progression.StreakFreezes += 1
+		earnedFreeze = true
+	end
 
 	local reward = ProgressionConfig.GetDailyRewardForStreak(progression.Streak)
 	local essence = ProgressionConfig.ScaleReward(reward.Essence, getRebirths(player))
@@ -517,7 +545,15 @@ ClaimDailyRemote.OnServerEvent:Connect(function(player)
 	if reward.PotionLabel then
 		subtitle ..= "  " .. reward.PotionLabel
 	end
-	toast(player, reward.Icon, ("Day %d Streak!"):format(progression.Streak), subtitle)
+	if earnedFreeze then
+		subtitle ..= "  +1 🛡️ Streak Freeze"
+	end
+
+	local title = ("Day %d Streak!"):format(progression.Streak)
+	if usedFreeze then
+		title = "🛡️ Streak Saved -- " .. title
+	end
+	toast(player, reward.Icon, title, subtitle)
 
 	pushState(player)
 end)

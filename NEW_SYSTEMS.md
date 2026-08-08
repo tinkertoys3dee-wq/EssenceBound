@@ -1588,6 +1588,38 @@ each `BindToClose` task now waits (capped at 20s) for `saveLocks
 pre-existing in-flight save gets the time it needs instead of being
 silently treated as already finished.
 
+## 33. Streak Freeze -- missing one day no longer has to erase the whole streak
+
+`ProgressionConfig.luau` already documented, in its own words, that the
+daily streak's reset-on-miss is "kept deliberately gentle: nothing is
+ever permanently lost, there's no way to pay to restore a streak, and
+the UI never uses countdown pressure about losing it." That's a good
+principle, and worth actually respecting rather than quietly working
+around it -- so this doesn't touch any of it. It adds a second gentle
+thing alongside it.
+
+**Streak Freeze**: earned for free every 7 days of an active streak
+(the same cadence as the existing day-7 "standout" reward), banked up
+to 3. Missing exactly one day now consumes a freeze and continues the
+streak instead of resetting it, if one is banked -- missing two or
+more days still resets it fully, same as always. Never purchasable
+(no monetization angle on loss aversion, which is exactly the kind of
+thing the existing "gentle" design was already avoiding), and never
+shown as a warning or a countdown -- the daily panel's status line
+just quietly shows `🛡️ x2` once you've earned any, and a claim that
+uses one says so in its reward toast ("🛡️ Streak Saved -- Day 6
+Streak!") rather than the game ever telling you a streak is at risk
+beforehand.
+
+Touches three files, each holding exactly the piece that belongs
+there: `ProgressionConfig.luau` has the two tunables (frequency, cap)
+alongside the existing streak config; `ProgressionService.server.luau`
+is the only place that reads or writes `StreakFreezes` (consume/earn
+logic in the claim handler, included in the sync payload, and folded
+into the `PendingStreak` preview so the panel never shows a number the
+claim itself wouldn't actually produce); `ProgressionHud.client.luau`
+only adds the one status-line suffix, no new panel or button.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
@@ -1689,6 +1721,20 @@ silently treated as already finished.
     from you poking a remote directly), that's a sign
     `MAX_QUANTITY_PER_COLLECTION` needs raising -- it's a single number
     at the top of `OrbClickManager.server.luau`.
+16. **Streak Freeze (section 33) needs a simulated missed day** to see
+    fire -- waiting a real day in Studio obviously isn't practical. With
+    a test account: claim once normally, then in the command bar run
+    `require(game.Players.YourName.PlayerData).Progression.LastClaimDay -= 2`
+    to fake having missed yesterday, then claim again. With 0 freezes
+    banked (the default for a fresh save) this should reset to Day 1 as
+    normal -- confirm the OLD behavior still works. To see a freeze
+    actually save a streak, first get one banked (either claim 7 days in
+    a row the same way, decrementing `LastClaimDay` by 1 between each
+    claim instead of 2, or just run `...Progression.StreakFreezes = 1`
+    directly), then repeat the `-= 2` simulated-miss step -- the streak
+    should continue instead of resetting, the toast should read "🛡️
+    Streak Saved", and the daily panel's status line should show one
+    fewer freeze banked.
 
 ## ⚠️ One thing to be careful about
 

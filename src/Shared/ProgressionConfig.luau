@@ -147,6 +147,21 @@ function ProgressionConfig.GetDailyRewardForStreak(streak: number)
 end
 
 -- =========================================================================
+-- STREAK FREEZES
+-- =========================================================================
+-- Missing a day still resets the streak by default -- that stays exactly
+-- as gentle as the note above describes (no pay-to-restore, no countdown-
+-- pressure UI). A freeze is the same gentleness pointed the other
+-- direction: earned for free by keeping a streak going, it forgives
+-- exactly one missed day instead of the whole thing resetting, so one bad
+-- week doesn't erase a genuinely-earned streak. Never purchasable, never
+-- advertised as "at risk" -- it either quietly saves a streak or it
+-- doesn't (see ProgressionService's claim handler and ProgressionHud's
+-- status line).
+ProgressionConfig.StreakFreezeEveryNDays = 7 -- one freeze per full week of streak
+ProgressionConfig.MaxStreakFreezes = 3 -- bankable cap -- a safety net, not unlimited insurance
+
+-- =========================================================================
 -- 2. DAILY QUESTS
 -- =========================================================================
 -- Trackable stat keys. ProgressionService increments these; quests just
