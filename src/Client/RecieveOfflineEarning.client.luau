@@ -581,10 +581,16 @@ local function populateRewards(rewardTable)
 		order += 1
 	end
 
-	-- Update the subtitle with a count of how many essence types were earned
+	-- Update the subtitle with a count of how many rows are shown below.
+	-- Was "N essence types" -- accurate when this table only ever held
+	-- essence names, but IdleService's comeback bonus (see
+	-- GrantOfflineEarnings) now folds a "Welcome Back Bonus" entry into
+	-- this same table, which isn't an essence type at all. "Reward" is
+	-- correct either way, whether every entry is a real essence or one
+	-- of them is the comeback bonus.
 	local typeCount = #sortedNames
 	subtitle.Text = string.format(
-		"You earned %d essence type%s while away",
+		"You earned %d reward%s while away",
 		typeCount,
 		typeCount == 1 and "" or "s"
 	)

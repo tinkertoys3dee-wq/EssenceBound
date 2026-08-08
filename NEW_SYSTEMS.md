@@ -1077,6 +1077,24 @@ Net result: one real vulnerability (GrantBadge), one debug-print
 cleanup here plus the one already fixed in `StormController.luau`
 (section 19), everything else already correct.
 
+## 21. Fixed the offline-earnings popup miscounting the comeback bonus
+
+`RecieveOfflineEarning.client.luau` was written when every key in the
+reward table it receives was a real essence type, and it says so:
+"You earned N essence types while away". Section 14's comeback bonus
+(`IdleService.server.luau`'s `GrantOfflineEarnings`) folds a
+`"🎉 Welcome Back Bonus"` entry into that exact same table so it could
+reuse this popup rather than needing its own -- which means a lapsed
+player claiming their comeback bonus alongside real essence would see
+something like "You earned 3 essence types while away" when only 1-2
+of those were actually essence. No crash risk (the icon-color lookup
+already falls back to a default for an unrecognized name, and Lua's
+`string.lower` just passes non-ASCII bytes like the emoji through
+unchanged) -- just a small, real, factually wrong line of copy on a
+moment that's specifically meant to feel good. Changed "essence type"
+to "reward", which reads naturally and is correct regardless of what's
+actually in the table.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
