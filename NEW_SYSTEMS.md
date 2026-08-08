@@ -6,6 +6,55 @@ existing gameplay system was restructured.
 
 ---
 
+## ⚠️⚠️ 0. THREE PAID GAMEPASSES DO NOTHING -- READ THIS FIRST
+
+Found while reading `ProductPurchaseHandler.server.luau` for unrelated
+reasons. **Deliberately not fixed this pass** -- this is a real-money,
+business-facing decision (what should a paid feature actually do, at the
+price it's already listed at, for players who may have already bought
+it), not a balance/engagement call I should make unilaterally the way
+everything else in this doc was.
+
+Three Game Passes take a real player's real Robux, set a flag
+(`data.Gamepasses[id].Owned = true` and a matching player Attribute),
+and then **nothing else in the entire codebase ever reads that flag**.
+Grepped every one of these IDs across `src/` to confirm -- zero other
+references, in any file:
+
+| Game Pass | Id | What it currently does |
+|---|---|---|
+| Lucky Finder (+50% Luck) | `1907239833` | Sets a flag. Nothing reads it. |
+| Ultra Luck (+300%) | `1906063939` | Sets a flag. Nothing reads it. |
+| Dedicated Essence | `1907077899` | Sets a flag. Nothing reads it. |
+
+For comparison, the other four Game Passes in the same file all DO
+something real: VIP Rank (`1909291891`) gives a gold name/icon outline
+(`UIInitializerHooks.client.luau`), 2x Essence Multiplier (`1907605899`)
+is read in `EssenceMultiplier.CalculateMultiplier`, Auto Absorption
+(`1907677938`) is read in `CursorCollection.client.luau`'s collection
+loop, and Material Alchemist (`1907863864`) doubles the offline-earnings
+base rate in `IdleService.server.luau`. Only these three "Luck"/
+"Dedicated Essence" ones are stubs.
+
+**Why I didn't just implement something:** "Luck" could plausibly mean
+crit chance, golden-storm chance, essence rarity odds, or something else
+entirely -- and whatever it's priced at was presumably priced against
+SOME intended effect size. Guessing wrong either shortchanges someone
+who already paid for it, or accidentally breaks the economy balance this
+whole pass spent a lot of care on. That's a decision for whoever set the
+price and wrote "Luck" and "Dedicated Essence" on the store listing, not
+something to invent from a variable name.
+
+**What actually needs to happen:** decide what each pass should do, then
+wire it into the relevant system the same way the four working passes
+already do it (an attribute check + a multiplier/bonus in the right
+place). If any of these three has already been purchased by a real
+player, that's also worth knowing before deciding what "fixing" it even
+means (does it retroactively start working now that a system exists for
+it, or does the definition just get written and apply going forward).
+
+---
+
 ## 1. The bug that was causing the bad metrics
 
 `src/Shared/EssenceMultiplier.luau` multiplied **every** essence reward in
