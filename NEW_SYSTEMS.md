@@ -1222,6 +1222,67 @@ luau`) are now clean of that specific failure mode. The bulk of the
 lookups appear dozens of times each -- but "almost certainly fine"
 isn't the same as verified, and a full pass wasn't attempted here.
 
+## 24. Prestige Aura -- wearing rebirth status, not just tracking it
+
+Rebirths already unlock real content (`RebirthHandler.luau`'s
+`MILESTONES`: new upgrade routes, the Prestige Shop, the Infinity
+Core), but nothing about having reached one was ever visible after the
+moment it happened -- a player with 40 rebirths looked identical, at a
+glance, to one with 1. `PrestigeAura.client.luau` fixes that with a
+persistent, ambient visual around the great orb that grows with every
+milestone: a soft glow that gets more layered and colorful, then an
+orbiting glyph ring from "Ascended" (10 rebirths) up. Crossing into a
+new tier plays a real moment -- a burst, a "✨ TIER NAME ✨" float-text,
+and a punch -- everything else in this codebase already uses for a
+milestone that matters.
+
+**Tier thresholds and names are read from `RebirthModule.
+GetMilestoneThresholds()` / `GetMilestone()`** -- a small, safe
+addition to `RebirthHandler.luau` (a sorted list of `MILESTONES`' own
+keys) -- rather than a second, hand-maintained copy of `1/5/10/25/50`
+living in the aura script. If the milestones ever change, the aura
+follows automatically, with zero risk of drifting out of sync.
+
+Purely a client-side visual: reads the player's own already-
+server-authoritative `Rebirths` attribute and never grants, requests,
+or assumes anything. Deleting this script changes nothing about the
+economy.
+
+**Three real bugs caught and fixed during my own review before this
+ever got committed**, worth naming since they're all a good reminder
+that "looks plausible" and "is correct" aren't the same thing:
+
+1. A garbled leftover expression in the celebration text
+   (`(x).."!":upper() and (...)`) from composing the string in one
+   pass and not cleaning up after changing my mind mid-expression --
+   possibly not even a syntax error, just deeply confusing and
+   fragile. Rewritten as a plain local variable.
+2. The ambient "breathing pulse" read `disc.BackgroundTransparency`
+   as its own baseline whenever a cached `BaseTransparency` attribute
+   was missing -- but nothing ever SET that attribute, so it always
+   fell back to reading last frame's OUTPUT as this frame's baseline.
+   Since the pulse can only ever push transparency up, never down,
+   this would have compounded every single frame until the outer
+   glow layer settled at fully invisible within minutes and never
+   recovered. Fixed by actually caching the true base value once,
+   in `applyTier`, and having the pulse loop only ever read that.
+3. The tier-up celebration punched `Juice.GetScale(LargeOrb)` --
+   but `GetScale` finds-or-creates via `FindFirstChildOfClass`, and
+   `LargeOrb` already has its own `UIScale` that `OrbClicker.client.
+   luau`'s click/hover feedback animates constantly. Punching that
+   shared instance would have fought those tweens on the single
+   most-clicked element in the entire game. Fixed to punch the aura's
+   own holder instead, which owns no UIScale anywhere else.
+
+A fourth issue was a design gap rather than a bug: the aura's
+`AnchorPoint`/`Position` were originally hardcoded to `(0.5, 0.5)` on
+the assumption `LargeOrb` is center-anchored -- a guess this repo can't
+actually verify, since Argon syncback doesn't capture UI property
+values. Changed to copy `LargeOrb.AnchorPoint`/`Position`/`Size`
+directly, so the aura starts in exactly the same rectangle as the orb
+regardless of how it's really anchored, and stays centered on it when
+scaled up rather than risking a lopsided drift to one side.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
@@ -1278,6 +1339,21 @@ isn't the same as verified, and a full pass wasn't attempted here.
     LoadingDone` actually exists -- this fix creates it automatically
     now, so that specific failure shouldn't be possible anymore, but
     it's worth knowing what to look for if loading ever seems stuck.
+11. **Prestige Aura (section 24) needs an account with real rebirths**
+    to see anything -- a fresh save shows nothing at all, correctly.
+    Fastest way to check it: give a test account `Rebirths` levels 1,
+    5, 10, 25 and 50 via the command bar one at a time
+    (`game.Players.YourName:SetAttribute("Rebirths", 10)`) and confirm
+    the glow around the great orb changes at each one, growing more
+    elaborate, plus a burst + float-text + punch fires each time
+    (**not** on the very first `SetAttribute` call after joining --
+    that one's treated as "already had it," same as everything else
+    in this codebase that avoids celebrating already-reached progress
+    on join). Also confirm the aura sits centered on the orb rather
+    than offset to one side -- if it looks off-center, `LargeOrb`'s
+    real `AnchorPoint` turned out to need more than a copy of its
+    Position/Size/AnchorPoint (see section 24's note on why this was
+    derived rather than hardcoded).
 
 ## ⚠️ One thing to be careful about
 

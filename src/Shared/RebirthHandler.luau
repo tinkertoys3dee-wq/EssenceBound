@@ -183,6 +183,20 @@ function RebirthModule.GetReachedMilestones(rebirthCount: number): { [number]: M
 	return reached
 end
 
+-- Sorted ascending list of every rebirth count that has a milestone (e.g.
+-- {1, 5, 10, 25, 50}). MILESTONES itself is a local table keyed by rebirth
+-- count -- this is the single source of truth for "which counts are
+-- milestones" for anything that needs the plain list rather than the full
+-- {count -> data} map (e.g. PrestigeAura.client.luau picking a visual tier).
+function RebirthModule.GetMilestoneThresholds(): { number }
+	local thresholds = {}
+	for count in pairs(MILESTONES) do
+		table.insert(thresholds, count)
+	end
+	table.sort(thresholds)
+	return thresholds
+end
+
 
 --============================================================
 -- HIGH-LEVEL HELPERS
