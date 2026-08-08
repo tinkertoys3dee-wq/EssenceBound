@@ -535,7 +535,7 @@ local function startFirstCollectionWatch(ctx)
 		succeeded = true
 		disconnectAll()
 
-		dialogueText.Text = "🎉  You got it! Click to shatter the orb, hover to gather the drops -- that's the whole loop."
+		dialogueText.Text = "🎉  You got it! Click to shatter, hover to collect."
 		updateProgressDots(1) -- keep dot 1 lit while the success beat plays
 
 		-- A short celebratory beat before moving on, so the win actually
@@ -566,16 +566,13 @@ local function startFirstCollectionWatch(ctx)
 		if cancelled or succeeded then
 			return
 		end
-		dialogueText.Text = "🖱️  Still working on it? Clicking makes the drops appear, but you have to "
-			.. "<font color='#FFFF00'><b>hold your cursor still on top of one</b></font> to actually collect it. "
-			.. "Aim for the center of a glowing dot!"
+		dialogueText.Text = "🖱️  Hold your cursor still on top of a drop -- clicking alone won't collect it!"
 
 		task.wait(20)
 		if cancelled or succeeded then
 			return
 		end
-		dialogueText.Text = "💛  No rush, take your time. Move slowly onto a drop and don't click again -- just "
-			.. "<font color='#FFFF00'><b>hover and wait</b></font> until the ring around your cursor fills all the way."
+		dialogueText.Text = "💛  Take your time -- hover over a drop and wait for the ring to fill."
 
 		task.wait(24)
 		if cancelled or succeeded then
@@ -599,12 +596,10 @@ local TUTORIAL_STEPS = {
 	{
 		Frame = LargeOrbFrame,
 		Emoji = "🌀",
-		Text = "Click the giant orb -- it shatters into glowing essence drops! Then "
-			.. "<font color='#FFFF00'><b><i>HOVER</i></b></font> your cursor "
-			.. "<font color='#FFFF00'><b>directly over a drop and hold still</b></font> for a moment -- "
-			.. "that's the part that actually collects it, not the click. (On mobile: press and hold your finger on the drop.) "
-			.. "Watch the <font color='#FF5A5A'><b>energy bar</b></font> under the orb -- it refills on its own, so give it a moment if it runs low. "
-			.. "<b>Try it now!</b>",
+		-- Kept to 1-2 short sentences on purpose -- the dialogue box is
+		-- small and the old, fully-explained version overflowed it.
+		Text = "Click the orb, then <font color='#FFFF00'><b>HOVER</b></font> over a drop and hold still to collect it! "
+			.. "(On mobile: press and hold.)",
 		-- This step doesn't auto-advance on a timer or a button -- it only
 		-- moves on once the player has actually collected something for
 		-- real (see startFirstCollectionWatch above). That's the fix for the
