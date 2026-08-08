@@ -3,10 +3,22 @@
 	===================================================
 	Global, cross-server leaderboards: Total Essence Gathered (lifetime,
 	both essence types combined -- see OrbClickManager's
-	TotalEssenceGathered increment) and Rebirths. Backed by
+	TotalEssenceGathered increment), Rebirths, and This Week (essence
+	gathered since the player's own weekly baseline, see below). Backed by
 	OrderedDataStore, refreshed on a timer and broadcast to every online
 	client -- nobody polls the DataStore directly, so this stays well
 	inside Roblox's request budget no matter how many players are online.
+
+	WHY "THIS WEEK" EXISTS ALONGSIDE THE LIFETIME BOARDS
+	-------------------------------------------------------
+	A lifetime-only leaderboard is a wall for anyone who didn't start
+	playing on day one -- a new player can never out-earn a veteran's
+	total no matter how well they play THIS session, which is actively
+	demotivating rather than motivating. "This Week" resets automatically
+	every UTC week by writing to a WEEK-NUMBERED store name
+	(WeeklyEssenceLeaderboard_W<n>) rather than trying to clear/expire
+	entries in a fixed store -- a new week is simply a brand new, empty
+	store, so there's no cleanup job to write or forget to run.
 
 	WHY THIS EXISTS
 	----------------
@@ -39,10 +51,35 @@ local REFRESH_INTERVAL = 180 -- seconds between full leaderboard refreshes
 local WRITE_THROTTLE = 60 -- minimum seconds between one player's own writes
 local PER_PLAYER_WRITE_LOOP = 20 -- how often to CHECK whether a write is due
 
+local SECONDS_PER_WEEK = 7 * 24 * 60 * 60
+
+local function getCurrentWeekNumber()
+	return math.floor(os.time() / SECONDS_PER_WEEK)
+end
+
+-- Reads (and lazily resets) a player's weekly gain. Mutates `data` when
+-- the current UTC week has moved past their stored baseline week -- the
+-- ONLY place that reset happens, so it can never drift out of sync with
+-- what's actually written to the store.
+local function getWeeklyGain(data)
+	local currentWeek = getCurrentWeekNumber()
+	local baselineWeek = tonumber(data.WeeklyBaselineWeekNumber) or 0
+	local total = math.floor(tonumber(data.TotalEssenceGathered) or 0)
+
+	if baselineWeek ~= currentWeek then
+		data.WeeklyBaselineWeekNumber = currentWeek
+		data.WeeklyBaselineValue = total
+		return 0
+	end
+
+	local baselineValue = tonumber(data.WeeklyBaselineValue) or total
+	return math.max(0, total - baselineValue)
+end
+
 local BOARDS = {
 	{
 		Id = "Essence",
-		Name = "Total Essence",
+		Name = "Essence",
 		Icon = "🌿",
 		DataStoreName = "EssenceLeaderboard",
 		GetValue = function(data)
@@ -57,6 +94,16 @@ local BOARDS = {
 		GetValue = function(data)
 			return math.floor(tonumber(data.Rebirths) or 0)
 		end,
+	},
+	{
+		Id = "WeeklyEssence",
+		Name = "This Week",
+		Icon = "📅",
+		-- Dynamic = the actual store name changes every UTC week (see
+		-- resolveBoardStore below) instead of a fixed DataStoreName.
+		Dynamic = true,
+		DataStoreNamePrefix = "WeeklyEssenceLeaderboard",
+		GetValue = getWeeklyGain,
 	},
 }
 
@@ -89,14 +136,41 @@ local SyncRemote = ensureRemote("RemoteEvent", "LeaderboardSync")
 -- =========================================================================
 
 for _, board in ipairs(BOARDS) do
+	if not board.Dynamic then
+		local ok, storeOrErr = pcall(function()
+			return DataStoreService:GetOrderedDataStore(board.DataStoreName)
+		end)
+		if ok then
+			board.Store = storeOrErr
+		else
+			board.Store = nil
+			warn("[LeaderboardService] Could not open OrderedDataStore for " .. board.Id .. ": " .. tostring(storeOrErr))
+		end
+	end
+end
+
+-- Re-resolves a Dynamic board's store whenever the current UTC week has
+-- moved past whatever week it last resolved for -- a no-op the other
+-- ~10,079 times out of 10,080 minutes in a week.
+local function resolveBoardStore(board)
+	if not board.Dynamic then
+		return
+	end
+
+	local currentWeek = getCurrentWeekNumber()
+	if board.Store and board.CachedWeekNumber == currentWeek then
+		return
+	end
+
+	local storeName = board.DataStoreNamePrefix .. "_W" .. tostring(currentWeek)
 	local ok, storeOrErr = pcall(function()
-		return DataStoreService:GetOrderedDataStore(board.DataStoreName)
+		return DataStoreService:GetOrderedDataStore(storeName)
 	end)
 	if ok then
 		board.Store = storeOrErr
+		board.CachedWeekNumber = currentWeek
 	else
-		board.Store = nil
-		warn("[LeaderboardService] Could not open OrderedDataStore for " .. board.Id .. ": " .. tostring(storeOrErr))
+		warn("[LeaderboardService] Could not open dynamic OrderedDataStore for " .. board.Id .. ": " .. tostring(storeOrErr))
 	end
 end
 
@@ -166,6 +240,7 @@ local function writePlayerScores(player, force)
 	writeState.LastWriteAt = now
 
 	for _, board in ipairs(BOARDS) do
+		resolveBoardStore(board)
 		if board.Store then
 			local value = board.GetValue(data)
 			-- Skip zero-progress players entirely -- no point cluttering the
@@ -191,6 +266,7 @@ end
 -- =========================================================================
 
 local function refreshBoard(board)
+	resolveBoardStore(board)
 	if not board.Store then
 		return
 	end

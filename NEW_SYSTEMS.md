@@ -594,12 +594,26 @@ contract as Sanctum/Prestige Shop: draws whatever the server last
 broadcast, computes nothing itself. New 🏆 "RANKS" button at
 `(0.895, 0.377)` -- the exact slot the Prestige Shop button occupied
 before it was manually moved to `(0.895, 0.213)`, so it's already proven
-not to collide with anything on that column. Two tabs (Total Essence /
-Rebirths), top 3 get medal icons, your own row is gold-highlighted with a
-★ if you're in the visible top 50, and a quiet "not in the Top 50 yet"
-note if you aren't -- deliberately doesn't claim an exact rank outside the
-cached top 50, since computing that would mean an expensive full-store
-scan for something that isn't worth the DataStore cost.
+not to collide with anything on that column. Tabs for each board, top 3
+get medal icons, your own row is gold-highlighted with a ★ if you're in
+the visible top 50, and a quiet "not in the Top 50 yet" note if you
+aren't -- deliberately doesn't claim an exact rank outside the cached top
+50, since computing that would mean an expensive full-store scan for
+something that isn't worth the DataStore cost.
+
+**Follow-up, same pass: added a third board, "This Week."** A
+lifetime-only leaderboard is a wall for anyone who didn't start on day
+one -- a new player can never out-earn a veteran's total no matter how
+well they play right now, which discourages exactly the players who'd
+benefit most from a reason to compete. "This Week" tracks essence gained
+since each player's own weekly baseline (`WeeklyBaselineValue`/
+`WeeklyBaselineWeekNumber` on PlayerData, reset automatically the moment
+the current UTC week number moves past what's stored) and writes to a
+WEEK-NUMBERED store name (`WeeklyEssenceLeaderboard_W<n>`) instead of a
+fixed one -- a new week is simply a brand new, empty store, so there's no
+expiry/cleanup job to write or forget to run. Everything else (the
+write-throttle, the broadcast cadence, the pcall-everything safety net)
+is shared with the other two boards, not a parallel implementation.
 
 ## 11. Achievements panel (Badges finally have somewhere to live)
 

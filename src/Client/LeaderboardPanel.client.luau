@@ -116,14 +116,18 @@ local backdrop = new("TextButton", {
 -- STATE
 -- =========================================================================
 
-local BOARD_ORDER = { "Essence", "Rebirths" }
+local BOARD_ORDER = { "Essence", "Rebirths", "WeeklyEssence" }
 local BOARD_META = {
-	Essence = { Name = "Total Essence", Icon = "🌿" },
+	Essence = { Name = "Essence", Icon = "🌿" },
 	Rebirths = { Name = "Rebirths", Icon = "🔥" },
+	-- Resets every UTC week (see LeaderboardService's Dynamic board /
+	-- week-numbered store name) so newer players always have a board
+	-- where the lifetime veterans aren't an unreachable wall.
+	WeeklyEssence = { Name = "This Week", Icon = "📅" },
 }
 
 local state = {
-	Boards = { Essence = {}, Rebirths = {} },
+	Boards = { Essence = {}, Rebirths = {}, WeeklyEssence = {} },
 	ActiveBoard = "Essence",
 }
 
@@ -279,7 +283,7 @@ local tabHolder = new("Frame", {
 new("UIListLayout", {
 	FillDirection = Enum.FillDirection.Horizontal,
 	SortOrder = Enum.SortOrder.LayoutOrder,
-	Padding = UDim.new(0.03, 0),
+	Padding = UDim.new(0.02, 0),
 	HorizontalAlignment = Enum.HorizontalAlignment.Center,
 }, tabHolder)
 
@@ -289,7 +293,7 @@ local function buildTab(boardId, order)
 	local meta = BOARD_META[boardId]
 	local tab = new("TextButton", {
 		Name = boardId .. "Tab",
-		Size = UDim2.fromScale(0.485, 1),
+		Size = UDim2.fromScale(0.32, 1),
 		BackgroundColor3 = THEME.TabInactive,
 		AutoButtonColor = false,
 		Font = Enum.Font.GothamBold,
@@ -300,7 +304,7 @@ local function buildTab(boardId, order)
 		ZIndex = 132,
 	}, tabHolder)
 	corner(tab, UDim.new(0.25, 0))
-	new("UITextSizeConstraint", { MaxTextSize = 16 }, tab)
+	new("UITextSizeConstraint", { MaxTextSize = 14 }, tab)
 	Juice.ButtonFeel(tab, { HoverScale = 1.03 })
 	tabButtons[boardId] = tab
 	return tab

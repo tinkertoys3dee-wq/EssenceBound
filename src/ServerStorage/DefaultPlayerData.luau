@@ -19,6 +19,14 @@ local DefaultPlayerData = {
 	RarestEssence = "None",
 	RebirthCurrency = 0,
 	Rebirths = 0,
+	-- Weekly leaderboard baseline (see LeaderboardService's "This Week"
+	-- board) -- WeeklyBaselineValue is the player's TotalEssenceGathered
+	-- reading the moment their tracking for WeeklyBaselineWeekNumber
+	-- started; "gained this week" = TotalEssenceGathered - that baseline.
+	-- Reset automatically whenever the current UTC week number moves past
+	-- WeeklyBaselineWeekNumber, so nobody needs to touch this by hand.
+	WeeklyBaselineWeekNumber = 0,
+	WeeklyBaselineValue = 0,
 	RobuxSpent = 0,
 	UniqueEssences = 0,
 	LastLeaveTime = 0,
