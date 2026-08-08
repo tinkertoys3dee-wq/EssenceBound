@@ -730,6 +730,31 @@ different purposes: one is the ongoing personal status indicator every
 other potion already uses, the other is "this is a shared event
 happening for everyone right now."
 
+## 14. Comeback bonus for genuinely lapsed players
+
+Traced the existing offline-earnings system (`IdleService.server.luau`)
+before touching anything, and it's more complete than it first looked:
+every player gets a baseline 10% offline rate (50% with the "Material
+Alchemist" gamepass) even with zero `offline_harvest` upgrades, computed
+from each essence's `savedEPM` (tracked by `EPMService`/
+`PlayerDataHandler`'s save cycle). Not broken. But it caps at
+`OFFLINE_HARVEST_CAP_SECONDS` (8 hours) -- correctly, so idling can't
+out-earn active play -- which means an 8-hour absence and a 3-week
+absence produce the EXACT same "Welcome Back" popup. Nothing ever
+acknowledged that someone who genuinely lapsed came back.
+
+Added a separate, flat **Comeback Bonus** in the same file, gated on the
+UNCAPPED real time away (not the 8-hour-clamped value the earnings math
+uses): 300 essence at 1+ day, 1,200 at 3+, 3,500 at 7+, 8,000 at 14+,
+each scaled by rebirths via `ProgressionConfig.ScaleReward` (the same
+scaling daily rewards and quests already use, so it stays meaningful for
+veterans instead of trivial). Folded into the SAME reward table the
+existing "WELCOME BACK!" popup already displays (as a
+`"🎉 Welcome Back Bonus"` line) rather than building a second, competing
+UI -- the emoji-prefixed key also happens to sort after the real essence
+names alphabetically, so it lands at the bottom of the list, reading as
+a bonus tacked onto the regular earnings rather than mixed in with them.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole

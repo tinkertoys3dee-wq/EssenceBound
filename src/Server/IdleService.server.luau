@@ -11,6 +11,7 @@ local MarketplaceService = game:GetService("MarketplaceService")
 
 local TreeUpgrades = require(ReplicatedStorage:WaitForChild("TreeUpgrades"))
 local IdleUpgrades = require(ReplicatedStorage:WaitForChild("IdleUpgrades"))
+local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
 
 local Events = ReplicatedStorage:WaitForChild("Remotes")
 local OfflineEarningsEvent = Events:FindFirstChild("OfflineEssenceReward")
@@ -18,6 +19,32 @@ local OfflineEarningsEvent = Events:FindFirstChild("OfflineEssenceReward")
 local OFFLINE_HARVEST_CAP_SECONDS = 8 * 60 * 60 -- cap offline earnings at 8 hours; tune to taste
 local AUTOMATION_CLICK_INTERVAL = 2 -- seconds between automation_core auto-clicks; tune to taste
 local PASSIVE_CURRENCY_ID = "EarthEssence" -- matches BaseCost keys in TreeUpgrades
+
+-- ===================== COMEBACK BONUS (lapsed-player win-back) =====================
+-- The offline-earnings calc above caps at OFFLINE_HARVEST_CAP_SECONDS (8h),
+-- which is correct for THAT purpose (nobody should out-earn active play by
+-- idling), but it means an 8-hour absence and a 3-week absence produce the
+-- EXACT same "welcome back" -- no acknowledgment at all that someone who
+-- actually lapsed came back. This is a separate, flat bonus specifically
+-- for real absences, using the UNCAPPED time away, folded into the same
+-- Welcome Back popup as an extra line rather than a second competing UI.
+-- Sorted longest-first so the loop below can just take the first match.
+local COMEBACK_TIERS = {
+	{ MinSeconds = 14 * 24 * 60 * 60, BaseReward = 8000 }, -- 14+ days
+	{ MinSeconds = 7 * 24 * 60 * 60, BaseReward = 3500 },  -- 7-14 days
+	{ MinSeconds = 3 * 24 * 60 * 60, BaseReward = 1200 },  -- 3-7 days
+	{ MinSeconds = 1 * 24 * 60 * 60, BaseReward = 300 },   -- 1-3 days
+}
+local COMEBACK_DISPLAY_KEY = "🎉 Welcome Back Bonus"
+
+local function getComebackBonus(realSecondsAway, rebirths)
+	for _, tier in ipairs(COMEBACK_TIERS) do
+		if realSecondsAway >= tier.MinSeconds then
+			return ProgressionConfig.ScaleReward(tier.BaseReward, rebirths)
+		end
+	end
+	return 0
+end
 
 -- ===================== ESSENCE DEPOSIT HELPER =====================
 
@@ -152,11 +179,23 @@ local function GrantOfflineEarnings(player)
 					end
 
 					totalEarnedDisplay += offlineReward
-					
+
 					rewards[essenceId] = offlineReward
 				end
 			end
 		end
+	end
+
+	-- Comeback bonus: uses the REAL (uncapped) time away, not the 8-hour
+	-- `secondsAway` above, since the whole point is to recognize absences
+	-- the offline-earnings cap deliberately doesn't reward further.
+	local realSecondsAway = math.max(0, os.time() - lastLeave)
+	local comebackBonus = getComebackBonus(realSecondsAway, data.Rebirths)
+	if comebackBonus > 0 then
+		AddEssence(player, PASSIVE_CURRENCY_ID, comebackBonus)
+		data.TotalEssenceGathered = (data.TotalEssenceGathered or 0) + comebackBonus
+		totalEarnedDisplay += comebackBonus
+		rewards[COMEBACK_DISPLAY_KEY] = comebackBonus
 	end
 
 	-- Fire client event if rewards were granted
