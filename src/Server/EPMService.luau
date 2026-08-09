@@ -3,6 +3,15 @@ local EPMService = {}
 -- This table holds the session tracking data so any script can access it
 EPMService.ActiveSessions = {}
 
+-- Move the session baseline forward when essence is granted from a source that
+-- should not count as active earnings (for example, the rejoin lump sum).
+function EPMService.excludeEarnings(player, essenceName, amount)
+	local session = EPMService.ActiveSessions[player.UserId]
+	if not session or not session.StartingEssences[essenceName] then return end
+
+	session.StartingEssences[essenceName] += amount
+end
+
 --=== EPM
 function EPMService.getEPM(player)
 	local session = EPMService.ActiveSessions[player.UserId]
