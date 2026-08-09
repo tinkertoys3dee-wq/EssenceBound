@@ -349,10 +349,16 @@ local catalog = new("ScrollingFrame", {
 	AutomaticCanvasSize = Enum.AutomaticSize.Y,
 	ZIndex = 204,
 }, panel)
+new("UIPadding", {
+	PaddingLeft = UDim.new(0, 12),
+	PaddingRight = UDim.new(0, 16),
+	PaddingTop = UDim.new(0, 8),
+	PaddingBottom = UDim.new(0, 18),
+}, catalog)
 
 local grid = new("UIGridLayout", {
-	CellSize = UDim2.new(0.315, 0, 0, 225),
-	CellPadding = UDim2.new(0.025, 0, 0, 12),
+	CellSize = UDim2.fromOffset(240, 225),
+	CellPadding = UDim2.fromOffset(14, 14),
 	FillDirection = Enum.FillDirection.Horizontal,
 	FillDirectionMaxCells = 3,
 	HorizontalAlignment = Enum.HorizontalAlignment.Center,
@@ -403,15 +409,35 @@ end
 
 local function updateGridSize()
 	local width = catalog.AbsoluteSize.X
-	if width > 0 and width < 610 then
-		grid.FillDirectionMaxCells = 2
-		grid.CellSize = UDim2.new(0.48, 0, 0, 220)
-		grid.CellPadding = UDim2.new(0.025, 0, 0, 10)
-	else
-		grid.FillDirectionMaxCells = 3
-		grid.CellSize = UDim2.new(0.315, 0, 0, 225)
-		grid.CellPadding = UDim2.new(0.025, 0, 0, 12)
+	if width <= 0 then
+		return
 	end
+
+	-- Reserve room for the catalog's UIPadding and scrollbar, then derive an
+	-- exact pixel width. The previous scale-based cells consumed virtually
+	-- 100% of the row and could press strokes/text into neighboring cards.
+	local contentWidth = math.max(1, width - 12 - 16 - catalog.ScrollBarThickness)
+	local columns
+	local horizontalGap
+	local cardHeight
+	if width < 560 then
+		columns = 1
+		horizontalGap = 0
+		cardHeight = 240
+	elseif width < 760 then
+		columns = 2
+		horizontalGap = 12
+		cardHeight = 232
+	else
+		columns = 3
+		horizontalGap = 14
+		cardHeight = 225
+	end
+
+	local cellWidth = math.floor((contentWidth - horizontalGap * (columns - 1)) / columns)
+	grid.FillDirectionMaxCells = columns
+	grid.CellSize = UDim2.fromOffset(cellWidth, cardHeight)
+	grid.CellPadding = UDim2.fromOffset(horizontalGap, 14)
 end
 
 catalog:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateGridSize)
@@ -470,6 +496,12 @@ local function createOfferCard(offer)
 	}, catalog)
 	corner(card, UDim.new(0, 15))
 	local cardStroke = stroke(card, offer.Accent, 1.5, 0.42)
+	new("UIPadding", {
+		PaddingLeft = UDim.new(0, 8),
+		PaddingRight = UDim.new(0, 8),
+		PaddingTop = UDim.new(0, 6),
+		PaddingBottom = UDim.new(0, 6),
+	}, card)
 	new("UIGradient", {
 		Color = ColorSequence.new(THEME.Raised, THEME.Panel),
 		Rotation = 115,
@@ -485,6 +517,10 @@ local function createOfferCard(offer)
 	}, card)
 	corner(tag, UDim.new(1, 0))
 	stroke(tag, offer.Accent, 1, 0.35)
+	new("UIPadding", {
+		PaddingLeft = UDim.new(0, 6),
+		PaddingRight = UDim.new(0, 6),
+	}, tag)
 	local tagText = new("TextLabel", {
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
@@ -607,6 +643,10 @@ local function createOfferCard(offer)
 		ZIndex = 207,
 	}, card)
 	corner(buy, UDim.new(0, 10))
+	new("UIPadding", {
+		PaddingLeft = UDim.new(0, 8),
+		PaddingRight = UDim.new(0, 8),
+	}, buy)
 	constrainText(buy, 8, 14)
 	addButtonFeel(buy, 1.018)
 
