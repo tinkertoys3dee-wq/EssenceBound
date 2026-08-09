@@ -80,9 +80,23 @@ local THEME = {
 }
 
 local LAYOUT = {
-	-- Continue the shared shortcut rail to the right of MainGui.Right.Holder.
-	-- Keeping every code-created shortcut at x=0.952 prevents this stack
-	-- from covering the Studio-authored Upgrades/Zones/Rebirth/etc. rows.
+	-- Vertical button stack (Daily + Quests + Codes). Anchored to the right
+	-- edge, below the currency panel that occupies the top-left.
+	--
+	-- Y=0.63 rather than the original 0.2: this 3-button stack (rendered
+	-- via UIListLayout, ~0.09-0.32 tall when centered at 0.2) was overlapping
+	-- RebirthShopPanel's (0.213) and SanctumPanel's (0.295) buttons on the
+	-- same x column -- moved this stack below the whole RebirthShop/
+	-- Sanctum/Leaderboard/Achievements column (which bottoms out around
+	-- 0.49-0.51) with margin to spare, rather than renumbering four
+	-- already-placed buttons in four other files for one collision.
+	--
+	-- x=0.952 (was 0.895, then briefly 0.92): a real screenshot showed
+	-- the whole RebirthShop/Sanctum/Leaderboard/Achievements/GroupReward
+	-- column rendering directly on top of MainGui.Right.Holder's own
+	-- live nav bar (Upgrades/Zones/Rebirth/Index/Shop/Settings). 0.952
+	-- is the shared shortcut rail every code-created button on the right
+	-- edge now uses -- keeps them all clear of the Studio-authored rows.
 	ButtonsPosition = UDim2.fromScale(0.952, 0.63),
 	ButtonsAnchor = Vector2.new(0, 0.5),
 	ButtonSize = UDim2.fromScale(0.044, 0.062),

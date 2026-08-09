@@ -49,7 +49,8 @@ local LAYOUT = {
 	-- occupies ~0.51-0.75 after being moved off this same column (see
 	-- ProgressionHud.client.luau's LAYOUT comment) -- 0.8 keeps a clear
 	-- gap below that stack instead of continuing the 0.082 stride
-	-- straight into it.
+	-- straight into it. (x=0.895 used to collide with MainGui.Right.
+	-- Holder's own nav bar -- see that file's LAYOUT comment.)
 	ButtonPosition = UDim2.fromScale(0.952, 0.8),
 	ButtonAnchor = Vector2.new(0, 0.5),
 	ButtonSize = UDim2.fromScale(0.044, 0.062),

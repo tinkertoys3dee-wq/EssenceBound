@@ -54,6 +54,8 @@ local THEME = {
 local LAYOUT = {
 	-- Continues the established rhythm on the right shortcut rail: Prestige
 	-- Shop 0.213, Sanctum 0.295, Leaderboard 0.377 -- each 0.082 apart.
+	-- (x=0.895 used to collide with MainGui.Right.Holder's own nav bar --
+	-- see that file's LAYOUT comment.)
 	ButtonPosition = UDim2.fromScale(0.952, 0.459),
 	ButtonAnchor = Vector2.new(0, 0.5),
 	ButtonSize = UDim2.fromScale(0.044, 0.062),

@@ -2028,6 +2028,156 @@ exact target probability keeps this consistent with how every other
 bonus in this system already works -- the resulting chance still
 renormalizes against whatever Earth's weight is in the current zone.
 
+## 41. Fixed a real collision: five buttons were rendering on top of MainGui.Right.Holder's own nav bar
+
+Reported directly, with a screenshot: Prestige Shop, Sanctum, Ranks,
+Goals, and Group Reward's buttons (all originally at `x=0.895`) were
+rendering directly on top of `MainGui.Right.Holder`'s own live nav bar
+(Upgrades / Zones / Rebirth / Index / Shop / Settings, wired generically
+in `UIInitializerHooks.client.luau`) -- text and icons visibly jumbled
+together in the same screen region. This folder's UI properties were
+never in this repo to begin with (see "One thing to be careful about"
+below), so this was never something a code-only read could have caught
+-- the screenshot was the only way to actually see it.
+
+**The fix, as first pushed:** all five moved from `x=0.895` to `x=0.92`,
+matching `ProgressionHud`'s Daily/Quest/Codes stack, which the SAME
+screenshot showed sitting cleanly to the right of that nav bar.
+
+**Superseded within the hour by an independently-merged fix for the
+exact same bug.** The remote branch had diverged -- a separate agent's
+PR (#6, "Fix offline EPM baseline and wheel status overlap") had
+already been merged with its own fix for this identical collision,
+using `x=0.952` and narrower buttons (`0.044` wide instead of `0.062`)
+rather than a same-width nudge to `0.92`. Reconciling the two
+histories (`git merge`, six conflicts, all in these same `LAYOUT`
+tables) kept THEIR values over this session's own `0.92` attempt --
+narrower buttons in a dedicated rail is a more deliberate fix than a
+same-size nudge that was itself an estimate from a single screenshot,
+and theirs had already gone out and presumably been looked at. Same
+five files, plus `ProgressionHud.client.luau`'s comment (its own
+position was already right in both versions; only the explanation of
+why changed, since it's the reason the other five now match it). The
+merge also picked up a handful of unrelated, real fixes from that same
+PR: a text-overlap bug in `ZonePanel`'s card layout (description/odds
+text rendering underneath the action button), matching text-clipping
+fixes in `WheelPanel` and `Tutorial.client.luau`, mobile
+`UISizeConstraint` fixes on a few banners/cards, and an EPM
+(essence-per-minute) baseline bug where an offline-earnings lump sum
+could briefly count toward the active-production rate.
+
+**Not fixed, for lack of evidence either way:** the two top-right
+badges, 👥 Friend Bonus and 🍀 New Adventurer's Luck (`x=0.985`,
+anchored at the RIGHT edge rather than the left, so they extend
+further left than they might look -- roughly `0.775` to `0.985`).
+Neither was visible in the reported screenshot (0 friends online, and
+whatever this save's New Adventurer's Luck state was didn't show the
+badge either), so there's no evidence they collide with anything --
+but also no evidence they don't, since `Right.Holder`'s actual
+vertical extent still isn't known precisely. Worth a specific check
+once one of those badges is actually on screen (see item 24 below for
+how to force each one).
+
+While auditing this, re-checked every OTHER self-built button/badge
+this codebase has for overlaps against EACH OTHER (not just against
+Right.Holder) -- Fortune Wheel's floating button (bottom-right corner),
+the two top-right badges, and this whole right-edge column all still
+have documented, non-overlapping Y ranges. No other collisions found
+among anything this code can actually see the position of.
+
+## 42. Multiplayer audit -- does this actually work with several people on one server?
+
+Asked directly: does the game work correctly with multiple people on the
+same server? Read every script in `src/Server/` (26 files) plus every
+Shared module they depend on for the two ways Roblox multiplayer code
+actually breaks: module-scope state that's global to the whole server
+process instead of keyed per player, and per-player state that IS keyed
+correctly but never gets cleared when someone leaves.
+
+**Short answer: yes, with three real bugs fixed below.** None of them were
+about two players interfering with each other's currency or upgrades --
+every purchase/reward path in this game (`RebirthShopService`,
+`SanctumService`, `ZoneService`, `ProgressionService`, `WheelService`,
+`AchievementsService`, `OrbClickManager`, `TreeUpgrades`, `RebirthHandler`,
+`EssenceMultiplier`) already keys its state correctly by `player` or
+`player.UserId` and never trusts anything the client sends over a shared
+remote. The bugs were all about **server-lifetime hygiene**: state that
+outlives the player it belongs to, which only ever shows up once real
+player turnover happens on a long-running server -- exactly the scenario a
+quick single-player Studio test would never surface.
+
+**Fixed:**
+
+1. **`OrbClickManager.server.luau`'s `PlayerDatas` table never cleared on
+   `PlayerRemoving`.** It's keyed by `UserId` and only ever lazily created
+   (`if not PlayerDatas[userId] then ... end`), so every player who ever
+   joined a given server process left a permanent entry behind -- their
+   `PlayerData` table plus two leaderstat Instance references, none of it
+   ever garbage collected. The bigger problem: a player who reconnects to
+   the *same* server process (same `UserId` -- a dropped connection,
+   an intentional rejoin) hit that stale, non-nil entry and kept
+   reading/writing their OLD, disconnected `PlayerData`/leaderstat
+   references for the rest of the session. Nothing crashed -- their
+   essence gains just silently stopped showing up anywhere, and never got
+   saved, because `PlayerDataHandler` saves off the NEW `PlayerData`
+   instance the rejoin created, not the stale one this script was still
+   holding. Fixed by clearing `PlayerDatas[plr.UserId]` in the
+   `PlayerRemoving` handler that already existed for `comboState`.
+
+2. **`PlayerDataHandler.server.luau` leaked a Folder + 2 IntValues per
+   join, forever.** `loadPlayerData` created
+   `ReplicatedStorage.PlayerOrbs[UserId]/{Health, MaxHealth}` on every
+   single join and never destroyed it on leave -- worse than a Lua-table
+   leak, since Instances under `ReplicatedStorage` replicate to and sit in
+   memory on every connected client too, not just the server. Confirmed
+   dead before removing it: `EssenceOrbController.luau` owns HP entirely
+   through attributes now (`OrbCurrentHP`/`OrbMaxHP`), and a repo-wide
+   search for `PlayerOrbs` turned up no other reader anywhere, client or
+   server. Removed the dead creation code outright rather than just adding
+   cleanup for something with zero remaining function.
+
+3. **`StormInitServer.server.luau` only wired new players through
+   `Players.PlayerAdded`,** with no loop over `Players:GetPlayers()` to
+   catch anyone already in the server -- unlike every other init script in
+   this codebase (`GroupRewardService`, `PotionTimerService`,
+   `RebirthShopService`, `SanctumService`, `ProgressionService`,
+   `LeaderboardService`, `WheelService`, `AchievementsService`,
+   `ProductPurchaseHandler` all have this exact loop, specifically for
+   Studio script-reload/multi-client-playtest scenarios). Confirmed this
+   is the only place `StormController.new` is ever called and the feature
+   is genuinely live (client + `ProductPurchaseHandler`'s Essence Rain
+   product both reference it) before fixing. In a live server this barely
+   matters, since real joins land after scripts finish starting -- but in
+   Studio's multi-client Play testing, test players can already be
+   registered before this script's `PlayerAdded` connection is made, and
+   without this loop they'd silently never get a `StormController` for
+   the whole session: no automatic storms, and the manual-summon button
+   would just do nothing. Added the same defensive loop every other init
+   script already uses.
+
+**Checked and confirmed correct (no changes needed):** every purchase/sync
+service (`RebirthShopService`, `SanctumService`, `WheelService`,
+`AchievementsService`, `ZoneService`, `ProgressionService`) keys its
+debounce/pending-push tables by `player` and clears every one of them in
+`PlayerRemoving` -- `ProgressionService` in particular clears nine separate
+per-player tables in one function, all correctly. `EssenceOrbController`'s
+`orbStates[player]` has an explicit `Cleanup(player)` wired to
+`PlayerRemoving` as a backstop. `EPMService.ActiveSessions[UserId]` is set
+unconditionally on every join (not lazily, so a rejoin can't inherit a
+stale entry) and cleared by `PlayerDataHandler` on leave.
+`FriendBonusService` deliberately avoids a per-player cache altogether
+(friend counts depend on who ELSE is in the server, so it recomputes
+everyone on every join/leave) and guards overlapping recomputes with a
+token so a slower stale call can't overwrite a newer one -- a genuinely
+good piece of multiplayer-race handling, not something that needed
+fixing. `LeaderboardService`'s cross-player snapshot and `EssenceRushService`'s
+whole-server event timer are correctly GLOBAL, not per-player, by design.
+The core economy math (`RebirthHandler.luau`, `TreeUpgrades.luau`,
+`EssenceMultiplier.luau`) holds no module-scope state at all -- every
+function takes `player`/`playerData` as arguments and works on exactly
+what it's given, which is what makes it safe to share across however many
+players are on the server at once.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
@@ -2234,6 +2384,25 @@ renormalizes against whatever Earth's weight is in the current zone.
     this script captured it as the default (a load-order issue worth
     flagging back if it happens, not something the checklist itself
     can fix).
+24. **The Right.Holder collision fix (section 41)** -- this is the one
+    worth checking most carefully, since it was fixed from a
+    screenshot rather than something testable from code alone. Confirm
+    Prestige Shop / Sanctum / Ranks / Goals / Group Reward no longer
+    overlap Right.Holder's own Upgrades/Zones/Rebirth/Index/Shop/
+    Settings nav bar, and separately confirm THIS move didn't create a
+    new collision with the Daily/Quest/Codes stack now sharing its x
+    column (they're at very different y positions, but that's exactly
+    the kind of thing that's obvious in five seconds of actually
+    looking and easy to miss by just reading the numbers). Then check
+    the two flagged-but-unverified badges specifically: get a friend
+    online in the same server (👥 Friend Bonus only appears above 0
+    friends) and, separately, check 🍀 New Adventurer's Luck on a
+    fresh account (or force it via
+    `require(game.Players.YourName.PlayerData).FirstJoinAt = os.time()`
+    then rejoin) -- confirm NEITHER overlaps Right.Holder either. If
+    one does, its fix is the same one-line move every button in
+    section 41 got: shift its `x` in the relevant file's `LAYOUT`
+    table.
 
 ## ⚠️ One thing to be careful about
 

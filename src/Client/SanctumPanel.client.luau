@@ -56,6 +56,8 @@ local THEME = {
 local LAYOUT = {
 	-- Sits in the shared right-side shortcut rail. Move this
 	-- one line if it collides with anything on a given screen size.
+	-- (x=0.895 used to collide with MainGui.Right.Holder's own nav bar --
+	-- see that file's LAYOUT comment.)
 	ButtonPosition = UDim2.fromScale(0.952, 0.295),
 	ButtonAnchor = Vector2.new(0, 0.5),
 	ButtonSize = UDim2.fromScale(0.044, 0.062),

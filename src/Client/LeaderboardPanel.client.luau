@@ -44,7 +44,9 @@ local THEME = {
 
 local LAYOUT = {
 	-- Continue the same right-side shortcut rail and vertical rhythm used
-	-- by Prestige Shop and Sanctum.
+	-- by Prestige Shop and Sanctum. (x=0.895 used to collide with
+	-- MainGui.Right.Holder's own nav bar -- see that file's LAYOUT
+	-- comment.)
 	ButtonPosition = UDim2.fromScale(0.952, 0.377),
 	ButtonAnchor = Vector2.new(0, 0.5),
 	ButtonSize = UDim2.fromScale(0.044, 0.062),
