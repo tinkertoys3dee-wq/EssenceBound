@@ -720,8 +720,16 @@ task.spawn(function()
 	if collection then
 		-- Counted as one orb per event rather than using the client's
 		-- quantity value, so quest progress can't be inflated by a
-		-- forged amount even though the economy itself trusts it.
-		collection.OnServerEvent:Connect(function(player, _orbName, _quantity, crit)
+		-- forged amount. The orbName check closes a separate gap that
+		-- quantity-ignoring alone doesn't: without it, a client could
+		-- still farm quest progress by firing this remote directly with
+		-- a garbage orbName that OrbClickManager's own handler would
+		-- reject outright -- same validity bar that handler enforces
+		-- before granting anything, applied here too.
+		collection.OnServerEvent:Connect(function(player, orbName, _quantity, crit)
+			if orbName ~= "Earth Essence" and orbName ~= "Shadow Essence" then
+				return
+			end
 			addStat(player, ProgressionConfig.Stats.OrbsCollected, 1)
 			if crit then
 				addStat(player, ProgressionConfig.Stats.CriticalOrbs, 1)

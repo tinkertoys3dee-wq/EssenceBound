@@ -173,10 +173,29 @@ local DefaultPlayerData = {
 		QuestClaimed = { false, false, false },
 		TotalQuestsCompleted = 0,
 		TotalDailiesClaimed = 0,
+		-- Bankable, earned automatically at every 7-day streak milestone --
+		-- see ProgressionConfig's "STREAK FREEZES" note. (Was previously
+		-- only normalized at runtime in ProgressionService.getProgression,
+		-- never listed here -- harmless, since that normalization already
+		-- guarantees 0 for every save either way, but every sibling field
+		-- above has a template default too, so this belongs here for the
+		-- same self-documenting reason they do.)
+		StreakFreezes = 0,
 		-- [CODE] = true for each promo code already redeemed. Keyed by
 		-- code string on purpose -- these entries should persist forever
 		-- so a code can never be redeemed twice.
 		RedeemedCodes = {},
+	},
+
+	-- Fortune Wheel state, driven by WheelService. Tickets are earned by
+	-- collecting orbs (WheelConfig.CollectionsPerTicket) and spent on
+	-- spins; LastSpinAt is a timestamp, not a day number like the daily
+	-- streak's LastClaimDay -- the free spin runs on its own rolling 24h
+	-- cooldown from your last spin, not a shared UTC day boundary.
+	Wheel = {
+		Tickets = 0,
+		CollectionsSinceLastTicket = 0,
+		LastSpinAt = 0,
 	},
 
 	Settings = {

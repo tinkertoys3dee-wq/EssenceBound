@@ -1654,6 +1654,73 @@ nothing reads this return value as an actual credit, not something a
 forged client could exploit for a real payout either way.
 `CursorCollection.client.luau`'s one call site now passes it.
 
+## 35. Fortune Wheel -- a genuinely new mechanic, not another variation on what's here
+
+Everything added this session before this point extended an existing
+loop (a bonus multiplier, a streak safety net, a fix). This is the
+first actually NEW gameplay mechanic since the Prestige Shop/Sanctum:
+a spinning wheel with 8 weighted rewards, one free spin on a rolling
+24h cooldown, plus extra spins earned as tickets from actually playing
+(one ticket per 60 orbs collected, banked up to 5).
+
+**Why this and not another daily-login variant.** The daily streak's
+appeal is commitment -- you know the reward, the pull is not breaking
+the chain. Quests' appeal is a session having a shape. The wheel's
+appeal is suspense -- you don't know what you're about to get until it
+stops spinning, which is a different psychological hook (variable-
+ratio reinforcement, the same mechanism behind loot boxes and slot
+machines, used here without any of the parts that make those
+predatory: every segment is a genuine, positive reward -- see section
+0 and the Daily Rewards design note for why this game deliberately
+never has a "you got nothing" outcome -- nothing here costs Robux, and
+the whole reward table is visible on the wheel itself, not hidden
+behind a paywall or a mystery box). Tying extra spins to actual
+collecting (not just logging in) also reinforces the CORE loop in a
+way the daily streak and quests don't -- click and collect, and the
+wheel is one more thing steadily filling up in the background.
+
+**How the wheel spins without a pie-chart primitive.** Roblox UI has
+no native pie-slice shape. `WheelPanel.client.luau` arranges all 8
+reward badges around a circular "ring" Frame at fixed angles (basic
+trig) and spins the whole ring by tweening its `Rotation` property --
+rotating a GuiObject carries every child positioned inside it around
+as one rigid unit, so the badges visually swing like a real wheel with
+no image assets needed. A separate pointer stays fixed outside the
+ring. The math always spins FORWARD from wherever the ring currently
+is (never snaps backward) and adds several extra full turns before
+landing exactly on the segment the server has already decided.
+
+**Server-authoritative, same as every purchase flow in this
+codebase.** `WheelService.server.luau` rolls the segment
+(`WheelConfig.RollSegmentIndex`, weighted, server-side only) and grants
+the reward BEFORE the client ever finds out what it won -- the client
+only ever asks to spin and is told the result afterward, the same
+"only ask, never decide" contract every other remote in this game
+follows. Essence rewards scale with rebirths through the same
+`ProgressionConfig.ScaleReward` every other reward system already
+uses, so the wheel stays meaningful for veteran players without a
+second scaling formula to keep in sync.
+
+**A design refinement caught in self-review, not left as a rough
+edge:** tickets were originally reset to 0 progress even when a
+collection happened while already holding the max 5 banked (since the
+6th would never be granted anyway) -- meaning active play while capped
+just wasted progress for nothing. Changed so ticket progress PAUSES
+at the cap instead of resetting, resuming exactly where it left off
+the moment a spin frees up room, so no play ever earns literally
+nothing.
+
+**Also fixed alongside this (small, not severe):** `ProgressionService.
+server.luau`'s own quest-progress listener on the `Collection` remote
+counted an event as "one orb collected" without checking `orbName` at
+all -- unlike `OrbClickManager`'s real reward path, which already
+rejects a garbage orbName outright (see section 29). A client could
+have farmed quest progress by firing `Collection` directly with an
+invalid orbName that never reaches a real reward. Bounded (quests are
+still claimable only once per slot per day regardless), but real, and
+exactly the same bar the wheel's own new ticket-listener needed from
+the start -- so both got the same fix.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
@@ -1769,6 +1836,20 @@ forged client could exploit for a real payout either way.
     should continue instead of resetting, the toast should read "🛡️
     Streak Saved", and the daily panel's status line should show one
     fewer freeze banked.
+17. **Fortune Wheel (section 35)**: click the 🎡 button, bottom-right
+    corner. A fresh account should have its free spin available
+    immediately (confirm the wheel actually spins several full turns
+    and lands cleanly on a segment, not a partial/jittery stop). Click
+    SPIN again right after -- it should now say "No spins available
+    yet" and stay disabled (0 tickets, free spin just used). To see a
+    ticket get earned without collecting 60 real orbs, run
+    `require(game.Players.YourName.PlayerData).Wheel.CollectionsSinceLastTicket = 59`
+    in the command bar, then collect one orb -- a ticket should appear
+    and the button should re-enable. To see the JACKPOT segment's
+    bigger celebration (extra burst, screen flash) without relying on
+    its real 1% odds, temporarily swap `WheelConfig.Segments[8]`'s
+    `Weight` to something large (or `WheelConfig.RollSegmentIndex`'s
+    return to `return 8` directly) -- revert either before shipping.
 
 ## ⚠️ One thing to be careful about
 
