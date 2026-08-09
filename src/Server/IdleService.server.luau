@@ -9,7 +9,6 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local MarketplaceService = game:GetService("MarketplaceService")
 
-local TreeUpgrades = require(ReplicatedStorage:WaitForChild("TreeUpgrades"))
 local IdleUpgrades = require(ReplicatedStorage:WaitForChild("IdleUpgrades"))
 local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
 
@@ -17,7 +16,6 @@ local Events = ReplicatedStorage:WaitForChild("Remotes")
 local OfflineEarningsEvent = Events:FindFirstChild("OfflineEssenceReward")
 
 local OFFLINE_HARVEST_CAP_SECONDS = 8 * 60 * 60 -- cap offline earnings at 8 hours; tune to taste
-local AUTOMATION_CLICK_INTERVAL = 2 -- seconds between automation_core auto-clicks; tune to taste
 local PASSIVE_CURRENCY_ID = "EarthEssence" -- matches BaseCost keys in TreeUpgrades
 
 -- ===================== COMEBACK BONUS (lapsed-player win-back) =====================
@@ -96,29 +94,17 @@ local function RunPassiveIncomeLoop()
 	end
 end
 
--- ===================== automation_core: AUTO-CLICK LOOP =====================
-
-local automationThreads = {}
-
-local function StartAutomationFor(player)
-	if automationThreads[player] then return end
-	automationThreads[player] = task.spawn(function()
-		while player.Parent do
-			task.wait(AUTOMATION_CLICK_INTERVAL)
-			if IdleUpgrades.HasAutomationCore(player) then
-				-- OrbController.ResolveClick(player) 
-			end
-		end
-	end)
-end
-
-local function StopAutomationFor(player)
-	local thread = automationThreads[player]
-	if thread then
-		task.cancel(thread)
-		automationThreads[player] = nil
-	end
-end
+-- automation_core ("the orb periodically fires on its own") is NOT
+-- implemented here despite the name of this section header that used to
+-- be above this comment -- the real, working implementation lives
+-- client-side in OrbClicker.client.luau (search HasAutomationCore /
+-- "automation_core"), which actually fires ClickOrbEvent on a randomized
+-- interval and applies every upgrade a real click would. What used to be
+-- here was a dead server-side loop from an earlier, abandoned attempt:
+-- its body was a commented-out call to `OrbController`, a variable never
+-- even required in this file, so it could never have run. Removed --
+-- IdleUpgrades.HasAutomationCore is still used by the real (client-side)
+-- implementation, just not from here.
 
 -- ===================== offline_harvest_1/2: REJOIN LUMP SUM =====================
 
@@ -209,12 +195,10 @@ end
 Players.PlayerAdded:Connect(function(player)
 	task.defer(function()
 		GrantOfflineEarnings(player)
-		StartAutomationFor(player)
 	end)
 end)
 
 Players.PlayerRemoving:Connect(function(player)
-	StopAutomationFor(player)
 	local playerDataModule = player:FindFirstChild("PlayerData")
 	if playerDataModule then
 		local ok, data = pcall(require, playerDataModule)
