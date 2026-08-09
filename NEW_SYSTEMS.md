@@ -1960,6 +1960,20 @@ being a plain `Frame` wrapping a nested `TextButton`/`ImageButton`
 (that folder's own established shape) rather than assuming it's a raw
 button instance.
 
+**Added afterward: the Shadowfen has its own orb image.** The
+Shadowfen zone entry in `ZonesConfig.Zones` now carries
+`OrbImage = "rbxassetid://106130917603943"`; `ZoneAmbience.client.luau`
+swaps `LargeOrb.Image` to it the moment `CurrentZoneId` changes to
+`shadow_zone`, and back to whatever `LargeOrb.Image` actually was at
+load (captured once, not a second hardcoded guess) for Earthen Grove.
+Confirmed nothing else in the codebase ever assigns `LargeOrb.Image`
+(unlike `ImageColor3`, which is genuinely contested -- see this file's
+own header), so there's no fight to sidestep the way the glow layer
+has to for color. Can't be tweened/crossfaded -- Roblox has no
+interpolation between two asset ids -- so it's an instant swap, timed
+to land right as the travel veil starts covering the screen since both
+react to the same attribute at roughly the same moment.
+
 ## 40. Lucky Finder + Ultra Luck -- wired to essence rarity, not crit chance
 
 Companion to section 39: "Lucky Finder" and "Ultra Luck" were the
@@ -2194,6 +2208,15 @@ renormalizes against whatever Earth's weight is in the current zone.
     displayed number changing. Remove both attributes
     (`SetAttribute(id, nil)`) and confirm the odds line and real drop
     rate both return to the un-boosted 82/18 split.
+23. **Shadowfen orb image (section 39 addendum)** -- travel to the
+    Shadowfen and confirm the great orb's actual picture changes (not
+    just the ambient glow color) to the configured image right as the
+    travel veil covers the screen. Travel back to Earthen Grove and
+    confirm it returns to the original orb image exactly -- if it
+    doesn't, `LargeOrb.Image` wasn't actually readable at the moment
+    this script captured it as the default (a load-order issue worth
+    flagging back if it happens, not something the checklist itself
+    can fix).
 
 ## ⚠️ One thing to be careful about
 

@@ -11,15 +11,24 @@
 
 	SAME SAFE PATTERN AS PrestigeAura.client.luau
 	--------------------------------------------------
-	Parented as a sibling of LargeOrb inside LargeOrbFolder, with
-	AnchorPoint/Position/Size copied directly from LargeOrb rather than
-	assumed -- never touches LargeOrb's own properties (ImageColor3 in
-	particular is already fought over by OrbClicker.client.luau's
+	The glow itself is parented as a sibling of LargeOrb inside
+	LargeOrbFolder, with AnchorPoint/Position/Size copied directly from
+	LargeOrb rather than assumed -- and never touches LargeOrb's
+	ImageColor3, which is already fought over by OrbClicker.client.luau's
 	denied-click flash and other effects, each reverting to their own
 	hardcoded "resting" color; adding a third, zone-varying idea of what
 	that resting color should be would just make all of them wrong some
-	of the time). An entirely separate, additive layer sidesteps that
+	of the time. An entirely separate, additive layer sidesteps that
 	fight completely.
+
+	The one LargeOrb property this DOES touch directly is Image (the
+	orb's actual picture, swapped per zone if one is configured -- see
+	ZonesConfig.Zones[*].OrbImage) -- confirmed nothing else in this
+	codebase ever assigns that specific property, unlike ImageColor3, so
+	there's no equivalent fight to sidestep there. The zone's own default
+	image (Earthen Grove has no OrbImage configured) is whatever
+	LargeOrb.Image already was at load, captured once rather than
+	hardcoded a second time here.
 
 	Deliberately more understated than PrestigeAura's own aura -- this is
 	ambient environmental tint, not a second competing status effect, and
@@ -45,6 +54,11 @@ local MainGui = playerGui:WaitForChild("MainGui")
 local Center = MainGui:WaitForChild("Center")
 local LargeOrbFolder = Center:WaitForChild("LargeOrbFolder")
 local LargeOrb = LargeOrbFolder:WaitForChild("LargeOrb")
+
+-- Captured before any zone logic can touch it -- this is Earthen Grove's
+-- own image, whatever it actually is in Studio, not a guess re-typed
+-- here that could drift out of sync with the real asset.
+local defaultOrbImage = LargeOrb.Image
 
 -- =========================================================================
 -- BUILD
@@ -120,6 +134,16 @@ local function applyZoneColor(zone, animate)
 	end
 end
 
+-- Image swaps can't be tweened/crossfaded the way a color can -- Roblox
+-- has no interpolation between two different asset ids -- so this is
+-- always an instant assignment. In practice this lands right as
+-- ZonePanel's own full-screen travel veil is starting to cover the
+-- screen (both react to the same CurrentZoneId attribute landing at
+-- roughly the same moment), which masks most of the swap anyway.
+local function applyZoneImage(zone)
+	LargeOrb.Image = zone.OrbImage or defaultOrbImage
+end
+
 local function onZoneChanged(isInitial)
 	local zoneId = ZonesConfig.GetCurrentZoneId(player)
 	if zoneId == currentZoneId then
@@ -131,6 +155,8 @@ local function onZoneChanged(isInitial)
 	if not zone then
 		return
 	end
+
+	applyZoneImage(zone)
 
 	applyZoneColor(zone, not isInitial)
 end

@@ -65,6 +65,10 @@ ZonesConfig.Zones = {
 		UnlockCost = 0, -- always unlocked
 		BaseWeights = { ["Earth Essence"] = 82, ["Shadow Essence"] = 18 },
 		AmplifiedWeights = { ["Earth Essence"] = 92, ["Shadow Essence"] = 8 }, -- w/ Dedicated Essence
+		-- No OrbImage -- ZoneAmbience.client.luau keeps whatever LargeOrb's
+		-- own Image already is for this zone, captured once at load rather
+		-- than a second hardcoded asset id here that could drift out of
+		-- sync with whatever the real default actually is in Studio.
 	},
 	{
 		Id = "shadow_zone",
@@ -75,6 +79,7 @@ ZonesConfig.Zones = {
 		UnlockCost = 300,
 		BaseWeights = { ["Earth Essence"] = 18, ["Shadow Essence"] = 82 },
 		AmplifiedWeights = { ["Earth Essence"] = 8, ["Shadow Essence"] = 92 },
+		OrbImage = "rbxassetid://106130917603943",
 	},
 }
 
