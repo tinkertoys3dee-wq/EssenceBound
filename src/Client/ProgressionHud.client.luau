@@ -91,19 +91,20 @@ local LAYOUT = {
 	-- 0.49-0.51) with margin to spare, rather than renumbering four
 	-- already-placed buttons in four other files for one collision.
 	--
-	-- x=0.92 turned out to matter for a second, unrelated reason later:
-	-- a real screenshot showed the whole RebirthShop/Sanctum/Leaderboard/
-	-- Achievements/GroupReward column (all originally at x=0.895)
-	-- rendering directly on top of MainGui.Right.Holder's own live nav
-	-- bar. This stack's x=0.92 was already clear of it in that same
-	-- screenshot, so every one of those five buttons was moved to match
-	-- THIS stack's x instead of the other way around.
-	ButtonsPosition = UDim2.fromScale(0.92, 0.63),
+	-- x=0.952 (was 0.895, then briefly 0.92): a real screenshot showed
+	-- the whole RebirthShop/Sanctum/Leaderboard/Achievements/GroupReward
+	-- column rendering directly on top of MainGui.Right.Holder's own
+	-- live nav bar (Upgrades/Zones/Rebirth/Index/Shop/Settings). 0.952
+	-- is the shared shortcut rail every code-created button on the right
+	-- edge now uses -- keeps them all clear of the Studio-authored rows.
+	ButtonsPosition = UDim2.fromScale(0.952, 0.63),
 	ButtonsAnchor = Vector2.new(0, 0.5),
-	ButtonSize = UDim2.fromScale(0.062, 0.062),
+	ButtonSize = UDim2.fromScale(0.044, 0.062),
 
-	-- Playtime chest pill, sitting just under the button stack.
-	ChestPosition = UDim2.fromScale(.78, 0.12),
+	-- The old y=0.12 placement covered MainGui.Right.ManualSummonButton
+	-- (the CLAIM First Find bar). Put the pill immediately beneath it and
+	-- above the first navigation row instead.
+	ChestPosition = UDim2.fromScale(0.78, 0.18),
 	ChestAnchor = Vector2.new(0, 0.5),
 	ChestSize = UDim2.fromScale(0.14, 0.043),
 

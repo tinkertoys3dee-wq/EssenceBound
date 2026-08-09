@@ -11,6 +11,7 @@ local MarketplaceService = game:GetService("MarketplaceService")
 
 local IdleUpgrades = require(ReplicatedStorage:WaitForChild("IdleUpgrades"))
 local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
+local EPMService = require(game:GetService("ServerScriptService"):WaitForChild("EPMService"))
 
 local Events = ReplicatedStorage:WaitForChild("Remotes")
 local OfflineEarningsEvent = Events:FindFirstChild("OfflineEssenceReward")
@@ -182,6 +183,13 @@ local function GrantOfflineEarnings(player)
 		data.TotalEssenceGathered = (data.TotalEssenceGathered or 0) + comebackBonus
 		totalEarnedDisplay += comebackBonus
 		rewards[COMEBACK_DISPLAY_KEY] = comebackBonus
+	end
+
+	-- Offline earnings are a pre-session lump sum, not active production.
+	-- Resnapshot all balances only after every offline/comeback award has been
+	-- deposited so the EPM window begins from the exact post-grant state.
+	if totalEarnedDisplay > 0 then
+		EPMService.resetBaseline(player)
 	end
 
 	-- Fire client event if rewards were granted

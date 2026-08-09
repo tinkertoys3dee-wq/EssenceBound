@@ -59,7 +59,8 @@ local THEME = {
 
 -- Bottom-right corner: distinct from the packed right-edge column
 -- (RebirthShop/Sanctum/Leaderboard/Achievements/Daily-Quest-Codes/
--- GroupReward span x=0.895-0.92, y=0.213-0.8 -- see GroupRewardPrompt.
+-- GroupReward and the other shortcuts use x=0.952-0.996, y=0.213-0.8;
+-- see GroupRewardPrompt. This bottom-corner button remains below them.
 -- client.luau's LAYOUT comment), distinct from FriendBonusIndicator's
 -- top-right badge (y=0.03), and distinct from bottom-CENTER where the
 -- potion timer HUD and Juice's shared relic bar live.
@@ -187,8 +188,11 @@ local panelScale = new("UIScale", { Scale = 0.85 }, panel)
 
 new("TextLabel", {
 	Name = "Title",
-	Position = UDim2.fromScale(0, 0.03),
-	Size = UDim2.fromScale(1, 0.09),
+	-- Leave room for the close button and the rounded frame edges. The
+	-- full-width label previously let "Fortune Wheel" render underneath
+	-- the close button on narrow viewports, visibly clipping the title.
+	Position = UDim2.fromScale(0.1, 0.03),
+	Size = UDim2.fromScale(0.8, 0.09),
 	BackgroundTransparency = 1,
 	Font = Enum.Font.GothamBlack,
 	Text = "🎡 Fortune Wheel",
@@ -200,8 +204,10 @@ new("UITextSizeConstraint", { MaxTextSize = 28 }, panel.Title)
 
 new("TextLabel", {
 	Name = "Subtitle",
-	Position = UDim2.fromScale(0, 0.115),
-	Size = UDim2.fromScale(1, 0.05),
+	-- Inset long copy from the frame stroke instead of scaling it all the
+	-- way to the panel's outer bounds.
+	Position = UDim2.fromScale(0.07, 0.115),
+	Size = UDim2.fromScale(0.86, 0.05),
 	BackgroundTransparency = 1,
 	Font = Enum.Font.GothamMedium,
 	Text = "One free spin daily -- more from collecting essence",
@@ -335,8 +341,11 @@ new("TextLabel", {
 local statusLabel = new("TextLabel", {
 	Name = "Status",
 	AnchorPoint = Vector2.new(0.5, 0),
-	Position = UDim2.fromScale(0.5, 0.84),
-	Size = UDim2.fromScale(0.9, 0.06),
+	-- Keep the status in its own row. The spin button begins at y=0.87
+	-- (bottom anchored at 0.97 with height 0.10), so the old row ending at
+	-- y=0.90 rendered its last three percent underneath the button.
+	Position = UDim2.fromScale(0.5, 0.80),
+	Size = UDim2.fromScale(0.9, 0.055),
 	BackgroundTransparency = 1,
 	Font = Enum.Font.GothamMedium,
 	Text = "",

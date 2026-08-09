@@ -54,19 +54,13 @@ local THEME = {
 }
 
 local LAYOUT = {
-	-- Sits under the progression button stack on the left edge. Move this
+	-- Sits in the shared right-side shortcut rail. Move this
 	-- one line if it collides with anything on a given screen size.
-	--
-	-- Was 0.895: a real screenshot showed this whole column (Sanctum,
-	-- Prestige Shop, Ranks, Goals) rendering directly on top of MainGui.
-	-- Right.Holder's own live nav bar (Upgrades/Zones/Rebirth/Index/
-	-- Shop/Settings -- see UIInitializerHooks.client.luau), which
-	-- occupies that same x=0.895 band. 0.92 matches ProgressionHud's
-	-- Daily/Quest/Codes stack, confirmed clear of that same nav bar in
-	-- the same screenshot -- proven-safe, not a second guess.
-	ButtonPosition = UDim2.fromScale(0.92, 0.295),
+	-- (x=0.895 used to collide with MainGui.Right.Holder's own nav bar --
+	-- see that file's LAYOUT comment.)
+	ButtonPosition = UDim2.fromScale(0.952, 0.295),
 	ButtonAnchor = Vector2.new(0, 0.5),
-	ButtonSize = UDim2.fromScale(0.062, 0.062),
+	ButtonSize = UDim2.fromScale(0.044, 0.062),
 	-- Taller than it was (0.62) now the list holds nine upgrades across two
 	-- sections -- centred at 0.5, this spans 0.14..0.86 and still leaves a
 	-- clear margin top and bottom on a 16:9 screen.

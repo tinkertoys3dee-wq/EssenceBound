@@ -152,8 +152,8 @@ local panelScale = new("UIScale", { Scale = 0.85 }, panel)
 
 new("TextLabel", {
 	Name = "Title",
-	Position = UDim2.fromScale(0, 0.03),
-	Size = UDim2.fromScale(1, 0.08),
+	Position = UDim2.fromScale(0.1, 0.03),
+	Size = UDim2.fromScale(0.8, 0.08),
 	BackgroundTransparency = 1,
 	Font = Enum.Font.GothamBlack,
 	Text = "🗺️ Zones",
@@ -165,8 +165,8 @@ new("UITextSizeConstraint", { MaxTextSize = 28 }, panel.Title)
 
 local subtitle = new("TextLabel", {
 	Name = "Subtitle",
-	Position = UDim2.fromScale(0, 0.105),
-	Size = UDim2.fromScale(1, 0.05),
+	Position = UDim2.fromScale(0.08, 0.105),
+	Size = UDim2.fromScale(0.84, 0.05),
 	BackgroundTransparency = 1,
 	Font = Enum.Font.GothamMedium,
 	Text = "",
@@ -222,6 +222,16 @@ local listHolder = new("ScrollingFrame", {
 	AutomaticCanvasSize = Enum.AutomaticSize.Y,
 	ZIndex = 202,
 }, panel)
+
+-- Keep cards and their strokes clear of both rounded edges and the
+-- scrollbar. AutomaticCanvasSize includes this bottom inset, so the last
+-- card can be scrolled fully into view rather than appearing clipped.
+new("UIPadding", {
+	PaddingLeft = UDim.new(0, 4),
+	PaddingRight = UDim.new(0, 12),
+	PaddingTop = UDim.new(0, 2),
+	PaddingBottom = UDim.new(0, 10),
+}, listHolder)
 
 new("UIListLayout", {
 	FillDirection = Enum.FillDirection.Vertical,
@@ -290,7 +300,9 @@ for index, zone in ipairs(ZonesConfig.Zones) do
 	new("TextLabel", {
 		Name = "Description",
 		Position = UDim2.new(0.26, 0, 0.32, 0),
-		Size = UDim2.new(0.68, 0, 0.3, 0),
+		-- Stop before the action column. The previous 68%-wide box ended at
+		-- 94% and rendered underneath the button, whose left edge is ~72%.
+		Size = UDim2.new(0.43, 0, 0.3, 0),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.Gotham,
 		Text = zone.Description,
@@ -305,7 +317,7 @@ for index, zone in ipairs(ZonesConfig.Zones) do
 	local oddsLabel = new("TextLabel", {
 		Name = "Odds",
 		Position = UDim2.new(0.26, 0, 0.66, 0),
-		Size = UDim2.new(0.68, 0, 0.24, 0),
+		Size = UDim2.new(0.43, 0, 0.24, 0),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamMedium,
 		Text = "",

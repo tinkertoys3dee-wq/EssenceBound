@@ -54,20 +54,12 @@ local THEME = {
 }
 
 local LAYOUT = {
-	-- One slot below the Sanctum button (0.92, 0.295) in the same manual
-	-- left-edge column -- move this one line if it ever collides with
-	-- anything on a given screen size.
-	--
-	-- Was 0.895: a real screenshot showed this whole column (this button,
-	-- Sanctum, Ranks, Goals) rendering directly on top of MainGui.Right.
-	-- Holder's own live nav bar (Upgrades/Zones/Rebirth/Index/Shop/
-	-- Settings -- see UIInitializerHooks.client.luau), which occupies
-	-- that same x=0.895 band. 0.92 matches ProgressionHud's Daily/Quest/
-	-- Codes stack, confirmed clear of that same nav bar in the same
-	-- screenshot -- proven-safe, not a second guess.
-	ButtonPosition = UDim2.fromScale(0.92, 0.213),
+	-- Keep code-created shortcuts in the narrow rail to the right of
+	-- MainGui.Right.Holder.  The old x=0.895 column sat directly on top of
+	-- the Studio-authored navigation labels at common 16:9 resolutions.
+	ButtonPosition = UDim2.fromScale(0.952, 0.213),
 	ButtonAnchor = Vector2.new(0, 0.5),
-	ButtonSize = UDim2.fromScale(0.062, 0.062),
+	ButtonSize = UDim2.fromScale(0.044, 0.062),
 	-- Five upgrades, one section header -- shorter list than the Sanctum's
 	-- nine, so a smaller panel keeps rows from looking sparse and stretched.
 	PanelSize = UDim2.fromScale(0.56, 0.6),

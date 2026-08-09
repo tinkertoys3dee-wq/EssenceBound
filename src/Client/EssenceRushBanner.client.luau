@@ -45,12 +45,18 @@ local banner = Instance.new("Frame")
 banner.Name = "Banner"
 banner.AnchorPoint = Vector2.new(0.5, 0)
 banner.Position = HIDDEN_POSITION
-banner.Size = UDim2.fromScale(0.3, 0.055)
+-- Scale down with narrow viewports instead of forcing the countdown into
+-- a desktop-width pill. The max keeps the banner compact on wide screens.
+banner.Size = UDim2.new(0.82, 0, 0, 52)
 banner.BackgroundColor3 = Color3.fromRGB(40, 22, 10)
 banner.BorderSizePixel = 0
 banner.Visible = false
 banner.ZIndex = 200
 banner.Parent = screenGui
+
+local bannerSizeConstraint = Instance.new("UISizeConstraint")
+bannerSizeConstraint.MaxSize = Vector2.new(520, 52)
+bannerSizeConstraint.Parent = banner
 
 local bannerCorner = Instance.new("UICorner")
 bannerCorner.CornerRadius = UDim.new(1, 0)

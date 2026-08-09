@@ -867,13 +867,20 @@ local dialogueFrame = Instance.new("Frame")
 dialogueFrame.Name = "DialogueFrame"
 dialogueFrame.AnchorPoint = Vector2.new(0.5, 1)
 dialogueFrame.Position = UDim2.new(0.5, 0, 0.95, 0)
-dialogueFrame.Size = UDim2.new(0.4, 0, 0.15, 0) -- compact: ~24% wide, ~10% tall
+-- Fill most of a narrow phone while capping at a comfortable desktop
+-- width. The previous 40%-wide box became only ~130px wide on phones,
+-- forcing the mascot, copy, and two controls into one another.
+dialogueFrame.Size = UDim2.new(0.9, 0, 0.18, 0)
 dialogueFrame.BackgroundColor3 = COLOR_BG
 dialogueFrame.BorderSizePixel = 0
 dialogueFrame.ZIndex = 1000
 dialogueFrame.Visible = false
 dialogueFrame.Parent = screenGui
 dialogueScale.Parent = dialogueFrame
+
+local dialogueSizeConstraint = Instance.new("UISizeConstraint")
+dialogueSizeConstraint.MaxSize = Vector2.new(680, 180)
+dialogueSizeConstraint.Parent = dialogueFrame
 
 local dialogueCorner = Instance.new("UICorner")
 dialogueCorner.CornerRadius = UDim.new(0, 20)
@@ -956,8 +963,8 @@ end)
 dialogueText = Instance.new("TextLabel")
 dialogueText.Name = "DialogueText"
 dialogueText.BackgroundTransparency = 1
-dialogueText.Position = UDim2.new(0.22, 0, 0.32, 0)
-dialogueText.Size = UDim2.new(0.55, 0, 0.6, 0)
+dialogueText.Position = UDim2.new(0.23, 8, 0.32, 0)
+dialogueText.Size = UDim2.new(0.54, -16, 0.6, 0)
 dialogueText.Font = Enum.Font.GothamBold
 dialogueText.TextScaled = true
 dialogueText.RichText = true
@@ -1056,6 +1063,11 @@ nextButton.Text = "Next ➜"
 nextButton.ZIndex = 1001
 nextButton.Parent = dialogueFrame
 
+local nextTextPadding = Instance.new("UIPadding")
+nextTextPadding.PaddingLeft = UDim.new(0, 8)
+nextTextPadding.PaddingRight = UDim.new(0, 8)
+nextTextPadding.Parent = nextButton
+
 local nextButtonPadding = Instance.new("UITextSizeConstraint")
 nextButtonPadding.MaxTextSize = 18
 nextButtonPadding.Parent = nextButton
@@ -1083,6 +1095,11 @@ skipButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 skipButton.Text = "Skip"
 skipButton.ZIndex = 1001
 skipButton.Parent = dialogueFrame
+
+local skipTextPadding = Instance.new("UIPadding")
+skipTextPadding.PaddingLeft = UDim.new(0, 8)
+skipTextPadding.PaddingRight = UDim.new(0, 8)
+skipTextPadding.Parent = skipButton
 
 local skipButtonPadding = Instance.new("UITextSizeConstraint")
 skipButtonPadding.MaxTextSize = 15

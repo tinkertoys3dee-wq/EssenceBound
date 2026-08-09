@@ -44,26 +44,16 @@ local THEME = {
 
 local LAYOUT = {
 	-- Continues the RebirthShop (0.213) / Sanctum (0.295) / Leaderboard
-	-- (0.377) / Achievements (0.459) column at the same x=0.92, but
-	-- skips past ProgressionHud's Daily/Quest/Codes stack, which
-	-- occupies ~0.51-0.75 (see ProgressionHud.client.luau's LAYOUT
-	-- comment) -- 0.8 keeps a clear gap below that stack instead of
-	-- continuing the 0.082 stride straight into it.
-	--
-	-- x was 0.895: a real screenshot showed the rest of this column
-	-- rendering directly on top of MainGui.Right.Holder's own live nav
-	-- bar (Upgrades/Zones/Rebirth/Index/Shop/Settings -- see
-	-- UIInitializerHooks.client.luau), which occupies that same x=0.895
-	-- band. 0.92 matches ProgressionHud's Daily/Quest/Codes stack,
-	-- confirmed clear of that same nav bar in the same screenshot --
-	-- proven-safe, not a second guess. Moved this button to match its
-	-- whole column even though this specific button's y=0.8 likely sits
-	-- below the nav bar's own bottom edge either way -- one shared x
-	-- for the whole column is simpler to reason about than a
-	-- per-button exception.
-	ButtonPosition = UDim2.fromScale(0.92, 0.8),
+	-- (0.377) / Achievements (0.459) column at the same x=0.952, but
+	-- skips past ProgressionHud's Daily/Quest/Codes stack, which now
+	-- occupies ~0.51-0.75 after being moved off this same column (see
+	-- ProgressionHud.client.luau's LAYOUT comment) -- 0.8 keeps a clear
+	-- gap below that stack instead of continuing the 0.082 stride
+	-- straight into it. (x=0.895 used to collide with MainGui.Right.
+	-- Holder's own nav bar -- see that file's LAYOUT comment.)
+	ButtonPosition = UDim2.fromScale(0.952, 0.8),
 	ButtonAnchor = Vector2.new(0, 0.5),
-	ButtonSize = UDim2.fromScale(0.062, 0.062),
+	ButtonSize = UDim2.fromScale(0.044, 0.062),
 }
 
 local function new(className, props, parent)
