@@ -344,9 +344,11 @@ returnEvent.OnServerEvent:Connect(function(plr, quantity)
 	OrbController.Heal(plr, quantity)
 end)
 
--- Only cleans up this script's OWN new comboState table -- PlayerDatas
--- above has no such cleanup and predates this change; not touching it.
+-- Release every per-player cache from this script when a player leaves. This
+-- is intentionally one shared handler so the cleanup remains compatible with
+-- the retention branch's PlayerDatas fix and cannot leak across busy servers.
 game:GetService("Players").PlayerRemoving:Connect(function(plr)
+	PlayerDatas[plr.UserId] = nil
 	local state = comboState[plr]
 	if state and state.DecayThread then
 		task.cancel(state.DecayThread)
