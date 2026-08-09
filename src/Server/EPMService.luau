@@ -3,13 +3,24 @@ local EPMService = {}
 -- This table holds the session tracking data so any script can access it
 EPMService.ActiveSessions = {}
 
--- Move the session baseline forward when essence is granted from a source that
--- should not count as active earnings (for example, the rejoin lump sum).
-function EPMService.excludeEarnings(player, essenceName, amount)
+-- Start a fresh measurement window from the player's current balances. Offline
+-- rewards are applied shortly after joining, so adjusting individual starting
+-- values is vulnerable to lifecycle/order mistakes. Resnapshotting every
+-- balance after the complete grant makes the post-grant state the authoritative
+-- baseline and guarantees that none of the welcome-back lump sum enters EPM.
+function EPMService.resetBaseline(player)
 	local session = EPMService.ActiveSessions[player.UserId]
-	if not session or not session.StartingEssences[essenceName] then return end
+	local playerDataModule = player:FindFirstChild("PlayerData")
+	if not session or not playerDataModule then return false end
 
-	session.StartingEssences[essenceName] += amount
+	local ok, data = pcall(require, playerDataModule)
+	if not ok or not data or not data.Essences then return false end
+
+	for essenceName, essence in pairs(data.Essences) do
+		session.StartingEssences[essenceName] = essence.Quantity
+	end
+	session.JoinTime = os.time()
+	return true
 end
 
 --=== EPM
