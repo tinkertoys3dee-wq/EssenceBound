@@ -1811,6 +1811,48 @@ was replaced with the simpler delta-comparison above -- fewer moving
 parts to be wrong about, and it's the same pattern already proven
 elsewhere in this codebase.
 
+## 38. New Adventurer's Luck -- extra-frequent crits for a brand-new player's first 24 hours
+
+A totally fresh player sees exactly one crit before this (the
+guaranteed first-click one, `SeenFirstCrit`) and then nothing else
+until click ~16, since base `CritChance` from the upgrade tree starts
+at 0. Crits are this game's single biggest "wow" moment -- bigger
+tint/glow/pop, a badge, and the Crit Streak Combo callout for
+back-to-back ones -- so a 15-click dead zone right after the best
+first impression the game has is exactly the wrong place for one.
+
+`NewPlayerLuckConfig.luau` grants a flat +15% crit chance and shortens
+the guaranteed-crit-streak wait by 6 clicks, both still bounded by
+`CriticalsController`'s own existing caps (`MAX_CRIT_CHANCE`,
+`MIN_GUARANTEED_CRIT_STREAK`) exactly like every other source that
+feeds into them. Active for 24 hours from a player's true first-ever
+join -- not first session, so it's still running if they quit after
+ten minutes and come back later today, covering the highest-leverage
+retention moment there is without becoming a semi-permanent buff.
+`NewPlayerLuckIndicator.client.luau` shows a small badge with an honest
+countdown the whole time it's active ("🍀 New Adventurer's Luck --
+23h 41m left") -- disclosed on purpose, since a real, benefit-only
+deadline is a legitimate reason to come back today and hiding it would
+only make the crits that follow feel like unexplained luck instead of
+a confirmed, trustworthy pattern.
+
+**Server-authoritative, same trust model as everything else that
+crosses the client/server boundary in this codebase:** `FirstJoinAt`
+is stamped exactly once, server-side, in `PlayerDataHandler.server.
+luau`'s `loadPlayerData` -- and specifically only when a DataStore
+fetch SUCCEEDS and finds nothing (a fetch that merely FAILS is never
+treated as "brand new," or a returning player could get misidentified
+on top of everything else going wrong that attempt). Existing saves
+that predate this field are never affected: an old save's `FirstJoinAt`
+sits at the template's default 0 too, which is exactly why eligibility
+is tracked separately during load rather than inferred from "is
+FirstJoinAt still 0" -- that shortcut would have misidentified every
+already-existing player as brand new the first time each of their
+saves loaded after this shipped. Both `CriticalsController` (the real
+bonus) and the indicator read a single mirrored `NewPlayerLuckExpiresAt`
+attribute, never `PlayerData` directly, so the two can never drift out
+of sync with each other.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
@@ -1959,6 +2001,20 @@ elsewhere in this codebase.
     afterward and confirm you do NOT get a second +50 (the gift is
     one-time via `SeenTutorialStarterGift`, same as every other
     tutorial gate in this file).
+20. **New Adventurer's Luck (section 38)** -- on a genuinely fresh
+    account, confirm the 🍀 badge appears under the 👥 Friend Bonus
+    slot (top-right) showing "+15% Crit Chance" and a counting-down
+    "New Adventurer's Luck -- 23h Xm left". Click for a while and
+    confirm crits are visibly landing more often than they should on a
+    completely unupgraded account. To check the expiry behavior without
+    waiting a day, run
+    `require(game.Players.YourName.PlayerData).FirstJoinAt -= 90000`
+    in the command bar (backdates it past the 24h window), then
+    **rejoin** (the attribute is only ever mirrored at load) -- the
+    badge should be gone and crits should return to baseline. On an
+    account that already existed before this shipped, confirm the
+    badge never appears at all, even on the very first load after
+    updating.
 
 ## ⚠️ One thing to be careful about
 

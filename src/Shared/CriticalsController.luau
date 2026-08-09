@@ -57,6 +57,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TreeUpgrades = require(ReplicatedStorage:WaitForChild("TreeUpgrades"))
+local NewPlayerLuckConfig = require(ReplicatedStorage:WaitForChild("NewPlayerLuckConfig"))
 
 -- Timed lookup rather than a bare WaitForChild: crit rolling runs on every
 -- orb spawn, so a missing SanctumUpgrades must cost the Sanctum crit bonus
@@ -110,6 +111,14 @@ local streakCounts = {}
 
 local function getGuaranteedStreakLength(player)
 	local reduction = TreeUpgrades.GetSummedEffectFromAttributes(player, "GuaranteedCritEveryNClicksReduction")
+
+	-- First-24-hours boost (see NewPlayerLuckConfig) shortens the wait on
+	-- top of whatever the player has actually upgraded -- stacks with,
+	-- doesn't replace, their real progress.
+	if NewPlayerLuckConfig.IsActive(player) then
+		reduction += NewPlayerLuckConfig.GuaranteedStreakReduction
+	end
+
 	return math.max(MIN_GUARANTEED_CRIT_STREAK, BASE_GUARANTEED_CRIT_STREAK - reduction)
 end
 
@@ -127,7 +136,12 @@ function CriticalsController.GetCritChance(player)
 		sanctumCrit = tonumber(SanctumUpgrades.GetPlayerEffect(player, "sanctum_dark_fortune")) or 0
 	end
 
-	local total = TreeUpgrades.GetSummedEffectFromAttributes(player, "CritChance") + sanctumCrit
+	-- First-24-hours boost (see NewPlayerLuckConfig): a flat add on top,
+	-- clamped by the same MAX_CRIT_CHANCE as everything else below, so it
+	-- can never push a player past the existing ceiling either.
+	local luckBonus = NewPlayerLuckConfig.IsActive(player) and NewPlayerLuckConfig.CritChanceBonus or 0
+
+	local total = TreeUpgrades.GetSummedEffectFromAttributes(player, "CritChance") + sanctumCrit + luckBonus
 	return math.min(MAX_CRIT_CHANCE, total)
 end
 

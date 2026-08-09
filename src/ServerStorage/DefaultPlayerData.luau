@@ -31,6 +31,14 @@ local DefaultPlayerData = {
 	UniqueEssences = 0,
 	LastLeaveTime = 0,
 	ManualStormsSummoned = 0,
+	-- Unix timestamp of this player's first-ever join, stamped ONCE by
+	-- PlayerDataHandler.server.luau the moment a genuinely brand-new save
+	-- is created (never for a returning player, even one whose old save
+	-- predates this field -- see that file's loadPlayerData for exactly
+	-- how those two cases are told apart). 0 means "not eligible", not
+	-- "just joined" -- drives NewPlayerLuckConfig's first-24-hours crit
+	-- boost and nothing else.
+	FirstJoinAt = 0,
 	SeenTutorial = false,
 	-- Forces the very first orb a player ever spawns to land as a
 	-- guaranteed critical (see OrbClicker.client.luau). A new player's

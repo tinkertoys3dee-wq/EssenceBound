@@ -91,6 +91,7 @@ end
 -- ============================================================
 local BS = game:GetService("BadgeService")
 local RP = game:GetService("ReplicatedStorage")
+local NewPlayerLuckConfig = require(RP:WaitForChild("NewPlayerLuckConfig"))
 local function loadPlayerData(player)
 	local clone = templateModule:Clone()
 	clone.Name = "PlayerData"
@@ -117,10 +118,30 @@ local function loadPlayerData(player)
 		return playerDataStore:GetAsync(key)
 	end)
 
+	-- Only a fetch that SUCCEEDED and found nothing counts as "brand new"
+	-- below -- a fetch that FAILED (transient DataStore error) must never
+	-- be treated as a fresh account, or a returning player with real
+	-- progress could get misidentified as new on top of everything else
+	-- going wrong that attempt.
+	local isBrandNewPlayer = false
 	if success and result then
 		applySavedData(data, result)
 	elseif not success then
 		warn("PlayerDataHandler: failed to load data for " .. player.Name .. " after retries.")
+	else
+		isBrandNewPlayer = true
+	end
+
+	-- Stamped once, only for a genuinely first-ever join -- see
+	-- NewPlayerLuckConfig for what this drives. This can't just check "is
+	-- data.FirstJoinAt still 0" instead of tracking isBrandNewPlayer above:
+	-- an existing save that predates this field has FirstJoinAt sitting at
+	-- the template's default 0 too (nothing in saved data would have
+	-- overwritten it), which would misidentify every already-existing
+	-- player as brand new the first time each of their saves loads after
+	-- this shipped.
+	if isBrandNewPlayer then
+		data.FirstJoinAt = os.time()
 	end
 
 	-- OFFLINE HARVEST LOGIC REMOVED HERE --
@@ -370,6 +391,12 @@ local function loadPlayerData(player)
 		player:SetAttribute(tonumber(id), owned.Owned)
 	end
 	
+	-- CriticalsController and NewPlayerLuckIndicator.client.luau both read
+	-- this directly (never data.FirstJoinAt, which they can't reach) --
+	-- nil while ineligible or expired, a real future timestamp for the
+	-- first 24 hours after a genuinely brand-new save's first join.
+	player:SetAttribute("NewPlayerLuckExpiresAt", NewPlayerLuckConfig.GetExpiresAt(data.FirstJoinAt))
+
 	player:SetAttribute("Rebirths", data.Rebirths)
 	player:SetAttribute("SeenTutorial", data.SeenTutorial)
 	player:SetAttribute("SeenFirstCrit", data.SeenFirstCrit)
