@@ -52,11 +52,11 @@ local THEME = {
 }
 
 local LAYOUT = {
-	-- Continues the established rhythm on the left-edge column: Prestige
+	-- Continues the established rhythm on the right shortcut rail: Prestige
 	-- Shop 0.213, Sanctum 0.295, Leaderboard 0.377 -- each 0.082 apart.
-	ButtonPosition = UDim2.fromScale(0.895, 0.459),
+	ButtonPosition = UDim2.fromScale(0.952, 0.459),
 	ButtonAnchor = Vector2.new(0, 0.5),
-	ButtonSize = UDim2.fromScale(0.062, 0.062),
+	ButtonSize = UDim2.fromScale(0.044, 0.062),
 	PanelSize = UDim2.fromScale(0.58, 0.76),
 }
 

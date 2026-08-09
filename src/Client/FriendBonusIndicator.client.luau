@@ -30,7 +30,7 @@ local THEME = {
 }
 
 -- Top-right corner. Every other ambient status widget in this codebase
--- packs the right edge at x=0.895-0.92 from y=0.213 down to ~0.85
+-- packs the right shortcut rail at x=0.952-0.996 from y=0.213 down to ~0.85
 -- (RebirthShop/Sanctum/Leaderboard/Achievements/Daily-Quest-Codes/
 -- GroupReward -- see GroupRewardPrompt.client.luau's LAYOUT comment), and
 -- the Left panel owns the currency/stats column. y=0.03 sits above all of

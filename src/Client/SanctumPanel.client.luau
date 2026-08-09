@@ -54,11 +54,11 @@ local THEME = {
 }
 
 local LAYOUT = {
-	-- Sits under the progression button stack on the left edge. Move this
+	-- Sits in the shared right-side shortcut rail. Move this
 	-- one line if it collides with anything on a given screen size.
-	ButtonPosition = UDim2.fromScale(0.895, 0.295),
+	ButtonPosition = UDim2.fromScale(0.952, 0.295),
 	ButtonAnchor = Vector2.new(0, 0.5),
-	ButtonSize = UDim2.fromScale(0.062, 0.062),
+	ButtonSize = UDim2.fromScale(0.044, 0.062),
 	-- Taller than it was (0.62) now the list holds nine upgrades across two
 	-- sections -- centred at 0.5, this spans 0.14..0.86 and still leaves a
 	-- clear margin top and bottom on a 16:9 screen.

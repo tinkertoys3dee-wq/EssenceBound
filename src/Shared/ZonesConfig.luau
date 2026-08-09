@@ -79,6 +79,8 @@ ZonesConfig.Zones = {
 		UnlockCost = 300,
 		BaseWeights = { ["Earth Essence"] = 18, ["Shadow Essence"] = 82 },
 		AmplifiedWeights = { ["Earth Essence"] = 8, ["Shadow Essence"] = 92 },
+		-- ZoneAmbience applies this to the giant center orb on every switch
+		-- (including initial spawn into an already-selected Shadow zone).
 		OrbImage = "rbxassetid://106130917603943",
 	},
 }
