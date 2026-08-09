@@ -62,13 +62,14 @@ local THEME = {
 }
 
 local LAYOUT = {
-	-- Group ends the vertical rail at y=.8 and the Fortune Wheel fills the
-	-- far bottom-right. This sits LEFT of the wheel in the open lower-right
-	-- pocket: y=.88 would overlap the wheel if it shared x=.952 because the
-	-- wheel's square aspect constraint makes it much taller than its raw
-	-- .068 Y scale suggests. The separated x positions leave a real gap.
-	ButtonPosition = UDim2.fromScale(0.865, 0.865),
-	ButtonSize = UDim2.fromScale(0.044, 0.062),
+	-- Large, immediately discoverable shortcut in the open upper-right
+	-- corner. The min/max bounds keep it prominent on phones without
+	-- becoming enormous on high-resolution desktop displays.
+	ButtonAnchor = Vector2.new(1, 0),
+	ButtonPosition = UDim2.fromScale(0.985, 0.02),
+	ButtonSize = UDim2.fromScale(0.068, 0.068),
+	ButtonMinSize = Vector2.new(68, 68),
+	ButtonMaxSize = Vector2.new(88, 88),
 	PanelSize = UDim2.fromScale(0.62, 0.78),
 }
 
@@ -133,13 +134,17 @@ local screenGui = new("ScreenGui", {
 
 local buttonHolder = new("Frame", {
 	Name = "ButtonHolder",
-	AnchorPoint = Vector2.new(0, 0.5),
+	AnchorPoint = LAYOUT.ButtonAnchor,
 	Position = LAYOUT.ButtonPosition,
 	Size = LAYOUT.ButtonSize,
 	BackgroundTransparency = 1,
 	ZIndex = 50,
 }, screenGui)
 new("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Width }, buttonHolder)
+new("UISizeConstraint", {
+	MinSize = LAYOUT.ButtonMinSize,
+	MaxSize = LAYOUT.ButtonMaxSize,
+}, buttonHolder)
 
 local shortcutAura = new("Frame", {
 	Name = "Aura",
@@ -162,7 +167,7 @@ local crystalButton = new("TextButton", {
 	ZIndex = 51,
 }, buttonHolder)
 corner(crystalButton, UDim.new(0.28, 0))
-local crystalButtonStroke = stroke(crystalButton, THEME.VioletLight, 2.5, 0.05)
+local crystalButtonStroke = stroke(crystalButton, THEME.VioletLight, 3, 0.05)
 local buttonGradient = new("UIGradient", {
 	Color = ColorSequence.new({
 		ColorSequenceKeypoint.new(0, Color3.fromRGB(81, 47, 119)),
@@ -194,7 +199,7 @@ local shortcutCaption = new("TextLabel", {
 	TextScaled = true,
 	ZIndex = 52,
 }, crystalButton)
-textConstraint(shortcutCaption, 11, 6)
+textConstraint(shortcutCaption, 14, 7)
 
 local readyDot = new("Frame", {
 	Name = "ReadyDot",
@@ -211,12 +216,12 @@ local readyScale = new("UIScale", { Scale = 1 }, readyDot)
 
 Juice.ButtonFeel(crystalButton, { HoverScale = 1.08 })
 
--- Compact active-omen timer sits immediately to the left of the crystal
--- button, in the otherwise unused strip above the bottom timer HUD.
+-- Compact active-omen timer follows the larger shortcut to the top-right,
+-- keeping the current boon and its remaining time attached to its source.
 local activeHud = new("TextButton", {
 	Name = "ActiveProphecy",
 	AnchorPoint = Vector2.new(1, 0.5),
-	Position = UDim2.fromScale(0.858, 0.86),
+	Position = UDim2.new(0.985, -98, 0.02, 40),
 	Size = UDim2.fromScale(0.175, 0.044),
 	BackgroundColor3 = THEME.SurfaceDeep,
 	AutoButtonColor = false,

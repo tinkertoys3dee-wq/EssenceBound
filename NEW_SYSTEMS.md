@@ -2468,8 +2468,8 @@ and benefit identical to the effect gameplay actually receives.
     market card but must not open checkout. Restore the real delays before
     publishing. Finally, temporarily rename the authored Shop button in a
     Studio copy and confirm the fallback STORE entry appears.
-26. **Prophecy Crystal (section 44)** -- click the 🔮 FATE shortcut just left
-    of the Fortune Wheel. On a fresh save it should pulse green and
+26. **Prophecy Crystal (section 44)** -- click the large 🔮 FATE shortcut in
+    the top-right corner. On a fresh save it should pulse green and
     offer a free reading immediately. Roll once and confirm the outer and
     inner runes counter-rotate quickly, false futures cycle without changing
     the server-selected result, and the final rarity produces rings, motes,
