@@ -341,8 +341,11 @@ new("TextLabel", {
 local statusLabel = new("TextLabel", {
 	Name = "Status",
 	AnchorPoint = Vector2.new(0.5, 0),
-	Position = UDim2.fromScale(0.5, 0.84),
-	Size = UDim2.fromScale(0.9, 0.06),
+	-- Keep the status in its own row. The spin button begins at y=0.87
+	-- (bottom anchored at 0.97 with height 0.10), so the old row ending at
+	-- y=0.90 rendered its last three percent underneath the button.
+	Position = UDim2.fromScale(0.5, 0.80),
+	Size = UDim2.fromScale(0.9, 0.055),
 	BackgroundTransparency = 1,
 	Font = Enum.Font.GothamMedium,
 	Text = "",

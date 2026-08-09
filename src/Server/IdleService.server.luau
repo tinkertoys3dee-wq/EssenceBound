@@ -157,7 +157,6 @@ local function GrantOfflineEarnings(player)
 
 				if offlineReward > 0 then
 					AddEssence(player, essenceId, offlineReward)
-					EPMService.excludeEarnings(player, essenceId, offlineReward)
 
 					-- Track global gathered stats
 					if data.TotalEssenceGathered then
@@ -181,10 +180,16 @@ local function GrantOfflineEarnings(player)
 	local comebackBonus = getComebackBonus(realSecondsAway, data.Rebirths)
 	if comebackBonus > 0 then
 		AddEssence(player, PASSIVE_CURRENCY_ID, comebackBonus)
-		EPMService.excludeEarnings(player, PASSIVE_CURRENCY_ID, comebackBonus)
 		data.TotalEssenceGathered = (data.TotalEssenceGathered or 0) + comebackBonus
 		totalEarnedDisplay += comebackBonus
 		rewards[COMEBACK_DISPLAY_KEY] = comebackBonus
+	end
+
+	-- Offline earnings are a pre-session lump sum, not active production.
+	-- Resnapshot all balances only after every offline/comeback award has been
+	-- deposited so the EPM window begins from the exact post-grant state.
+	if totalEarnedDisplay > 0 then
+		EPMService.resetBaseline(player)
 	end
 
 	-- Fire client event if rewards were granted
