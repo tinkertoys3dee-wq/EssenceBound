@@ -190,14 +190,27 @@ end)
 
 -- crit: true if the specific orb being collected rolled a crit client-side
 -- (CriticalsController.RollCrit, at spawn time). EssenceMulti.
--- CalculateMultiplier is the ONLY thing that turns "crit" into an actual
--- bonus amount, and it derives that amount from the player's own
--- CritMultiplierBonus attribute total -- so the client flagging crit can't
--- grant more than their real upgrades justify (see CriticalsController's
--- "DESIGN NOTE ON TRUST" for why that boolean itself doesn't need to be).
+-- CalculateMultiplier derives the EXTRA bonus a crit is worth -- beyond
+-- its flat base 2x -- from the player's own CritMultiplierBonus attribute
+-- total, so that part can't exceed what real upgrades justify. The base
+-- 2x is NOT gated by anything: a client that always claims crit = true
+-- gets an unconditional 2x on every collection, upgrades or not.
 --
--- gold and quantity do NOT have that same protection, and both were being
--- trusted outright until this pass:
+-- Flagged rather than fixed: a real fix means the server rolling crits
+-- itself instead of trusting this flag, which needs a way to tie a
+-- specific "collected" event back to a specific earlier orb/click (an id
+-- the client doesn't currently send -- orbs are purely client-side visual
+-- objects, same root cause as quantity below). That's a real feature, not
+-- a small patch, and the exposure is bounded in the meantime: crit only
+-- ever multiplies an amount already capped by MAX_QUANTITY_PER_COLLECTION,
+-- and MAX_CRIT_CHANCE already lets a fully-upgraded legitimate player
+-- approach a near-100% real crit rate on their own, so this mostly just
+-- lets a player skip actually buying that upgrade line -- not the
+-- unbounded-currency class of bug quantity/gold were.
+--
+-- gold and quantity had a more direct version of this problem, with no
+-- ceiling or re-derivation at all, and both were being trusted outright
+-- until this pass:
 --
 --   - gold used to go straight into CalculateMultiplier's flat 3x with no
 --     check at all, even though StormController.luau's own header comment

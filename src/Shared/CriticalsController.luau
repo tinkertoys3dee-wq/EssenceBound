@@ -20,15 +20,17 @@
 	DESIGN NOTE ON TRUST: RollCrit/RollDoubleCrit are meant to be called
 	CLIENT-SIDE, once per orb, purely to decide whether that orb gets crit
 	visuals (tint/glow/bigger pop) and to flag it for the "collected"
-	RemoteEvent. The actual BONUS AMOUNT that flag is worth is computed by
-	GetCritMultiplier, which reads CritMultiplierBonus live off the
-	player's own Attributes -- so even if a client always claimed
-	crit = true, the payout is still capped by the upgrades they've
-	actually bought. Call GetCritMultiplier SERVER-SIDE (see
-	EssenceMultiplier.lua) -- that's what keeps the bonus amount honest;
-	the boolean itself is just a convenience flag, not a security boundary
-	(consistent with how `quantity` from the client is already trusted
-	elsewhere in this codebase).
+	RemoteEvent. GetCritMultiplier reads CritMultiplierBonus live off the
+	player's own Attributes, so the EXTRA amount a crit is worth beyond
+	its flat base 2x can't exceed what real upgrades justify. The base 2x
+	itself is NOT gated by anything, though: a client that always claims
+	crit = true gets an unconditional 2x on every collection regardless
+	of upgrades owned -- a real, currently-unmitigated gap, not the closed
+	trust boundary this note used to describe. See OrbClickManager.
+	server.luau's "collected" handler for the full writeup of that gap
+	and why it's flagged rather than fixed there. (`quantity` from the
+	client has the same "purely client-owned, no independent server
+	record" root cause, elsewhere in this codebase.)
 
 	USAGE
 	------
