@@ -11,6 +11,7 @@ local MarketplaceService = game:GetService("MarketplaceService")
 
 local IdleUpgrades = require(ReplicatedStorage:WaitForChild("IdleUpgrades"))
 local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
+local EPMService = require(game:GetService("ServerScriptService"):WaitForChild("EPMService"))
 
 local Events = ReplicatedStorage:WaitForChild("Remotes")
 local OfflineEarningsEvent = Events:FindFirstChild("OfflineEssenceReward")
@@ -156,6 +157,7 @@ local function GrantOfflineEarnings(player)
 
 				if offlineReward > 0 then
 					AddEssence(player, essenceId, offlineReward)
+					EPMService.excludeEarnings(player, essenceId, offlineReward)
 
 					-- Track global gathered stats
 					if data.TotalEssenceGathered then
@@ -179,6 +181,7 @@ local function GrantOfflineEarnings(player)
 	local comebackBonus = getComebackBonus(realSecondsAway, data.Rebirths)
 	if comebackBonus > 0 then
 		AddEssence(player, PASSIVE_CURRENCY_ID, comebackBonus)
+		EPMService.excludeEarnings(player, PASSIVE_CURRENCY_ID, comebackBonus)
 		data.TotalEssenceGathered = (data.TotalEssenceGathered or 0) + comebackBonus
 		totalEarnedDisplay += comebackBonus
 		rewards[COMEBACK_DISPLAY_KEY] = comebackBonus
