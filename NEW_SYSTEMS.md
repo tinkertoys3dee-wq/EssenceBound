@@ -2040,19 +2040,31 @@ never in this repo to begin with (see "One thing to be careful about"
 below), so this was never something a code-only read could have caught
 -- the screenshot was the only way to actually see it.
 
-**The fix:** all five moved from `x=0.895` to `x=0.92`, matching
-`ProgressionHud`'s Daily/Quest/Codes stack, which the SAME screenshot
-showed sitting cleanly to the right of that nav bar -- proven-safe
-already, not a second guess. None of these five needed a Y change; the
-existing 0.082 stride between them (and the 0.8 gap Group Reward
-already kept below the Daily/Quest/Codes stack) was never the problem,
-so it carries over unchanged. Touched: `RebirthShopPanel.client.luau`,
-`SanctumPanel.client.luau`, `LeaderboardPanel.client.luau`,
-`AchievementsPanel.client.luau`, `GroupRewardPrompt.client.luau`, plus
-`ProgressionHud.client.luau`'s own comment (its position didn't
-change, but the comment explaining why 0.92 was chosen did, since it's
-now the reason five OTHER files match it instead of the other way
-around).
+**The fix, as first pushed:** all five moved from `x=0.895` to `x=0.92`,
+matching `ProgressionHud`'s Daily/Quest/Codes stack, which the SAME
+screenshot showed sitting cleanly to the right of that nav bar.
+
+**Superseded within the hour by an independently-merged fix for the
+exact same bug.** The remote branch had diverged -- a separate agent's
+PR (#6, "Fix offline EPM baseline and wheel status overlap") had
+already been merged with its own fix for this identical collision,
+using `x=0.952` and narrower buttons (`0.044` wide instead of `0.062`)
+rather than a same-width nudge to `0.92`. Reconciling the two
+histories (`git merge`, six conflicts, all in these same `LAYOUT`
+tables) kept THEIR values over this session's own `0.92` attempt --
+narrower buttons in a dedicated rail is a more deliberate fix than a
+same-size nudge that was itself an estimate from a single screenshot,
+and theirs had already gone out and presumably been looked at. Same
+five files, plus `ProgressionHud.client.luau`'s comment (its own
+position was already right in both versions; only the explanation of
+why changed, since it's the reason the other five now match it). The
+merge also picked up a handful of unrelated, real fixes from that same
+PR: a text-overlap bug in `ZonePanel`'s card layout (description/odds
+text rendering underneath the action button), matching text-clipping
+fixes in `WheelPanel` and `Tutorial.client.luau`, mobile
+`UISizeConstraint` fixes on a few banners/cards, and an EPM
+(essence-per-minute) baseline bug where an offline-earnings lump sum
+could briefly count toward the active-production rate.
 
 **Not fixed, for lack of evidence either way:** the two top-right
 badges, 👥 Friend Bonus and 🍀 New Adventurer's Luck (`x=0.985`,
