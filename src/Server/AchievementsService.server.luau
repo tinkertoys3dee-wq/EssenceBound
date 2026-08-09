@@ -1,6 +1,6 @@
 --[[
 	AchievementsService (Script -> ServerScriptService)
-	====================================================
+	===================================================
 	Server-authoritative state + claiming for the Achievements panel.
 
 	Badges themselves are granted elsewhere -- see AchievementsConfig's own
