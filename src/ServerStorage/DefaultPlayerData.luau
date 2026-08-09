@@ -39,6 +39,11 @@ local DefaultPlayerData = {
 	-- taste of the game's biggest visual payoff instead of leaving it to
 	-- a 0% base crit chance and a 20-click guaranteed-streak wait.
 	SeenFirstCrit = false,
+	-- Gates the one-time 50-essence starter gift TutorialStarterGiftService
+	-- grants when the tutorial's Upgrades step begins, so a brand-new
+	-- player can actually afford to buy something during the tutorial
+	-- instead of just being shown a menu they can't use yet.
+	SeenTutorialStarterGift = false,
 	-- Gates PromptFav.client.luau's one-time favorite prompt. Was previously
 	-- an unconditional loop re-prompting every 5 minutes forever with no
 	-- persisted memory at all -- this flag is what makes "one time" actually

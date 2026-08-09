@@ -56,6 +56,7 @@ local playerGui = player:WaitForChild("PlayerGui")
 local remote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("LoadingDone")
 
 local UpdData = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("UpdateData")
+local RequestStarterGift = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("RequestTutorialStarterGift")
 
 -- Cloneable demo orb used by the "collect orbs" tutorial step
 local orbTemplate = ReplicatedStorage:WaitForChild("Cloneables"):WaitForChild("OrbClickableTemplate")
@@ -587,6 +588,91 @@ local function startFirstCollectionWatch(ctx)
 	end
 end
 
+-- Same fix, same reasoning, as startFirstCollectionWatch above, applied
+-- to the Upgrades step: a brand-new player reaching this step has at
+-- most collected one or two orbs (a few essence, nowhere near
+-- root_awakening's 15-essence cost), so without a gift this step was
+-- pure narration -- point at a menu, say what it does, click Next,
+-- regardless of whether the player could actually try it. Requests the
+-- one-time starter gift the moment this step begins (server-granted,
+-- see TutorialStarterGiftService.server.luau -- this only ever ASKS),
+-- then watches for the Earth Essence leaderstat to DECREASE, the
+-- signature of an actual purchase, to advance. Watching for a decrease
+-- rather than trying to detect "which upgrade" keeps this robust to
+-- exactly which one the player picks.
+local function startFirstUpgradeWatch(ctx)
+	local cancelled = false
+	local succeeded = false
+	local connection = nil
+
+	local function disconnectAll()
+		if connection then
+			connection:Disconnect()
+			connection = nil
+		end
+	end
+
+	RequestStarterGift:FireServer()
+
+	local earthStat = player:WaitForChild("leaderstats"):WaitForChild("Earth Essence")
+	local lastQuantity = earthStat:GetAttribute("Quantity") or 0
+
+	local function onSuccess()
+		if cancelled or succeeded then
+			return
+		end
+		succeeded = true
+		disconnectAll()
+
+		dialogueText.Text = "⚡  Nice! That's your first upgrade -- your orb just got a little stronger."
+		updateProgressDots(2)
+
+		task.delay(1.3, function()
+			if not cancelled then
+				ctx.Advance()
+			end
+		end)
+	end
+
+	-- Compares each change against the value from the IMMEDIATELY
+	-- preceding one (same pattern BiggestGainCelebration.client.luau
+	-- uses for the opposite direction) -- lower than last time means a
+	-- purchase just happened, regardless of how many increases or
+	-- decreases came before it.
+	connection = earthStat:GetAttributeChangedSignal("Quantity"):Connect(function()
+		local current = earthStat:GetAttribute("Quantity") or 0
+		local wasDecrease = current < lastQuantity
+		lastQuantity = current
+
+		if wasDecrease then
+			onSuccess()
+		end
+	end)
+
+	-- Same generous-but-never-permanently-stuck shape as the collect
+	-- step: hints, then an escape hatch. A shorter fuse than that step's
+	-- since "click the glowing menu and buy the first thing" is a much
+	-- smaller ask than the hover-to-collect mechanic.
+	task.spawn(function()
+		task.wait(10)
+		if cancelled or succeeded then
+			return
+		end
+		dialogueText.Text = "💰  You've got free essence waiting -- open the UPGRADES menu and buy something!"
+
+		task.wait(14)
+		if cancelled or succeeded then
+			return
+		end
+		nextButton.Visible = true -- fallback: never hard-wall a stuck player
+	end)
+
+	return function()
+		cancelled = true
+		disconnectAll()
+	end
+end
+
 -- Order matters: teach the actual thing the player needs to do (click,
 -- hover, collect, watch the energy bar) FIRST, before any menu tour --
 -- previously Shop was step 1, so a first-time player's very first guided
@@ -621,7 +707,15 @@ local TUTORIAL_STEPS = {
 		Frame = UpgradesPopup,
 		Emoji = "⚡",
 		Text = "Spend your essence in the UPGRADES menu to level up your power!",
-		Extra = nil,
+		-- Same fix as the Large Orb step: don't just narrate the menu,
+		-- make sure the player actually buys something (see
+		-- startFirstUpgradeWatch above, which also grants the one-time
+		-- starter gift so there's something to spend in the first place).
+		AdvanceOn = "Extra",
+		Extra = function(step, ctx)
+			local cleanupWatch = startFirstUpgradeWatch(ctx)
+			ctx.SetCleanup(cleanupWatch)
+		end,
 	},
 	{
 		Frame = RebirthPopup,

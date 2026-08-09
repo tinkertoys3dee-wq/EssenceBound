@@ -1763,6 +1763,54 @@ fought the reveal tween outright, leaving the banner stuck visibly
 smaller than intended. Removed the redundant Punch call; the Back-Out
 easing already provides the punch on its own.
 
+## 37. The tutorial's Upgrades step now makes you actually buy something
+
+Same underlying problem as the old orb-collect step (section 22, much
+earlier): showing a menu and narrating what it does is not the same as
+a player actually doing the thing, and "shown" doesn't stick nearly as
+well as "did." The Upgrades step used to just point at the menu, say
+"Spend your essence in the UPGRADES menu to level up your power!", and
+let you click Next immediately -- completable without ever opening the
+menu, let alone buying anything. Worse, a brand-new player reaching
+this step has collected at most one or two orbs -- a few essence,
+nowhere near `root_awakening`'s 15-essence cost -- so even a player who
+DID open the menu on their own usually couldn't afford anything yet.
+
+Two pieces, same trust boundary as every other server-authoritative
+system in this codebase:
+
+- **`TutorialStarterGiftService.server.luau` (new).** The instant this
+  tutorial step begins, the client fires `RequestTutorialStarterGift`
+  and the server grants a flat +50 Earth Essence -- comfortably enough
+  for `root_awakening` with room to explore a second cheap option too.
+  Server-validated and one-time per player via a new
+  `SeenTutorialStarterGift` flag in `DefaultPlayerData.luau` (mirroring
+  `SeenFirstCrit`/`SeenFavoritePrompt`'s existing pattern): the client
+  can only ever ask, the flag is what actually makes "one time" mean
+  once, and a forged repeat request just hits the same check and gets
+  nothing.
+- **`Tutorial.client.luau`'s new `startFirstUpgradeWatch`.** The step
+  no longer advances on a timer or a bare Next click -- it watches the
+  Earth Essence leaderstat for a genuine DECREASE, the one unambiguous
+  signature of a real purchase, using the same delta-comparison pattern
+  `BiggestGainCelebration.client.luau` already uses in the opposite
+  direction (compare each change against the immediately-preceding
+  value, not a fixed baseline, so it's correct regardless of how many
+  increases happen first from ordinary orb-clicking). Watching for
+  "any decrease" rather than trying to detect which specific upgrade
+  keeps this robust to whichever one the player actually picks. Same
+  shape as the orb-collect step: escalating hint text (10s, then 24s
+  total) and a fallback Next button after that, so nobody is ever
+  hard-walled if a click genuinely isn't landing.
+
+**Self-corrected before committing:** the first draft of the
+decrease-detection logic used a more convoluted "baseline only ever
+ratchets upward" scheme. On review that was harder to convince myself
+was airtight than necessary for what it's protecting against, so it
+was replaced with the simpler delta-comparison above -- fewer moving
+parts to be wrong about, and it's the same pattern already proven
+elsewhere in this codebase.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
@@ -1902,6 +1950,15 @@ easing already provides the punch on its own.
     NOT fire in the first ~7 seconds after joining on a save with
     offline earnings pending (that number belongs to the Welcome Back
     popup, not this).
+19. **Tutorial Upgrades step (section 37)** -- on a fresh account, play
+    through step 1 normally, then confirm the Upgrades step's essence
+    count visibly jumps by +50 shortly after the step begins (the
+    starter gift) and that clicking Next does nothing until you
+    actually buy an upgrade -- confirm the 10s and 24s hint text and
+    fallback Next button show up if you deliberately do nothing. Rejoin
+    afterward and confirm you do NOT get a second +50 (the gift is
+    one-time via `SeenTutorialStarterGift`, same as every other
+    tutorial gate in this file).
 
 ## ⚠️ One thing to be careful about
 
