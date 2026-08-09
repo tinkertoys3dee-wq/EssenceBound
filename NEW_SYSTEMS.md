@@ -918,7 +918,7 @@ auto-popup is pending, this one tends to land after, not simultaneously.
 Given it only fires once per version bump, occasional overlap is a minor
 cosmetic risk, not a broken experience.
 
-## 17. Fixed a real button collision, added an (inert until configured) Group Reward
+## 17. Fixed a real button collision, added a Group Reward
 
 **The bug.** While picking a screen position for a new button (below),
 I checked every existing right-edge button's coordinates against each
@@ -941,26 +941,19 @@ math, not a screenshot** -- please eyeball it in Studio (checklist item
 
 **The new feature.** `GroupRewardConfig.luau` + `GroupRewardService.
 server.luau` + `GroupRewardPrompt.client.luau` add a standard, free,
-permanent essence bonus (+10% by default) for players who've joined the
-game's Roblox group -- unlike a gamepass, group membership actively
+permanent essence bonus for players who've joined the game's Roblox
+group -- unlike a gamepass, group membership actively
 helps the game itself (shouts, wall posts reach every member). Checked
-once per join server-side (`Player:IsInGroup`, cached to a `GroupMember`
+on join server-side (`Player:IsInGroup`, cached to a `GroupMember`
 attribute so `EssenceMultiplier.CalculateMultiplier` -- which runs on
 every single collection -- never makes a live API call) and folded into
 the multiplier stack the same way every other bonus in that function
-already works. The client button (👥, +N% shown live from config) opens
-the group's page via `GuiService:OpenBrowserWindowAsync` and disappears
-once the player is actually a member.
-
-**Ships fully inert:** `GroupRewardConfig.GroupId` defaults to `0`,
-which every piece of this feature treats as "disabled" -- no API calls,
-no attribute, no button. This is a different situation from the three
-non-functional gamepasses flagged in section 0: those needed an actual
-product decision I can't make (what should "Lucky Finder" *do*?); this
-one's design is just the genre standard, and the only missing piece is
-a literal id copy-pasted from the group's own URL. **To turn it on,
-set `GroupRewardConfig.GroupId` to your real group id** -- that's the
-entire setup step.
+already works. It is now configured for **Mundane Studios** (group
+`15575113`) at a **+35% essence** multiplier. Non-members see a delayed
+join popup plus a persistent 👥 reminder button. The popup opens the
+community page through `GuiService:OpenBrowserWindowAsync`, and its
+"I've joined" action asks the server for a rate-limited authoritative
+recheck so the reward can activate without requiring a rejoin.
 
 ## 18. Fixed a purchase-crashing nil in ProductPurchaseHandler
 
@@ -2217,11 +2210,11 @@ players are on the server at once.
    account -- the popup should appear a few seconds after join. To re-test
    repeatedly after that, just bump `WhatsNewConfig.CurrentVersion` by 1
    each time rather than trying to reset the save.
-9. **Group Reward is invisible until you configure it, on purpose.** Set
-   `GroupRewardConfig.GroupId` to your real group id to turn it on (see
-   section 17), then confirm the 👥 button opens the right group page
-   and disappears once your test account actually joins that group and
-   rejoins the game.
+9. **Test Group Reward with a Mundane Studios non-member and member.** A
+   non-member should see the +35% popup and 👥 reminder; confirm Join opens
+   the right community page. After joining, press "I've joined — check"
+   and confirm the popup and reminder disappear and essence payouts rise
+   by 35% without requiring a rejoin (see section 17).
 10. **Confirm the loading screen still plays its glitch sounds AND still
     reaches the game** (see section 22, both fixes). Both should be
     silent/invisible if everything's already set up correctly in

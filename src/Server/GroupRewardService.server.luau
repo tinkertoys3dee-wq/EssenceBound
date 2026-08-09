@@ -1,7 +1,7 @@
 --[[
 	GroupRewardService (Script -> ServerScriptService)
 	===================================================
-	Checks Roblox group membership once per join and mirrors the result
+	Checks Roblox group membership on join and mirrors the result
 	onto a `GroupMember` player attribute, which EssenceMultiplier reads
 	like every other multiplicative bonus in the game.
 
@@ -16,11 +16,9 @@
 	cached on the player instead, same pattern this codebase already uses
 	for gamepass ownership.
 
-	Membership is intentionally NOT re-checked mid-session: a player who
-	joins the group while already in-game gets the bonus next time they
-	join, not instantly. That matches how virtually every other Roblox
-	group-reward system behaves and avoids a live-polling loop for a
-	one-time, low-frequency event.
+	The client can request one rate-limited recheck after the player visits
+	the group page. The server still performs the authoritative IsInGroup
+	call, so the request can never grant the bonus by itself.
 ]]
 
 local Players = game:GetService("Players")
@@ -32,7 +30,19 @@ if not GroupRewardConfig.IsEnabled() then
 	return
 end
 
-local function onPlayerAdded(player)
+local checkMembership = ReplicatedStorage:FindFirstChild("CheckGroupMembership")
+if not checkMembership then
+	checkMembership = Instance.new("RemoteFunction")
+	checkMembership.Name = "CheckGroupMembership"
+	checkMembership.Parent = ReplicatedStorage
+end
+
+assert(checkMembership:IsA("RemoteFunction"), "CheckGroupMembership must be a RemoteFunction")
+
+local lastCheckAt = {}
+local RECHECK_COOLDOWN = 5
+
+local function updateMembership(player)
 	-- IsInGroup hits Roblox's backend and can fail like any other API
 	-- call -- must never take the whole join sequence down with it.
 	local ok, isMember = pcall(function()
@@ -50,9 +60,28 @@ local function onPlayerAdded(player)
 	if ok then
 		player:SetAttribute("GroupMember", isMember)
 	end
+
+	return ok and isMember == true
+end
+
+local function onPlayerAdded(player)
+	updateMembership(player)
+end
+
+checkMembership.OnServerInvoke = function(player)
+	local now = os.clock()
+	if now - (lastCheckAt[player] or -math.huge) < RECHECK_COOLDOWN then
+		return player:GetAttribute("GroupMember") == true
+	end
+
+	lastCheckAt[player] = now
+	return updateMembership(player)
 end
 
 Players.PlayerAdded:Connect(onPlayerAdded)
+Players.PlayerRemoving:Connect(function(player)
+	lastCheckAt[player] = nil
+end)
 
 -- Covers a Studio script reload with players already in the world.
 for _, existing in ipairs(Players:GetPlayers()) do

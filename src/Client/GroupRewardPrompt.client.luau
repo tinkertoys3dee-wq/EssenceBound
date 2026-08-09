@@ -1,18 +1,14 @@
 --[[
 	GroupRewardPrompt (LocalScript -> StarterPlayerScripts)
 	========================================================
-	A single button that opens the game's Roblox group page and, once the
-	player has actually joined and rejoined the game, disappears (there's
-	nothing left to do). Membership itself is granted server-side by
+	A compact reminder button and a one-time join popup for non-members.
+	Membership itself is granted server-side by
 	GroupRewardService; this script only ever asks -- see EssenceMultiplier
 	for where the bonus is actually applied.
 
-	A complete no-op until GroupRewardConfig.GroupId is configured -- see
-	that file for why this is safe to ship unconfigured. Unlike this
-	codebase's other side-panel buttons (Sanctum, Rebirth Shop, ...) this
-	one has no in-game panel to open: clicking it hands off to Roblox's
-	own group page via GuiService:OpenBrowserWindowAsync, so there's
-	nothing here to duplicate that Roblox already owns.
+	The call to action hands off to Roblox's own community page via
+	GuiService:OpenBrowserWindowAsync; the follow-up button asks the server
+	to verify membership again so the reward can activate immediately.
 ]]
 
 local Players = game:GetService("Players")
@@ -26,10 +22,9 @@ if not GroupRewardConfig.IsEnabled() then
 	return
 end
 
-local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
-
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
+local checkMembership = ReplicatedStorage:WaitForChild("CheckGroupMembership")
 
 -- =========================================================================
 -- THEME + LAYOUT (matches the rest of the right-edge button column)
@@ -39,6 +34,8 @@ local THEME = {
 	BackgroundLight = Color3.fromRGB(36, 19, 58),
 	Accent          = Color3.fromRGB(247, 165, 60),
 	Green           = Color3.fromRGB(58, 209, 118),
+	Muted           = Color3.fromRGB(190, 181, 205),
+	Overlay         = Color3.fromRGB(8, 4, 14),
 	White           = Color3.fromRGB(255, 255, 255),
 }
 
@@ -132,6 +129,120 @@ local caption = new("TextLabel", {
 }, button)
 new("UITextSizeConstraint", { MaxTextSize = 13 }, caption)
 
+local overlay = new("TextButton", {
+	Name = "Overlay",
+	Size = UDim2.fromScale(1, 1),
+	BackgroundColor3 = THEME.Overlay,
+	BackgroundTransparency = 0.25,
+	AutoButtonColor = false,
+	Text = "",
+	Visible = false,
+	ZIndex = 100,
+}, screenGui)
+
+local card = new("Frame", {
+	Name = "RewardCard",
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.fromScale(0.5, 0.5),
+	Size = UDim2.fromScale(0.38, 0.44),
+	BackgroundColor3 = THEME.BackgroundLight,
+	ZIndex = 101,
+}, overlay)
+new("UISizeConstraint", { MinSize = Vector2.new(300, 300), MaxSize = Vector2.new(520, 390) }, card)
+corner(card, UDim.new(0, 20))
+stroke(card, THEME.Accent, 3)
+local cardScale = new("UIScale", { Scale = 0.86 }, card)
+
+new("TextLabel", {
+	Name = "Eyebrow",
+	Position = UDim2.fromScale(0.08, 0.06),
+	Size = UDim2.fromScale(0.84, 0.1),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	Text = string.upper(GroupRewardConfig.GroupName) .. " MEMBER REWARD",
+	TextColor3 = THEME.Accent,
+	TextScaled = true,
+	ZIndex = 102,
+}, card)
+
+new("TextLabel", {
+	Name = "Reward",
+	Position = UDim2.fromScale(0.08, 0.18),
+	Size = UDim2.fromScale(0.84, 0.22),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBlack,
+	Text = ("+%d%% ESSENCE"):format(math.floor((GroupRewardConfig.BonusMultiplier - 1) * 100 + 0.5)),
+	TextColor3 = THEME.Green,
+	TextScaled = true,
+	ZIndex = 102,
+}, card)
+
+new("TextLabel", {
+	Name = "Description",
+	Position = UDim2.fromScale(0.1, 0.42),
+	Size = UDim2.fromScale(0.8, 0.13),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.Gotham,
+	Text = ("Join our Roblox community to earn %d%% more essence on every reward."):format(
+		math.floor((GroupRewardConfig.BonusMultiplier - 1) * 100 + 0.5)
+	),
+	TextColor3 = THEME.Muted,
+	TextWrapped = true,
+	TextScaled = true,
+	ZIndex = 102,
+}, card)
+
+local joinButton = new("TextButton", {
+	Name = "JoinButton",
+	Position = UDim2.fromScale(0.1, 0.61),
+	Size = UDim2.fromScale(0.8, 0.16),
+	BackgroundColor3 = THEME.Accent,
+	AutoButtonColor = false,
+	Font = Enum.Font.GothamBold,
+	Text = "JOIN " .. string.upper(GroupRewardConfig.GroupName),
+	TextColor3 = THEME.BackgroundLight,
+	TextScaled = true,
+	ZIndex = 102,
+}, card)
+corner(joinButton, UDim.new(0, 10))
+
+local verifyButton = new("TextButton", {
+	Name = "VerifyButton",
+	Position = UDim2.fromScale(0.1, 0.8),
+	Size = UDim2.fromScale(0.55, 0.1),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	Text = "I'VE JOINED — CHECK",
+	TextColor3 = THEME.White,
+	TextScaled = true,
+	ZIndex = 102,
+}, card)
+
+local closeButton = new("TextButton", {
+	Name = "CloseButton",
+	Position = UDim2.fromScale(0.69, 0.8),
+	Size = UDim2.fromScale(0.21, 0.1),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.Gotham,
+	Text = "LATER",
+	TextColor3 = THEME.Muted,
+	TextScaled = true,
+	ZIndex = 102,
+}, card)
+
+local function showPopup()
+	if player:GetAttribute("GroupMember") == true then
+		return
+	end
+	overlay.Visible = true
+	cardScale.Scale = 0.86
+	TweenService:Create(cardScale, TweenInfo.new(0.24, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+end
+
+local function hidePopup()
+	overlay.Visible = false
+end
+
 -- Hover/press feel, matching every other button in this codebase.
 do
 	button:SetAttribute("JuiceFeelApplied", true)
@@ -157,11 +268,34 @@ do
 end
 
 button.MouseButton1Click:Connect(function()
+	showPopup()
+end)
+
+joinButton.MouseButton1Click:Connect(function()
 	-- Wrapped: OpenBrowserWindowAsync can fail (platform restrictions,
 	-- console/mobile quirks) and must never error out this click handler.
 	pcall(function()
 		GuiService:OpenBrowserWindowAsync(GroupRewardConfig.GroupUrl:format(GroupRewardConfig.GroupId))
 	end)
+end)
+
+closeButton.MouseButton1Click:Connect(hidePopup)
+
+verifyButton.MouseButton1Click:Connect(function()
+	verifyButton.Text = "CHECKING..."
+	local ok, isMember = pcall(function()
+		return checkMembership:InvokeServer()
+	end)
+	if ok and isMember then
+		hidePopup()
+	else
+		verifyButton.Text = "NOT YET — TRY AGAIN"
+		task.delay(2, function()
+			if verifyButton.Parent then
+				verifyButton.Text = "I'VE JOINED — CHECK"
+			end
+		end)
+	end
 end)
 
 -- =========================================================================
@@ -184,8 +318,16 @@ holder.Visible = false
 task.spawn(function()
 	local isMember = waitForAttribute("GroupMember", 15) == true
 	holder.Visible = not isMember
+	if not isMember then
+		task.wait(5)
+		showPopup()
+	end
 end)
 
 player:GetAttributeChangedSignal("GroupMember"):Connect(function()
-	holder.Visible = player:GetAttribute("GroupMember") ~= true
+	local isMember = player:GetAttribute("GroupMember") == true
+	holder.Visible = not isMember
+	if isMember then
+		hidePopup()
+	end
 end)
