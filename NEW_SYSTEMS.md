@@ -1721,6 +1721,48 @@ still claimable only once per slot per day regardless), but real, and
 exactly the same bar the wheel's own new ticket-listener needed from
 the start -- so both got the same fix.
 
+## 36. Biggest Gain -- a session personal best, entirely client-side
+
+A small addition in the same spirit as the Fortune Wheel but much
+smaller in scope: `BiggestGainCelebration.client.luau` celebrates the
+single biggest Earth Essence gain observed since you joined -- a lucky
+crit, a golden storm hit, a Wheel jackpot, a big quest reward, any
+source -- whenever a new one beats the last by a real margin (20%+,
+so it isn't a stream of toasts for trivial increments). Distinct from
+`UIManagement.client.luau`'s existing milestone celebrations, which
+fire when the CUMULATIVE total crosses a round threshold (1K, 10K,
+...) -- this is about one single collection event being the biggest
+one yet, regardless of the running total.
+
+**Deliberately session-only, and deliberately not a server feature.**
+A genuine lifetime record would need server-side tracking to be
+trustworthy for anything beyond your own screen -- this doesn't claim
+to be that. It's a pure, honest readout of deltas this client already
+legitimately observes on its own leaderstat, reset every time you
+rejoin. That scoping is what let this ship as a single, fully
+self-contained client file with no new remotes, no new PlayerData
+field, and no trust question to reason through at all.
+
+Setup waits ~7 seconds after join on purpose: `IdleService.server.
+luau` grants offline earnings through the exact same leaderstat about
+5 seconds after join, and a big offline lump sum would otherwise fire
+a "New Best" banner right on top of `RecieveOfflineEarning.client.
+luau`'s own dedicated Welcome Back popup, competing for the same
+number at the worst possible moment. Waiting past that window means
+the offline grant is already baked into the starting baseline instead
+of being treated as a trackable gain.
+
+**Caught in self-review:** the reveal animation played a Back-Out
+tween on the banner's UIScale (0.7 -> 1, which already overshoots
+past 1 before settling -- that's where the "pop" comes from) AND
+called `Juice.Punch` on the same UIScale right after. `Punch` reads
+`Scale` synchronously to decide its own resting point -- since tweens
+animate over subsequent frames rather than instantly, it would have
+read the pre-tween 0.7, wrongly captured that as "resting," and
+fought the reveal tween outright, leaving the banner stuck visibly
+smaller than intended. Removed the redundant Punch call; the Back-Out
+easing already provides the punch on its own.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
@@ -1850,6 +1892,16 @@ the start -- so both got the same fix.
     its real 1% odds, temporarily swap `WheelConfig.Segments[8]`'s
     `Weight` to something large (or `WheelConfig.RollSegmentIndex`'s
     return to `return 8` directly) -- revert either before shipping.
+18. **Biggest Gain (section 36)** needs a session with at least two
+    collections of noticeably different sizes to see fire -- the very
+    first gain of the session never celebrates (nothing to beat yet),
+    it just quietly sets the baseline. Collect normally for a bit, then
+    land something bigger (a crit, a Wheel spin, a golden storm hit) --
+    the banner should pop in top-center reading "🏆 NEW BEST THIS
+    SESSION: +N" and fade out on its own after ~2.5s. Confirm it does
+    NOT fire in the first ~7 seconds after joining on a save with
+    offline earnings pending (that number belongs to the Welcome Back
+    popup, not this).
 
 ## ⚠️ One thing to be careful about
 
