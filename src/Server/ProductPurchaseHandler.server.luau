@@ -32,11 +32,11 @@
     HOOKING UP YOUR SHOP UI
     ------------------------
     This script also exposes a RemoteEvent at
-    ReplicatedStorage.PurchaseRemotes.RequestPurchase so client UI (like
+    ReplicatedStorage.Remotes.RequestPurchase so client UI (like
     the Shop popup) can trigger a purchase prompt without needing direct
     MarketplaceService access. From a LocalScript:
 
-        local remotes = game:GetService("ReplicatedStorage"):WaitForChild("PurchaseRemotes")
+        local remotes = game:GetService("ReplicatedStorage"):WaitForChild("Remotes")
         remotes.RequestPurchase:FireServer("gamepass", 123456789)
         remotes.RequestPurchase:FireServer("product", 345678901)
 ]]
@@ -56,48 +56,48 @@ local EPMService = require(game:GetService("ServerScriptService"):WaitForChild("
 -- join (so the benefit is always re-applied, e.g. after a data reset).
 local GAMEPASS_HANDLERS = {
 	-- 2x Essence Multiplier
-	[1907605899] = function(player) -- VIP Pass
+	[1907605899] = function(player)
 		print(player.Name .. " now owns  2x Essence Multiplier")
 		require(player:WaitForChild("PlayerData")).Gamepasses[1907605899] = {["Owned"] = true}
 		player:SetAttribute(1907605899, true)
 	end,
 	--VIP Rank
-	[1909291891] = function(player) -- Auto-Collect Pass
+	[1909291891] = function(player)
 		print(player.Name .. " now owns VIP Rank")
 		-- e.g. player:SetAttribute("AutoCollect", true)
 		require(player:WaitForChild("PlayerData")).Gamepasses[1909291891] = {["Owned"] = true}
 		player:SetAttribute(1909291891, true)
 	end,
 	--Lucky Finder (+50% Luck)
-	[1907239833] = function(player) -- Auto-Collect Pass
+	[1907239833] = function(player)
 		print(player.Name .. " now owns Lucky Finder (+50% Luck)")
 		-- e.g. player:SetAttribute("AutoCollect", true)
 		require(player:WaitForChild("PlayerData")).Gamepasses[1907239833] = {["Owned"] = true}
 		player:SetAttribute(1907239833, true)
 	end,
-	--Ultra Luck (+300%)
-	[1906063939] = function(player) -- Auto-Collect Pass
-		print(player.Name .. " now owns Ultra Luck (+300%)")
+	--Ultra Luck (2x rare weight alone, 3x total with Lucky Finder)
+	[1906063939] = function(player)
+		print(player.Name .. " now owns Ultra Luck")
 		-- e.g. player:SetAttribute("AutoCollect", true)
 		require(player:WaitForChild("PlayerData")).Gamepasses[1906063939] = {["Owned"] = true}
 		player:SetAttribute(1906063939, true)
 	end,
 	--Auto Absorption
-	[1907677938] = function(player) -- Auto-Collect Pass
+	[1907677938] = function(player)
 		print(player.Name .. " now owns Auto Absorption")
 		-- e.g. player:SetAttribute("AutoCollect", true)
 		require(player:WaitForChild("PlayerData")).Gamepasses[1907677938] = {["Owned"] = true}
 		player:SetAttribute(1907677938, true)
 	end,
 	--Material Alchemist (Offline Collection)
-	[1907863864] = function(player) -- Auto-Collect Pass
+	[1907863864] = function(player)
 		print(player.Name .. " now owns Material Alchemist (Offline Collection)")
 		-- e.g. player:SetAttribute("AutoCollect", true)
 		require(player:WaitForChild("PlayerData")).Gamepasses[1907863864] = {["Owned"] = true}
 		player:SetAttribute(1907863864, true)
 	end,
 	--Dedicated Essence
-	[1907077899] = function(player) -- Auto-Collect Pass
+	[1907077899] = function(player)
 		print(player.Name .. " now owns Dedicated Essence")
 		-- e.g. player:SetAttribute("AutoCollect", true)
 		require(player:WaitForChild("PlayerData")).Gamepasses[1907077899] = {["Owned"] = true}
@@ -112,23 +112,22 @@ local GAMEPASS_HANDLERS = {
 local PotionTimerService = require(game.ServerScriptService:WaitForChild("PotionTimerService"))
 local StormController = require(game.ServerScriptService:WaitForChild("StormController"))
 local PRODUCT_HANDLERS = {
-	[3609555390] = function(player) -- Mini Essence Potion (e.g. +250 Essence)
-		print(player.Name .. " bought the Small Gem Pack")
+	[3609555390] = function(player) -- Mini Essence Potion (3 minutes)
+		print(player.Name .. " bought the Mini Essence Potion")
 		PotionTimerService.ApplyPotion(player, "EssenceX15", 60 * 3)
 		
 		return true
 	end,
 
-	[3609555456] = function(player) -- Moderate Essence Potion (e.g. +2000 Essence)
-		print(player.Name .. " bought the Mega Gem Pack")
+	[3609555456] = function(player) -- Moderate Essence Potion (15 minutes)
+		print(player.Name .. " bought the Moderate Essence Potion")
 		PotionTimerService.ApplyPotion(player, "EssenceX15", 60 * 15)
 
 		return true
 	end,
 
-	[3609555497] = function(player) -- Massive Essence Potion (24h)
-		print(player.Name .. " bought the 2x Essence Boost")
-		-- e.g. BoostService:Apply(player, "EssenceX2", 24 * 60 * 60)
+	[3609555497] = function(player) -- Massive Essence Potion (90 minutes)
+		print(player.Name .. " bought the Massive Essence Potion")
 		PotionTimerService.ApplyPotion(player, "EssenceX15", 60 * 90)
 
 		return true
@@ -154,8 +153,8 @@ local PRODUCT_HANDLERS = {
 		return true
 	end,
 
-	[3609555620] = function(player) -- 5 Minute Time Warp (e.g. +2000 Essence)
-		print(player.Name .. " bought the Mega Gem Pack")
+	[3609555620] = function(player) -- 5 Minute Time Warp
+		print(player.Name .. " bought the 5 Minute Time Warp")
 		local EPMS = EPMService.getEPM(player)
 		if not EPMS then
 			-- getEPM returns bare nil if EPMService.ActiveSessions has no
@@ -178,9 +177,8 @@ local PRODUCT_HANDLERS = {
 		return true
 	end,
 
-	[3609555653] = function(player) -- 30 Minute Time Warp (24h)
-		print(player.Name .. " bought the 2x Essence Boost")
-		-- e.g. BoostService:Apply(player, "EssenceX2", 24 * 60 * 60)
+	[3609555653] = function(player) -- 30 Minute Time Warp
+		print(player.Name .. " bought the 30 Minute Time Warp")
 		local EPMS = EPMService.getEPM(player)
 		if not EPMS then
 			-- See the 5 Minute Time Warp handler above -- same missing-
@@ -243,7 +241,7 @@ MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, gameP
 	-- than applying it immediately. Wrapped so a failure here costs only
 	-- the RobuxSpent stat, never the grant.
 	local ok, err = pcall(function()
-		local info = MarketplaceService:GetProductInfoAsync(gamePassId)
+		local info = MarketplaceService:GetProductInfoAsync(gamePassId, Enum.InfoType.GamePass)
 		require(player:WaitForChild("PlayerData")).RobuxSpent += info.PriceInRobux
 	end)
 	if not ok then

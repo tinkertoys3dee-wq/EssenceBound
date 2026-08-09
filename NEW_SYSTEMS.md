@@ -1,6 +1,6 @@
 # What changed, and what to check in Studio
 
-Two commits on `claude/retention-and-captivation`. Everything below is
+Changes on `claude/retention-and-captivation`. Everything below is
 either a bug fix to existing code or a self-contained new file — no
 existing gameplay system was restructured.
 
@@ -36,30 +36,20 @@ gold name/icon outline (`UIInitializerHooks.client.luau`), 2x Essence
 Multiplier (`1907605899`) is read in `EssenceMultiplier.
 CalculateMultiplier`, Auto Absorption (`1907677938`) is read in
 `CursorCollection.client.luau`'s collection loop, and Material
-Alchemist (`1907863864`) doubles the offline-earnings base rate in
+Alchemist (`1907863864`) raises the offline-earnings base rate from 10%
+to 50% in
 `IdleService.server.luau`.
 
 ---
 
-## ⚠️ What you need to do -- Zones won't work without this
+## Zones no longer require a manual Studio setup step
 
-Section 39 (Zones) needs one thing placed in Studio before any of it
-does anything: a **`ZonesButton`** instance parented under
-**`MainGui.Right.Holder`** -- the same subfolder
-`UIInitializerHooks.client.luau`'s own nav-bar block already iterates.
-`ZonePanel.client.luau` only ever wires a click handler onto it; it
-does not build the button itself, and it will not build a fallback one
-in its place. It handles either shape that folder's own convention
-uses -- a real `TextButton`/`ImageButton` directly named `ZonesButton`,
-or a plain `Frame` named `ZonesButton` with a `TextButton`/`ImageButton`
-nested inside it. Until it exists, the script quietly warns once in the
-Output window and does nothing else -- it will not error or break
-anything else in the game, but Zones will be completely inaccessible.
-
-Nothing else is required -- everything server-side, the picker panel,
-the travel animation, and the persistent zone glow around the orb are
-already fully built and will start working the moment the button
-exists. See item 21 further down for how to test it once it's placed.
+Section 39 still prefers the authored **`ZonesButton`** under
+**`MainGui.Right.Holder`**, accepting either a real GuiButton or a Frame
+that wraps one. If that instance is missing, renamed, or lost during
+syncback, `ZonePanel.client.luau` now creates a styled fallback in the
+same navigation slot. The picker, travel animation, and zone ambience
+therefore remain reachable without any manual repair in Studio.
 
 ---
 
@@ -1919,12 +1909,11 @@ and Ultra Luck, are wired up too now -- see section 40.)
   it can never show odds that don't match what they're actually zoned
   into -- `CursorCollection.client.luau`'s two call sites were updated
   to pass it.
-- `ZonePanel.client.luau` -- the picker. **Does not build its own
-  trigger button** -- unlike every other side-panel script in this
-  codebase, the button is Studio-authored (see "What you need to do"
-  below). Shows every zone's lock state, live-updating cost/odds, and
-  plays the travel animation only after the server confirms a switch
-  actually happened, never optimistically on click.
+- `ZonePanel.client.luau` -- the picker. Prefers the Studio-authored
+  navigation button and builds a fallback in the same slot only if that
+  entry point is missing. Shows every zone's lock state, live-updating
+  cost/odds, and plays the travel animation only after the server
+  confirms a switch actually happened, never optimistically on click.
 - `ZoneAmbience.client.luau` -- a persistent, subtle glow behind the
   great orb, tinted to whichever zone is current, so a zone actually
   looks different for as long as you stay there, not just for the
@@ -1954,12 +1943,9 @@ room.
 as living directly under `MainGui.Right`, matching where
 `ManualSummonButton` already sits -- the actual location is one level
 deeper, `MainGui.Right.Holder`, the same subfolder
-`UIInitializerHooks.client.luau`'s own nav-bar block iterates.
-`ZonePanel.client.luau` and every doc reference below are updated to
-the corrected path, and the lookup now also accepts `ZonesButton`
-being a plain `Frame` wrapping a nested `TextButton`/`ImageButton`
-(that folder's own established shape) rather than assuming it's a raw
-button instance.
+`UIInitializerHooks.client.luau`'s own nav-bar block iterates. The
+lookup accepts either a raw GuiButton or that folder's usual Frame
+wrapper, and now creates a code-owned fallback if neither resolves.
 
 **Added afterward: the Shadowfen has its own orb image.** The
 Shadowfen zone entry in `ZonesConfig.Zones` now carries
@@ -2179,6 +2165,39 @@ function takes `player`/`playerData` as arguments and works on exactly
 what it's given, which is what makes it safe to share across however many
 players are on the server at once.
 
+## 43. Essence Market -- every paid benefit is visible, accurate, and reachable
+
+The old Shop depended almost entirely on Studio-authored presentation, so
+the repo could neither guarantee that the entry point existed nor explain
+what a player actually received. `MonetizationConfig.luau` now catalogs all
+seven permanent passes and six repeatable products with benefit copy that
+matches the live implementation. `MonetizationStore.client.luau` builds a
+responsive market in code with Featured/Passes/Boosts tabs, product art,
+owned/unavailable states, exact benefit details, and player-specific live
+prices from `MarketplaceService` -- no guessed or hard-coded Robux prices.
+Featured deliberately puts the short starter potion in the first row beside
+the strongest permanent conveniences instead of burying every approachable
+repeatable offer below all seven passes.
+
+The market never opens Roblox checkout by itself. A player must first open
+the market and then deliberately press an offer's BUY button; the existing
+server purchase remote still allowlists every id before it can prompt. To
+make the catalog discoverable without becoming spammy, at most two optional
+interest cards may appear in a session: the first only after 2.5--4 minutes
+and the tutorial, the second 5.5--8 minutes later. They wait for other modal
+UI to clear, choose among unowned offers with weighted randomness, and only
+open the relevant market card. Opening the market once disables the
+remaining cards for that session.
+
+The authored Shop button receives a small R$ badge and opens the new market.
+If either Shop or Zones is missing from `MainGui.Right.Holder`, a code-created
+fallback appears in its expected slot. The rest of the screenshot's
+always-on controls were present and correctly placed; Group, Friend Bonus,
+New Adventurer's Luck, and manual storm summon remain conditional because
+their underlying features genuinely are conditional. Finally, VIP's gold
+name/portrait outline now updates immediately after a purchase instead of
+waiting for the next join.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
@@ -2343,10 +2362,8 @@ players are on the server at once.
     account that already existed before this shipped, confirm the
     badge never appears at all, even on the very first load after
     updating.
-21. **Zones (section 39) needs one thing from you first -- see "What
-    you need to do" immediately below, it won't do anything in Studio
-    until that button exists.** Once placed: click it, confirm the
-    panel shows Earthen Grove as "📍 HERE" and The Shadowfen as
+21. **Zones (section 39)** -- click the authored Zones button and confirm
+    the panel shows Earthen Grove as "📍 HERE" and The Shadowfen as
     "🔒 UNLOCK · 300 Essence" (greyed out under 300 essence, lit up
     orange once you have enough). Click UNLOCK -- essence should drop
     by 300, a full-screen travel animation should play, and the panel
@@ -2362,7 +2379,10 @@ players are on the server at once.
     Game Pass, run
     `game.Players.YourName:SetAttribute(1907077899, true)` in the
     command bar and reopen the panel -- every card's odds line should
-    sharpen immediately.
+    sharpen immediately. Then temporarily rename/remove the authored
+    `MainGui.Right.Holder.ZonesButton` in a Studio copy and re-run: a
+    fallback ZONES button should appear in the same slot and open the
+    same panel.
 22. **Lucky Finder / Ultra Luck (section 40)** -- open the Zones panel
     on Earthen Grove and note the odds line (should read "🌍 82% •
     🌑 18%"). Run
@@ -2406,6 +2426,18 @@ players are on the server at once.
     one does, its fix is the same one-line move every button in
     section 41 got: shift its `x` in the relevant file's `LAYOUT`
     table.
+25. **Essence Market (section 43)** -- open Shop and confirm the new
+    market appears alone (the legacy ShopPopup must not open behind it),
+    all three tabs render, every card eventually replaces "VIEW OFFER"
+    with its live price, owned passes say "OWNED", and BUY opens the
+    correct Roblox confirmation. Cancel that confirmation once to verify
+    cancellation grants nothing. For the interest-card test, temporarily
+    set the first delay to 5--8 seconds in `MonetizationConfig.Spotlights`,
+    join with `SeenTutorial = true`, and confirm one card appears only
+    while no other modal is open; its button should focus the advertised
+    market card but must not open checkout. Restore the real delays before
+    publishing. Finally, temporarily rename the authored Shop button in a
+    Studio copy and confirm the fallback STORE entry appears.
 
 ## ⚠️ One thing to be careful about
 

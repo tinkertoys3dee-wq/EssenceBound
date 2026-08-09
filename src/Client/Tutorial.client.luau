@@ -732,7 +732,7 @@ local TUTORIAL_STEPS = {
 	{
 		Frame = ShopPopup,
 		Emoji = "💎",
-		Text = "Check out the SHOP for awesome boosts and exclusive goodies using Robux!",
+		Text = "SHOP shows exact permanent perks and repeatable boosts with live Robux prices. Purchases are always optional!",
 		Extra = nil,
 	},
 }

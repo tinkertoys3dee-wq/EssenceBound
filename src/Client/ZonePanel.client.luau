@@ -7,18 +7,11 @@
 	on a CONFIRMED switch -- never optimistically before the server
 	responds, same discipline WheelPanel's spin visual follows.
 
-	Unlike this codebase's other side-panel scripts (Wheel, Achievements,
-	Sanctum, ...), the trigger BUTTON itself is not built here -- it's
-	authored directly in Studio as MainGui.Right.Holder.ZonesButton (this
-	file only ever wires its click), the same Holder subfolder
-	UIInitializerHooks.client.luau's own nav-bar block already iterates.
-	If ZonesButton never appears, this script quietly does nothing rather
-	than erroring -- there's no fallback button to build in its place;
-	whoever places it controls that. Resolves to either the instance
-	itself (if it's already a real GuiButton) or a nested TextButton/
-	ImageButton inside it, since that nav-bar block's own convention for
-	this folder wraps each button in a plain Frame rather than using a
-	button class directly -- ZonesButton might follow either shape.
+	The preferred trigger is the Studio-authored
+	MainGui.Right.Holder.ZonesButton. If syncback ever omits or renames that
+	instance, this script creates a matching fallback in the same slot so
+	the entire zones feature can never become undiscoverable. Either a
+	direct GuiButton or a Frame-wrapped TextButton/ImageButton is accepted.
 ]]
 
 local Players = game:GetService("Players")
@@ -47,28 +40,26 @@ if not (UnlockZoneFunction and SwitchZoneFunction) then
 	return
 end
 
--- The button is Studio-authored, not built here -- see the file header.
--- Generous timed waits (not bare WaitForChild) so a slow-to-replicate
--- MainGui never hangs this whole script if ZonesButton is missing/renamed;
--- it just quietly does nothing instead.
+-- Prefer the Studio-authored navigation instance. Generous timed waits (not
+-- bare WaitForChild) keep a slow or incomplete MainGui from hanging the
+-- whole script; the code-created fallback below takes over if resolution
+-- fails.
 local mainGui = playerGui:WaitForChild("MainGui", 15)
 local rightHolster = mainGui and mainGui:WaitForChild("Right", 15)
 local rightHolder = rightHolster and rightHolster:WaitForChild("Holder", 15)
 local zonesButtonInstance = rightHolder and rightHolder:WaitForChild("ZonesButton", 15)
-if not zonesButtonInstance then
-	warn("ZonePanel: MainGui.Right.Holder.ZonesButton never appeared -- place it to enable the Zones UI.")
-	return
-end
 
 -- ZonesButton might be a real GuiButton directly, or a plain Frame
 -- wrapping one (see the file header) -- resolve to whichever actually
 -- has a click event before wiring anything to it.
-local zonesButton = zonesButtonInstance:IsA("GuiButton") and zonesButtonInstance
-	or zonesButtonInstance:FindFirstChildOfClass("TextButton")
-	or zonesButtonInstance:FindFirstChildOfClass("ImageButton")
+local zonesButton
+if zonesButtonInstance then
+	zonesButton = zonesButtonInstance:IsA("GuiButton") and zonesButtonInstance
+		or zonesButtonInstance:FindFirstChildWhichIsA("TextButton", true)
+		or zonesButtonInstance:FindFirstChildWhichIsA("ImageButton", true)
+end
 if not zonesButton then
-	warn("ZonePanel: ZonesButton exists but isn't a GuiButton and has no nested TextButton/ImageButton -- can't wire a click to it.")
-	return
+	warn("ZonePanel: Zones navigation trigger missing or invalid -- using code-created fallback.")
 end
 
 -- =========================================================================
@@ -121,6 +112,36 @@ local screenGui = new("ScreenGui", {
 	DisplayOrder = 60,
 	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 }, playerGui)
+
+-- Right.Holder is Studio-owned and isn't fully represented in this repo.
+-- Keep the feature reachable if that authored button is ever lost during a
+-- sync by rebuilding only the missing entry point, not the whole nav rail.
+if not zonesButton then
+	local fallbackHolder = new("Frame", {
+		Name = "FallbackZonesButtonHolder",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.fromScale(0.84, 0.415),
+		Size = UDim2.fromScale(0.13, 0.066),
+		BackgroundTransparency = 1,
+		ZIndex = 60,
+	}, screenGui)
+
+	zonesButton = new("TextButton", {
+		Name = "FallbackZonesButton",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = THEME.BackgroundLight,
+		AutoButtonColor = false,
+		Font = Enum.Font.GothamBlack,
+		Text = "💎  ZONES",
+		TextColor3 = THEME.White,
+		TextScaled = true,
+		ZIndex = 61,
+	}, fallbackHolder)
+	corner(zonesButton, UDim.new(0.32, 0))
+	stroke(zonesButton, THEME.Accent, 2, 0.08)
+	new("UITextSizeConstraint", { MinTextSize = 9, MaxTextSize = 15 }, zonesButton)
+	Juice.ButtonFeel(zonesButton, { HoverScale = 1.05 })
+end
 
 -- =========================================================================
 -- PANEL SCAFFOLDING
@@ -639,6 +660,14 @@ local function openPanel()
 
 	refresh()
 end
+
+_G.EssenceboundZones = {
+	Open = openPanel,
+	Close = closePanel,
+	IsOpen = function()
+		return open
+	end,
+}
 
 zonesButton.Activated:Connect(openPanel)
 closeButton.MouseButton1Click:Connect(closePanel)
