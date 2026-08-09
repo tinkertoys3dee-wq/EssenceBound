@@ -102,6 +102,17 @@ function EssenceMultiplier.CalculateMultiplier(plr, gold, crit, skipDoubleCritRo
 		multiplier *= GroupRewardConfig.BonusMultiplier
 	end
 
+	-- Temporary Prophecy Crystal boon. ProphecyService owns this attribute
+	-- and resets it to the neutral 1x when the omen expires. Clamp here as
+	-- a final economy guard so a malformed value can never zero or explode
+	-- every collection payout.
+	local prophecyMultiplier = math.clamp(
+		tonumber(plr:GetAttribute("ProphecyEssenceMultiplier")) or 1,
+		1,
+		2
+	)
+	multiplier *= prophecyMultiplier
+
 	-- Friend bonus. FriendsInServer is maintained by FriendBonusService,
 	-- recomputed on every join/leave -- tonumber-guarded the same way as
 	-- MomentumStacks/umbralFocus below, since a nil/missing attribute must

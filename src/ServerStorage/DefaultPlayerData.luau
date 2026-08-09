@@ -211,6 +211,18 @@ local DefaultPlayerData = {
 		LastSpinAt = 0,
 	},
 
+	-- Prophecy Crystal state, driven by ProphecyService. The first reading
+	-- is immediately available (NextRollAt = 0); timestamps preserve both
+	-- the ten-minute reading cooldown and a temporary active omen across
+	-- reconnects. RollsSinceRare powers the eight-reading Fate guarantee.
+	Prophecy = {
+		NextRollAt = 0,
+		ActiveId = "",
+		ExpiresAt = 0,
+		TotalRolls = 0,
+		RollsSinceRare = 0,
+	},
+
 	-- Zones state, driven by ZoneService (see ZonesConfig for what a zone
 	-- actually changes -- essentially just the Earth/Shadow essence roll
 	-- weighting). earth_zone is the only zone ever unlocked by default --

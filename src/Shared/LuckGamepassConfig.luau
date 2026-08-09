@@ -64,6 +64,15 @@ function LuckGamepassConfig.GetRareEssenceMultiplier(player: Instance): number
 	if player:GetAttribute(LuckGamepassConfig.UltraLuckGamepassId) then
 		multiplier *= LuckGamepassConfig.UltraLuckMultiplier
 	end
+
+	-- ProphecyService supplies a temporary server-owned luck multiplier.
+	-- It stacks with paid luck (rather than replacing something a player
+	-- bought) and is clamped to the strongest catalogued 2x omen.
+	multiplier *= math.clamp(
+		tonumber(player:GetAttribute("ProphecyRareWeightMultiplier")) or 1,
+		1,
+		2
+	)
 	return multiplier
 end
 

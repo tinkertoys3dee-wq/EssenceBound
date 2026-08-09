@@ -142,6 +142,11 @@ function CriticalsController.GetCritChance(player)
 	-- can never push a player past the existing ceiling either.
 	local luckBonus = NewPlayerLuckConfig.IsActive(player) and NewPlayerLuckConfig.CritChanceBonus or 0
 	local groupBonus = player:GetAttribute("GroupMember") == true and GroupRewardConfig.CritChanceBonus or 0
+	local prophecyBonus = math.clamp(
+		tonumber(player:GetAttribute("ProphecyCritChanceBonus")) or 0,
+		0,
+		0.2
+	)
 
 	-- Mundane Studios members get the same small, additive treatment as
 	-- New Player Luck. The server owns GroupMember and the existing global
@@ -150,6 +155,7 @@ function CriticalsController.GetCritChance(player)
 		+ sanctumCrit
 		+ luckBonus
 		+ groupBonus
+		+ prophecyBonus
 	return math.min(MAX_CRIT_CHANCE, total)
 end
 

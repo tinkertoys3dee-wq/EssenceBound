@@ -687,6 +687,7 @@ player:GetAttributeChangedSignal("CurrentZoneId"):Connect(refresh)
 player:GetAttributeChangedSignal(ZonesConfig.DedicatedEssenceGamepassId):Connect(refresh)
 player:GetAttributeChangedSignal(LuckGamepassConfig.LuckyFinderGamepassId):Connect(refresh)
 player:GetAttributeChangedSignal(LuckGamepassConfig.UltraLuckGamepassId):Connect(refresh)
+player:GetAttributeChangedSignal("ProphecyRareWeightMultiplier"):Connect(refresh)
 for _, zone in ipairs(ZonesConfig.Zones) do
 	if zone.UnlockCost > 0 then
 		player:GetAttributeChangedSignal(ZonesConfig.UnlockedAttributeName(zone.Id)):Connect(refresh)

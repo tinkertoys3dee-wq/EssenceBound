@@ -2198,6 +2198,36 @@ their underlying features genuinely are conditional. Finally, VIP's gold
 name/portrait outline now updates immediately after a purchase instead of
 waiting for the next join.
 
+## 44. Prophecy Crystal -- temporary futures with a Fate guarantee
+
+The new 🔮 Fate shortcut opens a fully source-built divination chamber:
+layered crystal glow, counter-rotating rune rings, moving internal wisps,
+twinkling starlight, a faceted pedestal, rarity-responsive colors, and a
+server-result reveal that accelerates through false futures before the real
+prophecy lands. Rare, Epic and Mythic results escalate through extra rings,
+particles, flashes, impact shake and a dedicated callout. The entire frame
+and both nested information cards use explicit `UIPadding`, so the long
+Mythic benefit line stays clear of the border even on a narrow viewport.
+An active-prophecy pill remains beside the shortcut with the exact countdown,
+so a player never has to reopen the modal to remember what is running.
+
+Every reading is free and the first is immediately available. The crystal
+then reawakens every ten minutes. A roll grants one temporary prophecy for
+three to six minutes and replaces the previous one; the catalog spans
+Essence multiplier, additive critical chance, rare-Essence weighting, and
+hybrid futures. The strongest Mythic reading grants 2x Essence, +20% crit,
+and 2x rare-Essence weight for three minutes. Paid luck still stacks with a
+prophecy rather than being replaced by the free bonus.
+
+`ProphecyService.server.luau` owns cooldown validation, weighted selection,
+effect attributes, expiry and persistence. Both cooldown and active expiry
+use Unix timestamps, so leaving does not pause either timer and reconnecting
+cannot duplicate a reading. After seven consecutive below-Rare results, Fate
+fills and the eighth reading is selected only from Rare-or-better entries;
+landing Rare+ at any point resets that meter. `ProphecyConfig.luau` is the
+single catalog read by server and client, keeping every displayed duration
+and benefit identical to the effect gameplay actually receives.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
@@ -2438,6 +2468,24 @@ waiting for the next join.
     market card but must not open checkout. Restore the real delays before
     publishing. Finally, temporarily rename the authored Shop button in a
     Studio copy and confirm the fallback STORE entry appears.
+26. **Prophecy Crystal (section 44)** -- click the 🔮 FATE shortcut just left
+    of the Fortune Wheel. On a fresh save it should pulse green and
+    offer a free reading immediately. Roll once and confirm the outer and
+    inner runes counter-rotate quickly, false futures cycle without changing
+    the server-selected result, and the final rarity produces rings, motes,
+    a readable benefit card and an active countdown pill. Collect while the
+    boon is active and confirm its stated Essence/crit/luck effect is real;
+    for a luck omen, the Zones odds preview should update immediately too.
+    Rejoin during the timer and confirm the same prophecy resumes with less
+    time remaining, then expires back to neutral. Roll again immediately and
+    confirm the button shows the remaining ten-minute cooldown. To test Fate
+    without waiting through seven real cooldowns, set
+    `require(game.Players.YourName.PlayerData).Prophecy.RollsSinceRare = 7`
+    and `require(game.Players.YourName.PlayerData).Prophecy.NextRollAt = 0`
+    in the server command bar, then roll: the meter should announce FATE FULL
+    and the result must be Rare, Epic or Mythic. Finally check the padded
+    panel at both desktop and phone emulator widths; no title, benefit or
+    close control should touch the frame edge.
 
 ## ⚠️ One thing to be careful about
 
