@@ -6,66 +6,58 @@ existing gameplay system was restructured.
 
 ---
 
-## ⚠️⚠️ 0. THREE PAID GAMEPASSES DO NOTHING -- READ THIS FIRST
+## 0. UPDATE: all three previously-dead Game Passes are now wired up
 
-Found while reading `ProductPurchaseHandler.server.luau` for unrelated
-reasons. **Deliberately not fixed this pass** -- this is a real-money,
-business-facing decision (what should a paid feature actually do, at the
-price it's already listed at, for players who may have already bought
-it), not a balance/engagement call I should make unilaterally the way
-everything else in this doc was.
+This section used to be a "READ THIS FIRST" warning that three Game
+Passes took real Robux and did nothing at all -- explicitly left
+unfixed at the time since guessing what a paid feature should do isn't
+a call to make unilaterally. All three are now implemented, across two
+later passes (see sections 39 and 40 for the full writeups):
 
-Three Game Passes take a real player's real Robux, set a flag
-(`data.Gamepasses[id].Owned = true` and a matching player Attribute),
-and then **nothing else in the entire codebase ever reads that flag**.
-Grepped every one of these IDs across `src/` to confirm -- zero other
-references, in any file:
-
-| Game Pass | Id | What it currently does |
+| Game Pass | Id | What it does now |
 |---|---|---|
-| Lucky Finder (+50% Luck) | `1907239833` | Sets a flag. Nothing reads it. |
-| Ultra Luck (+300%) | `1906063939` | Sets a flag. Nothing reads it. |
-| Dedicated Essence | `1907077899` | Sets a flag. Nothing reads it. |
+| Dedicated Essence | `1907077899` | Sharpens whichever Zone you're standing in toward its specialty essence (see section 39) |
+| Lucky Finder (+50% Luck) | `1907239833` | Multiplies crit chance ×1.5, shortens the guaranteed-crit-streak wait by 4 clicks (see section 40) |
+| Ultra Luck (+300%) | `1906063939` | Multiplies crit chance ×4.0 (stacks additively with Lucky Finder to ×4.5 if both owned), shortens the streak wait by 10 clicks (see section 40) |
 
-For comparison, the other four Game Passes in the same file all DO
-something real: VIP Rank (`1909291891`) gives a gold name/icon outline
-(`UIInitializerHooks.client.luau`), 2x Essence Multiplier (`1907605899`)
-is read in `EssenceMultiplier.CalculateMultiplier`, Auto Absorption
-(`1907677938`) is read in `CursorCollection.client.luau`'s collection
-loop, and Material Alchemist (`1907863864`) doubles the offline-earnings
-base rate in `IdleService.server.luau`. Only these three "Luck"/
-"Dedicated Essence" ones are stubs.
+For comparison, the other four Game Passes in this file already did
+something real before any of this: VIP Rank (`1909291891`) gives a
+gold name/icon outline (`UIInitializerHooks.client.luau`), 2x Essence
+Multiplier (`1907605899`) is read in `EssenceMultiplier.
+CalculateMultiplier`, Auto Absorption (`1907677938`) is read in
+`CursorCollection.client.luau`'s collection loop, and Material
+Alchemist (`1907863864`) doubles the offline-earnings base rate in
+`IdleService.server.luau`.
 
-**Why I didn't just implement something:** "Luck" could plausibly mean
-crit chance, golden-storm chance, essence rarity odds, or something else
-entirely -- and whatever it's priced at was presumably priced against
-SOME intended effect size. Guessing wrong either shortchanges someone
-who already paid for it, or accidentally breaks the economy balance this
-whole pass spent a lot of care on. That's a decision for whoever set the
-price and wrote "Luck" and "Dedicated Essence" on the store listing, not
-something to invent from a variable name.
-
-**What actually needs to happen:** decide what each pass should do, then
-wire it into the relevant system the same way the four working passes
-already do it (an attribute check + a multiplier/bonus in the right
-place). If any of these three has already been purchased by a real
-player, that's also worth knowing before deciding what "fixing" it even
-means (does it retroactively start working now that a system exists for
-it, or does the definition just get written and apply going forward).
+**Why these particular meanings, and not something else:** "Luck" was
+originally left unguessed because it could plausibly have meant crit
+chance, golden-storm chance, essence rarity odds, or something else
+entirely, and a wrong guess either shortchanges someone who already
+paid for it or breaks the economy's balance. Crit chance is this
+game's own existing word for the same idea -- a random roll with a big
+visible payoff -- and reusing that already-balanced, already-capped
+system (rather than inventing a new roll from scratch) is the smallest,
+safest way to give both passes real, immediately-felt value. If either
+turns out to mean something different in practice, the entire effect
+lives in one small file (`LuckGamepassConfig.luau`) and nowhere else --
+redefining it there is the whole fix.
 
 ---
 
 ## ⚠️ What you need to do -- Zones won't work without this
 
 Section 39 (Zones) needs one thing placed in Studio before any of it
-does anything: a **`ZonesButton`** instance (a `TextButton` or
-`ImageButton`) parented under **`MainGui.Right`** -- the same holster
-`ManualSummonButton` already lives in. `ZonePanel.client.luau` only
-ever wires a click handler onto it; it does not build the button
-itself, and it will not build a fallback one in its place. Until
-`ZonesButton` exists, the script quietly warns once in the Output
-window and does nothing else -- it will not error or break anything
-else in the game, but Zones will be completely inaccessible.
+does anything: a **`ZonesButton`** instance parented under
+**`MainGui.Right.Holder`** -- the same subfolder
+`UIInitializerHooks.client.luau`'s own nav-bar block already iterates.
+`ZonePanel.client.luau` only ever wires a click handler onto it; it
+does not build the button itself, and it will not build a fallback one
+in its place. It handles either shape that folder's own convention
+uses -- a real `TextButton`/`ImageButton` directly named `ZonesButton`,
+or a plain `Frame` named `ZonesButton` with a `TextButton`/`ImageButton`
+nested inside it. Until it exists, the script quietly warns once in the
+Output window and does nothing else -- it will not error or break
+anything else in the game, but Zones will be completely inaccessible.
 
 Nothing else is required -- everything server-side, the picker panel,
 the travel animation, and the persistent zone glow around the orb are
@@ -1899,17 +1891,17 @@ unlocking one also travels you there immediately (you almost
 certainly want to go there right after paying for it).
 
 **Wires up a real, already-purchasable Game Pass that used to do
-nothing.** Section 0 at the top of this file flagged "Dedicated
+nothing.** Section 0 at the top of this file used to flag "Dedicated
 Essence" (id `1907077899`) as one of three Game Passes that took
-real Robux and then did nothing at all -- explicitly left unfixed at
-the time because guessing what a paid feature should do isn't a call
-to make unilaterally. This is different: the request itself asked for
-gamepass-amplified zone odds, and "Dedicated Essence" sharpening
-whichever zone you're standing in toward its specialty is about as
-direct a match to its own name as a guess can get, with zero
-downside for anyone who already bought it -- it did nothing before,
-it does something on-brand now. "Luck"/"Ultra Luck" are still
-unfixed stubs; this was the one guess confident enough to make.
+real Robux and then did nothing at all -- explicitly left unfixed
+originally because guessing what a paid feature should do isn't a
+call to make unilaterally. This one was a direct match: the request
+itself asked for gamepass-amplified zone odds, and "Dedicated
+Essence" sharpening whichever zone you're standing in toward its
+specialty is about as close to its own name as a guess can get, with
+zero downside for anyone who already bought it -- it did nothing
+before, it does something on-brand now. (The other two, Lucky Finder
+and Ultra Luck, are wired up too now -- see section 40.)
 
 **New files:**
 - `ZonesConfig.luau` (Shared) -- zone data (name, icon, cost, both
@@ -1959,6 +1951,60 @@ the zone card list's scrolling area originally overlapped the status
 message strip at the bottom by a few percent -- caught on a layout
 re-read, not a runtime test; shrank the list's height to leave clear
 room.
+
+**Corrected after shipping:** `ZonesButton` was originally documented
+as living directly under `MainGui.Right`, matching where
+`ManualSummonButton` already sits -- the actual location is one level
+deeper, `MainGui.Right.Holder`, the same subfolder
+`UIInitializerHooks.client.luau`'s own nav-bar block iterates.
+`ZonePanel.client.luau` and every doc reference below are updated to
+the corrected path, and the lookup now also accepts `ZonesButton`
+being a plain `Frame` wrapping a nested `TextButton`/`ImageButton`
+(that folder's own established shape) rather than assuming it's a raw
+button instance.
+
+## 40. Lucky Finder + Ultra Luck -- the other two dead Game Pass stubs, wired to crit chance
+
+Companion to section 39: "Lucky Finder (+50% Luck)" and "Ultra Luck
+(+300%)" were the remaining two of the three Game Passes section 0
+originally flagged as pure stubs. Both now multiply the player's crit
+chance -- Lucky Finder ×1.5, Ultra Luck ×4.0 -- and shorten the
+guaranteed-crit-streak wait (4 clicks, 10 clicks). Owning both stacks
+by addition into one shared multiplier (1 + 0.5 + 3.0 = ×4.5), not by
+chaining 1.5 × 4.0 = ×6 -- two separate real purchases should feel
+generous together without spiraling into an uncontrolled number.
+Applied last in `CriticalsController.GetCritChance`, after every other
+source (tree, Sanctum, New Adventurer's Luck) sums together, still
+bounded by the same `MAX_CRIT_CHANCE` clamp as everything else that
+feeds into it -- 1x (no change at all) for anyone who owns neither.
+
+**Why crit chance specifically:** it's this game's own existing word
+for the same idea a "Luck" pass promises -- a random roll with a big,
+visible payoff (bigger tint/glow/pop, a badge, the Crit Streak Combo
+callout) -- so reusing that already-balanced, already-capped system is
+a much smaller and safer change than inventing a new roll (golden-storm
+odds, essence rarity, ...) from scratch to hang two paid features off
+of. Everything both passes actually do lives in one small file,
+`LuckGamepassConfig.luau` -- if either should mean something different
+in practice, redefining it there is the entire fix, nothing else in
+the codebase needs to change.
+
+**One real tradeoff worth knowing about:** because this is a
+multiplier on the player's EXISTING crit chance, it does nothing
+(×1.5 or ×4 of zero is still zero) for a player who owns the pass but
+has bought no `CritChance` tree upgrades and isn't inside their New
+Adventurer's Luck window. In practice this is a narrow edge case --
+`CritChance` upgrades are cheap Tier-1 tree items most players pick up
+early regardless, and a purchase made within someone's first 24 hours
+gets amplified on top of New Adventurer's Luck's own 15% baseline
+immediately (0.15 × 4.5 = 67.5% crit chance with both passes owned) --
+but it's a real gap if a returning player somehow buys either pass
+with zero crit investment. Flagging it here rather than adding a flat
+baseline bonus on top, since "+X% Luck" reading as a literal
+percentage-of-your-own-luck multiplier (not a flat addition) is also
+the more standard convention for this kind of pass, and mixing both
+mechanisms would make the number on the label harder to trust at a
+glance.
 
 ## What to check when you open Studio
 
@@ -2142,6 +2188,20 @@ room.
     `game.Players.YourName:SetAttribute(1907077899, true)` in the
     command bar and reopen the panel -- every card's odds line should
     sharpen immediately.
+22. **Lucky Finder / Ultra Luck (section 40)** -- buy a couple of
+    levels of `critical_chance_1` first so there's a real non-zero
+    base to multiply (see the section's own note on why a zero-base
+    player won't see anything from either pass alone). Then run
+    `game.Players.YourName:SetAttribute(1907239833, true)` in the
+    command bar and click for a while -- crits should land noticeably
+    more often than before. Run
+    `game.Players.YourName:SetAttribute(1906063939, true)` on top of
+    that (both owned at once) and confirm crits get dramatically more
+    frequent still, not just marginally -- with both owned your crit
+    chance should be 4.5x whatever `critical_chance_1` alone gave you,
+    clamped at 90%. Remove both attributes (`SetAttribute(id, nil)`)
+    and confirm crit frequency drops back down to just the tree's own
+    contribution.
 
 ## ⚠️ One thing to be careful about
 

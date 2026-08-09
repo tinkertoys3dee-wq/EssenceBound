@@ -9,12 +9,16 @@
 
 	Unlike this codebase's other side-panel scripts (Wheel, Achievements,
 	Sanctum, ...), the trigger BUTTON itself is not built here -- it's
-	authored directly in Studio as MainGui.Right.ZonesButton (this file
-	only ever wires its click), the same "optional pre-placed button"
-	relationship OrbClicker.client.luau already has with ManualSummonButton
-	in that same holster. If ZonesButton never appears, this script quietly
-	does nothing rather than erroring -- there's no fallback button to
-	build in its place; whoever places it controls that.
+	authored directly in Studio as MainGui.Right.Holder.ZonesButton (this
+	file only ever wires its click), the same Holder subfolder
+	UIInitializerHooks.client.luau's own nav-bar block already iterates.
+	If ZonesButton never appears, this script quietly does nothing rather
+	than erroring -- there's no fallback button to build in its place;
+	whoever places it controls that. Resolves to either the instance
+	itself (if it's already a real GuiButton) or a nested TextButton/
+	ImageButton inside it, since that nav-bar block's own convention for
+	this folder wraps each button in a plain Frame rather than using a
+	button class directly -- ZonesButton might follow either shape.
 ]]
 
 local Players = game:GetService("Players")
@@ -43,14 +47,26 @@ if not (UnlockZoneFunction and SwitchZoneFunction) then
 end
 
 -- The button is Studio-authored, not built here -- see the file header.
--- A generous timed wait (not a bare WaitForChild) so a slow-to-replicate
+-- Generous timed waits (not bare WaitForChild) so a slow-to-replicate
 -- MainGui never hangs this whole script if ZonesButton is missing/renamed;
 -- it just quietly does nothing instead.
 local mainGui = playerGui:WaitForChild("MainGui", 15)
 local rightHolster = mainGui and mainGui:WaitForChild("Right", 15)
-local zonesButton = rightHolster and rightHolster:WaitForChild("ZonesButton", 15)
+local rightHolder = rightHolster and rightHolster:WaitForChild("Holder", 15)
+local zonesButtonInstance = rightHolder and rightHolder:WaitForChild("ZonesButton", 15)
+if not zonesButtonInstance then
+	warn("ZonePanel: MainGui.Right.Holder.ZonesButton never appeared -- place it to enable the Zones UI.")
+	return
+end
+
+-- ZonesButton might be a real GuiButton directly, or a plain Frame
+-- wrapping one (see the file header) -- resolve to whichever actually
+-- has a click event before wiring anything to it.
+local zonesButton = zonesButtonInstance:IsA("GuiButton") and zonesButtonInstance
+	or zonesButtonInstance:FindFirstChildOfClass("TextButton")
+	or zonesButtonInstance:FindFirstChildOfClass("ImageButton")
 if not zonesButton then
-	warn("ZonePanel: MainGui.Right.ZonesButton never appeared -- place it to enable the Zones UI.")
+	warn("ZonePanel: ZonesButton exists but isn't a GuiButton and has no nested TextButton/ImageButton -- can't wire a click to it.")
 	return
 end
 
