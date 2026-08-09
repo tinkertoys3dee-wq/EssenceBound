@@ -94,6 +94,16 @@ function EssenceMultiplier.CalculateMultiplier(plr, gold, crit, skipDoubleCritRo
 	end
 	multiplier *= IdleUpgrades.GetGlobalEssenceMultiplier(plr)
 
+	-- Resonance is earned only from server-validated collections. Attributes
+	-- are server-owned mirrors so idle and collection rewards share one rule.
+	local harmony = math.clamp(tonumber(plr:GetAttribute("ResonanceHarmony")) or 0, 0, 12)
+	multiplier *= 1 + harmony * 0.08
+	local mastery = math.clamp(tonumber(plr:GetAttribute("ResonanceMasteryLevel")) or 0, 0, 25)
+	multiplier *= 1 + mastery * 0.02
+	if plr:GetAttribute("ResonanceActive") == true then
+		multiplier *= 2
+	end
+
 	-- Group membership bonus. GroupMember is only ever set when
 	-- GroupRewardConfig.GroupId is actually configured (see
 	-- GroupRewardService) -- inert otherwise, same as every other

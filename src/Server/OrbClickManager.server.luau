@@ -128,6 +128,7 @@ local function formatNumber(value: number): string
 	return formatted .. ABBREVIATIONS[index + 1]
 end
 local EssenceMulti = require(RP:WaitForChild("EssenceMultiplier"))
+local ResonanceService = require(ServerScriptService:WaitForChild("ResonanceService"))
 
 -- Only holds stuff OrbController doesn't already own for us (leaderstat +
 -- save data refs). Health/MaxHealth used to be cached NumberValue refs here,
@@ -272,6 +273,11 @@ collected.OnServerEvent:Connect(function(plr, orbName, quantity, crit, gold)
 	-- unaffected; a forged gold=true with no storm active now just does
 	-- nothing instead of granting a free permanent 3x.
 	local isGolden = gold and plr:GetAttribute("StormIsGolden") == true
+
+	-- Validated collections feed the alternating-essence Resonance loop before
+	-- the multiplier is calculated, so the newly earned Harmony stack applies
+	-- to this collection immediately rather than one orb late.
+	ResonanceService.ProcessCollection(plr, orbName, crit == true)
 
 	local session = getOrInitPlayerSession(plr)
 	local userId = plr.UserId

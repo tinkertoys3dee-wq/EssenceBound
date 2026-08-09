@@ -221,6 +221,16 @@ local DefaultPlayerData = {
 		Unlocked = { earth_zone = true },
 	},
 
+	-- Long-term mastery for the active Resonance loop. Session Harmony and
+	-- Pulse intentionally reset on join; skill progression and records persist.
+	Resonance = {
+		MasteryLevel = 0,
+		MasteryXP = 0,
+		LifetimeAlternations = 0,
+		BestHarmony = 0,
+		OverdrivesActivated = 0,
+	},
+
 	Settings = {
 		["Music"] = true,
 		["SFX"] = true,
