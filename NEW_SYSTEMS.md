@@ -1974,6 +1974,23 @@ interpolation between two asset ids -- so it's an instant swap, timed
 to land right as the travel veil starts covering the screen since both
 react to the same attribute at roughly the same moment.
 
+**Removed: an old, abandoned `ZonesPopup` scaffold.** While tracking
+down a reported UI overlap, found `src/StarterGui/EssencePopupUI/
+PopupHolder/ZonesPopup/` -- a pre-existing, unrelated attempt at a
+Zones UI (its own `ZonesUIManagement.client.luau`, placeholder-only:
+hover/press feel and a cosmetic click ring, explicitly commented "no
+real transaction"). Confirmed via the user this was earlier abandoned
+work, not something to integrate with -- deleted the whole folder
+(all 3 files) rather than leave dead scaffold sitting in the Studio
+hierarchy. Nothing else in the codebase ever referenced "ZonesPopup"
+by name, and the generic popup-registration/close-button loops in
+`UIInitializerHooks.client.luau` iterate `PopupHolder:GetChildren()`
+dynamically, so removing it needed no other code changes. The real,
+current Zones UI is entirely the `ZonePanel.client.luau` /
+`ZoneService.server.luau` / `ZonesConfig.luau` / `ZoneAmbience.client.
+luau` set described above -- unrelated to and unaffected by this
+removal.
+
 ## 40. Lucky Finder + Ultra Luck -- wired to essence rarity, not crit chance
 
 Companion to section 39: "Lucky Finder" and "Ultra Luck" were the
