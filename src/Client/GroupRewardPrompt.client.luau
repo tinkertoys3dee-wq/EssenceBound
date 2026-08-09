@@ -133,291 +133,114 @@ local overlay = new("TextButton", {
 	Name = "Overlay",
 	Size = UDim2.fromScale(1, 1),
 	BackgroundColor3 = THEME.Overlay,
-	BackgroundTransparency = 1,
+	BackgroundTransparency = 0.25,
 	AutoButtonColor = false,
 	Text = "",
 	Visible = false,
 	ZIndex = 100,
 }, screenGui)
 
--- A separate offset layer gives the card depth without relying on an image
--- asset, so the prompt looks consistent on every device immediately.
-local cardShadow = new("Frame", {
-	Name = "CardShadow",
-	AnchorPoint = Vector2.new(0.5, 0.5),
-	Position = UDim2.new(0.5, 8, 0.5, 12),
-	Size = UDim2.fromScale(0.4, 0.5),
-	BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-	BackgroundTransparency = 0.38,
-	ZIndex = 101,
-}, overlay)
-new("UISizeConstraint", { MinSize = Vector2.new(320, 340), MaxSize = Vector2.new(540, 430) }, cardShadow)
-corner(cardShadow, UDim.new(0, 24))
-
 local card = new("Frame", {
 	Name = "RewardCard",
 	AnchorPoint = Vector2.new(0.5, 0.5),
 	Position = UDim2.fromScale(0.5, 0.5),
-	Size = UDim2.fromScale(0.4, 0.5),
-	BackgroundColor3 = Color3.fromRGB(31, 16, 51),
-	ClipsDescendants = true,
-	ZIndex = 102,
+	Size = UDim2.fromScale(0.38, 0.44),
+	BackgroundColor3 = THEME.BackgroundLight,
+	ZIndex = 101,
 }, overlay)
-new("UISizeConstraint", { MinSize = Vector2.new(320, 340), MaxSize = Vector2.new(540, 430) }, card)
-corner(card, UDim.new(0, 24))
-local cardStroke = stroke(card, THEME.Accent, 2.5)
-cardStroke.Transparency = 0.08
-new("UIGradient", {
-	Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(61, 29, 89)),
-		ColorSequenceKeypoint.new(0.52, Color3.fromRGB(35, 18, 57)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(20, 11, 37)),
-	}),
-	Rotation = 125,
-}, card)
+new("UISizeConstraint", { MinSize = Vector2.new(300, 300), MaxSize = Vector2.new(520, 390) }, card)
+corner(card, UDim.new(0, 20))
+stroke(card, THEME.Accent, 3)
 local cardScale = new("UIScale", { Scale = 0.86 }, card)
-local shadowScale = new("UIScale", { Scale = 0.86 }, cardShadow)
-
--- Decorative glow and motes make the reward feel special while remaining
--- lightweight: these are static UI shapes, not per-frame particle effects.
-local glow = new("Frame", {
-	Name = "EssenceGlow",
-	AnchorPoint = Vector2.new(0.5, 0.5),
-	Position = UDim2.fromScale(0.5, 0.18),
-	Size = UDim2.fromScale(0.62, 0.54),
-	BackgroundColor3 = THEME.Green,
-	BackgroundTransparency = 0.88,
-	ZIndex = 103,
-}, card)
-corner(glow, UDim.new(1, 0))
-new("UIGradient", {
-	Transparency = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 0.05),
-		NumberSequenceKeypoint.new(1, 1),
-	}),
-	Rotation = 90,
-}, glow)
-
-for index, mote in ipairs({
-	{ 0.09, 0.13, 5, THEME.Accent },
-	{ 0.88, 0.18, 4, THEME.Green },
-	{ 0.15, 0.43, 3, THEME.Green },
-	{ 0.91, 0.48, 5, THEME.Accent },
-}) do
-	local dot = new("Frame", {
-		Name = "Mote" .. index,
-		Position = UDim2.fromScale(mote[1], mote[2]),
-		Size = UDim2.fromOffset(mote[3], mote[3]),
-		BackgroundColor3 = mote[4],
-		BackgroundTransparency = 0.18,
-		ZIndex = 104,
-	}, card)
-	corner(dot, UDim.new(1, 0))
-end
-
-local iconBadge = new("Frame", {
-	Name = "IconBadge",
-	AnchorPoint = Vector2.new(0.5, 0),
-	Position = UDim2.fromScale(0.5, 0.055),
-	Size = UDim2.fromOffset(58, 58),
-	BackgroundColor3 = Color3.fromRGB(43, 26, 65),
-	ZIndex = 105,
-}, card)
-corner(iconBadge, UDim.new(1, 0))
-stroke(iconBadge, THEME.Accent, 2)
-new("UIGradient", {
-	Color = ColorSequence.new(THEME.Accent, THEME.Green),
-	Rotation = 45,
-}, iconBadge)
-new("TextLabel", {
-	Name = "Icon",
-	Size = UDim2.fromScale(1, 1),
-	BackgroundTransparency = 1,
-	Font = Enum.Font.GothamBlack,
-	Text = "✦",
-	TextColor3 = THEME.White,
-	TextSize = 32,
-	ZIndex = 106,
-}, iconBadge)
 
 new("TextLabel", {
 	Name = "Eyebrow",
-	Position = UDim2.fromScale(0.1, 0.205),
-	Size = UDim2.fromScale(0.8, 0.06),
+	Position = UDim2.fromScale(0.08, 0.06),
+	Size = UDim2.fromScale(0.84, 0.1),
 	BackgroundTransparency = 1,
 	Font = Enum.Font.GothamBold,
-	Text = string.upper(GroupRewardConfig.GroupName),
+	Text = string.upper(GroupRewardConfig.GroupName) .. " MEMBER REWARD",
 	TextColor3 = THEME.Accent,
-	TextSize = 13,
-	ZIndex = 105,
-}, card)
-
-new("TextLabel", {
-	Name = "Title",
-	Position = UDim2.fromScale(0.08, 0.27),
-	Size = UDim2.fromScale(0.84, 0.09),
-	BackgroundTransparency = 1,
-	Font = Enum.Font.GothamBlack,
-	Text = "COMMUNITY REWARD",
-	TextColor3 = THEME.White,
 	TextScaled = true,
-	ZIndex = 105,
+	ZIndex = 102,
 }, card)
 
-local rewardPill = new("Frame", {
-	Name = "RewardPill",
-	Position = UDim2.fromScale(0.18, 0.385),
-	Size = UDim2.fromScale(0.64, 0.13),
-	BackgroundColor3 = Color3.fromRGB(29, 102, 69),
-	ZIndex = 105,
-}, card)
-corner(rewardPill, UDim.new(1, 0))
-local pillStroke = stroke(rewardPill, THEME.Green, 2)
-pillStroke.Transparency = 0.2
-new("UIGradient", {
-	Color = ColorSequence.new(Color3.fromRGB(37, 145, 91), Color3.fromRGB(24, 87, 67)),
-	Rotation = 15,
-}, rewardPill)
 new("TextLabel", {
 	Name = "Reward",
-	Size = UDim2.fromScale(1, 1),
+	Position = UDim2.fromScale(0.08, 0.18),
+	Size = UDim2.fromScale(0.84, 0.22),
 	BackgroundTransparency = 1,
 	Font = Enum.Font.GothamBlack,
-	Text = ("✦  +%d%% ESSENCE  ✦"):format(math.floor((GroupRewardConfig.BonusMultiplier - 1) * 100 + 0.5)),
-	TextColor3 = THEME.White,
+	Text = ("+%d%% ESSENCE"):format(math.floor((GroupRewardConfig.BonusMultiplier - 1) * 100 + 0.5)),
+	TextColor3 = THEME.Green,
 	TextScaled = true,
-	ZIndex = 106,
-}, rewardPill)
+	ZIndex = 102,
+}, card)
 
 new("TextLabel", {
 	Name = "Description",
-	Position = UDim2.fromScale(0.1, 0.54),
-	Size = UDim2.fromScale(0.8, 0.09),
+	Position = UDim2.fromScale(0.1, 0.42),
+	Size = UDim2.fromScale(0.8, 0.13),
 	BackgroundTransparency = 1,
-	Font = Enum.Font.GothamMedium,
-	Text = "Join once. Earn more essence on every reward, forever.",
+	Font = Enum.Font.Gotham,
+	Text = ("Join our Roblox community to earn %d%% more essence on every reward."):format(
+		math.floor((GroupRewardConfig.BonusMultiplier - 1) * 100 + 0.5)
+	),
 	TextColor3 = THEME.Muted,
 	TextWrapped = true,
 	TextScaled = true,
-	ZIndex = 105,
+	ZIndex = 102,
 }, card)
 
 local joinButton = new("TextButton", {
 	Name = "JoinButton",
-	Position = UDim2.fromScale(0.1, 0.66),
-	Size = UDim2.fromScale(0.8, 0.135),
+	Position = UDim2.fromScale(0.1, 0.61),
+	Size = UDim2.fromScale(0.8, 0.16),
 	BackgroundColor3 = THEME.Accent,
 	AutoButtonColor = false,
-	Font = Enum.Font.GothamBlack,
-	Text = "JOIN " .. string.upper(GroupRewardConfig.GroupName) .. "  →",
-	TextColor3 = Color3.fromRGB(35, 18, 48),
+	Font = Enum.Font.GothamBold,
+	Text = "JOIN " .. string.upper(GroupRewardConfig.GroupName),
+	TextColor3 = THEME.BackgroundLight,
 	TextScaled = true,
-	ZIndex = 105,
+	ZIndex = 102,
 }, card)
-corner(joinButton, UDim.new(0, 12))
-new("UIGradient", {
-	Color = ColorSequence.new(Color3.fromRGB(255, 204, 92), Color3.fromRGB(244, 137, 66)),
-	Rotation = 12,
-}, joinButton)
-local joinStroke = stroke(joinButton, Color3.fromRGB(255, 224, 145), 1.5)
-joinStroke.Transparency = 0.15
+corner(joinButton, UDim.new(0, 10))
 
 local verifyButton = new("TextButton", {
 	Name = "VerifyButton",
-	Position = UDim2.fromScale(0.1, 0.82),
-	Size = UDim2.fromScale(0.52, 0.1),
-	BackgroundColor3 = Color3.fromRGB(53, 38, 72),
-	AutoButtonColor = false,
+	Position = UDim2.fromScale(0.1, 0.8),
+	Size = UDim2.fromScale(0.55, 0.1),
+	BackgroundTransparency = 1,
 	Font = Enum.Font.GothamBold,
-	Text = "✓  I'VE JOINED — CHECK",
+	Text = "I'VE JOINED — CHECK",
 	TextColor3 = THEME.White,
 	TextScaled = true,
-	ZIndex = 105,
+	ZIndex = 102,
 }, card)
-corner(verifyButton, UDim.new(0, 9))
-local verifyStroke = stroke(verifyButton, Color3.fromRGB(113, 91, 137), 1)
-verifyStroke.Transparency = 0.3
 
 local closeButton = new("TextButton", {
 	Name = "CloseButton",
-	Position = UDim2.fromScale(0.65, 0.82),
-	Size = UDim2.fromScale(0.25, 0.1),
+	Position = UDim2.fromScale(0.69, 0.8),
+	Size = UDim2.fromScale(0.21, 0.1),
 	BackgroundTransparency = 1,
-	Font = Enum.Font.GothamBold,
-	Text = "MAYBE LATER",
+	Font = Enum.Font.Gotham,
+	Text = "LATER",
 	TextColor3 = THEME.Muted,
 	TextScaled = true,
-	ZIndex = 105,
+	ZIndex = 102,
 }, card)
-
-local topCloseButton = new("TextButton", {
-	Name = "TopCloseButton",
-	AnchorPoint = Vector2.new(1, 0),
-	Position = UDim2.fromScale(0.95, 0.045),
-	Size = UDim2.fromOffset(32, 32),
-	BackgroundColor3 = Color3.fromRGB(58, 39, 76),
-	AutoButtonColor = false,
-	Font = Enum.Font.GothamBold,
-	Text = "×",
-	TextColor3 = THEME.Muted,
-	TextSize = 23,
-	ZIndex = 107,
-}, card)
-corner(topCloseButton, UDim.new(1, 0))
-
-local function applyButtonFeel(target, hoverColor)
-	local baseColor = target.BackgroundColor3
-	local scale = new("UIScale", { Scale = 1 }, target)
-	target:SetAttribute("JuiceFeelApplied", true)
-	target.MouseEnter:Connect(function()
-		TweenService:Create(scale, TweenInfo.new(0.12, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1.025 }):Play()
-		if target.BackgroundTransparency < 1 then
-			TweenService:Create(target, TweenInfo.new(0.12), { BackgroundColor3 = hoverColor }):Play()
-		end
-	end)
-	target.MouseLeave:Connect(function()
-		TweenService:Create(scale, TweenInfo.new(0.12), { Scale = 1 }):Play()
-		if target.BackgroundTransparency < 1 then
-			TweenService:Create(target, TweenInfo.new(0.12), { BackgroundColor3 = baseColor }):Play()
-		end
-	end)
-	target.MouseButton1Down:Connect(function()
-		TweenService:Create(scale, TweenInfo.new(0.06), { Scale = 0.97 }):Play()
-	end)
-	target.MouseButton1Up:Connect(function()
-		TweenService:Create(scale, TweenInfo.new(0.1, Enum.EasingStyle.Back), { Scale = 1.025 }):Play()
-	end)
-end
-
-applyButtonFeel(joinButton, Color3.fromRGB(255, 184, 75))
-applyButtonFeel(verifyButton, Color3.fromRGB(67, 49, 88))
-applyButtonFeel(topCloseButton, Color3.fromRGB(77, 53, 97))
 
 local function showPopup()
 	if player:GetAttribute("GroupMember") == true then
 		return
 	end
 	overlay.Visible = true
-	overlay.BackgroundTransparency = 1
 	cardScale.Scale = 0.86
-	shadowScale.Scale = 0.86
-	TweenService:Create(overlay, TweenInfo.new(0.2), { BackgroundTransparency = 0.2 }):Play()
-	TweenService:Create(cardScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
-	TweenService:Create(shadowScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+	TweenService:Create(cardScale, TweenInfo.new(0.24, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
 end
 
 local function hidePopup()
-	if not overlay.Visible then
-		return
-	end
-	TweenService:Create(overlay, TweenInfo.new(0.15), { BackgroundTransparency = 1 }):Play()
-	TweenService:Create(cardScale, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Scale = 0.92 }):Play()
-	TweenService:Create(shadowScale, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Scale = 0.92 }):Play()
-	task.delay(0.16, function()
-		if overlay.BackgroundTransparency >= 0.99 then
-			overlay.Visible = false
-		end
-	end)
+	overlay.Visible = false
 end
 
 -- Hover/press feel, matching every other button in this codebase.
@@ -457,8 +280,6 @@ joinButton.MouseButton1Click:Connect(function()
 end)
 
 closeButton.MouseButton1Click:Connect(hidePopup)
-topCloseButton.MouseButton1Click:Connect(hidePopup)
-overlay.MouseButton1Click:Connect(hidePopup)
 
 verifyButton.MouseButton1Click:Connect(function()
 	verifyButton.Text = "CHECKING..."
@@ -471,7 +292,7 @@ verifyButton.MouseButton1Click:Connect(function()
 		verifyButton.Text = "NOT YET — TRY AGAIN"
 		task.delay(2, function()
 			if verifyButton.Parent then
-				verifyButton.Text = "✓  I'VE JOINED — CHECK"
+				verifyButton.Text = "I'VE JOINED — CHECK"
 			end
 		end)
 	end
