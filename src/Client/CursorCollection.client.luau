@@ -408,12 +408,12 @@ local function CollectEffect(orb)
 	if orbType == "Shadow Essence" then
 		local discovered = player:GetAttribute("ShadowEssenceDiscovered") or false
 		if not discovered then
-			newDiscovery:Fire(orbType, GetEssences.GetOddsText(orbType))
+			newDiscovery:Fire(orbType, GetEssences.GetOddsText(orbType, player))
 		end
 	elseif orbType == "Earth Essence" then
 		local discovered = player:GetAttribute("EarthEssenceDiscovered") or false
 		if not discovered then
-			newDiscovery:Fire(orbType, GetEssences.GetOddsText(orbType))
+			newDiscovery:Fire(orbType, GetEssences.GetOddsText(orbType, player))
 		end
 	end
 	if orb:FindFirstChild("Shadow") then

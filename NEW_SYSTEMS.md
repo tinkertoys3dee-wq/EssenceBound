@@ -55,6 +55,25 @@ it, or does the definition just get written and apply going forward).
 
 ---
 
+## ⚠️ What you need to do -- Zones won't work without this
+
+Section 39 (Zones) needs one thing placed in Studio before any of it
+does anything: a **`ZonesButton`** instance (a `TextButton` or
+`ImageButton`) parented under **`MainGui.Right`** -- the same holster
+`ManualSummonButton` already lives in. `ZonePanel.client.luau` only
+ever wires a click handler onto it; it does not build the button
+itself, and it will not build a fallback one in its place. Until
+`ZonesButton` exists, the script quietly warns once in the Output
+window and does nothing else -- it will not error or break anything
+else in the game, but Zones will be completely inaccessible.
+
+Nothing else is required -- everything server-side, the picker panel,
+the travel animation, and the persistent zone glow around the orb are
+already fully built and will start working the moment the button
+exists. See item 21 further down for how to test it once it's placed.
+
+---
+
 ## 1. The bug that was causing the bad metrics
 
 `src/Shared/EssenceMultiplier.luau` multiplied **every** essence reward in
@@ -1853,6 +1872,94 @@ bonus) and the indicator read a single mirrored `NewPlayerLuckExpiresAt`
 attribute, never `PlayerData` directly, so the two can never drift out
 of sync with each other.
 
+## 39. Zones -- pick a zone, lean into an essence type, watch it actually look different
+
+Requested directly: a picker that lets a player choose which "zone"
+they're collecting in, where a new zone costs essence to unlock, each
+zone weights the Earth/Shadow essence roll differently (both types
+still drop everywhere -- picking a zone leans into a currency, it
+never locks the other one out), the split "amplified depending on
+gamepasses" is a real mechanic now, and switching zones plays a travel
+animation. All of it new; nothing existing was restructured to build
+it -- `EssenceOrbController`'s HP/click mechanics are completely
+untouched, there's still exactly one orb to click. A zone is a reskin
+of the same click loop with a different essence-type roll under it,
+not a second physical map.
+
+**Two zones, live now, in `ZonesConfig.luau`:**
+
+| Zone | Cost | Odds (base → with Dedicated Essence) |
+|---|---|---|
+| 🌍 Earthen Grove | Free, always unlocked | 82% Earth / 18% Shadow → 92% / 8% |
+| 🌑 The Shadowfen | 300 Earth Essence | 18% Earth / 82% Shadow → 8% / 92% |
+
+Switching between zones you already own is free and unlimited --
+only the first unlock of a paid zone ever costs anything, and
+unlocking one also travels you there immediately (you almost
+certainly want to go there right after paying for it).
+
+**Wires up a real, already-purchasable Game Pass that used to do
+nothing.** Section 0 at the top of this file flagged "Dedicated
+Essence" (id `1907077899`) as one of three Game Passes that took
+real Robux and then did nothing at all -- explicitly left unfixed at
+the time because guessing what a paid feature should do isn't a call
+to make unilaterally. This is different: the request itself asked for
+gamepass-amplified zone odds, and "Dedicated Essence" sharpening
+whichever zone you're standing in toward its specialty is about as
+direct a match to its own name as a guess can get, with zero
+downside for anyone who already bought it -- it did nothing before,
+it does something on-brand now. "Luck"/"Ultra Luck" are still
+unfixed stubs; this was the one guess confident enough to make.
+
+**New files:**
+- `ZonesConfig.luau` (Shared) -- zone data (name, icon, cost, both
+  weight tables) plus every helper every other file below shares, so
+  none of them can drift out of sync with each other on names, costs,
+  or odds.
+- `ZoneService.server.luau` -- the only thing that actually unlocks or
+  switches a zone. Same `RemoteFunction` returning `(success, message,
+  result)` convention `WheelService`'s `SpinFunction` already
+  established, deducting currency the exact same way
+  `TreeUpgrades.PurchaseUpgrade` already does (the leaderstat's
+  `Quantity` attribute directly, never `PlayerData` first).
+- `GetEssence.luau` (Shared, **edited**, not new) -- the actual
+  Earth/Shadow roll now reads `ZonesConfig.GetEssenceWeights(player)`
+  instead of a flat, everyone-gets-the-same 50/50 table. `GetOddsText`
+  (the "1 in N" text on a first discovery) now takes the player too, so
+  it can never show odds that don't match what they're actually zoned
+  into -- `CursorCollection.client.luau`'s two call sites were updated
+  to pass it.
+- `ZonePanel.client.luau` -- the picker. **Does not build its own
+  trigger button** -- unlike every other side-panel script in this
+  codebase, the button is Studio-authored (see "What you need to do"
+  below). Shows every zone's lock state, live-updating cost/odds, and
+  plays the travel animation only after the server confirms a switch
+  actually happened, never optimistically on click.
+- `ZoneAmbience.client.luau` -- a persistent, subtle glow behind the
+  great orb, tinted to whichever zone is current, so a zone actually
+  looks different for as long as you stay there, not just for the
+  few seconds the travel animation plays. Same safe "additive sibling
+  layer, never touches `LargeOrb`'s own properties" pattern
+  `PrestigeAura.client.luau` already established -- `LargeOrb.
+  ImageColor3` is already fought over by more than one existing
+  effect reverting to their own hardcoded "resting" white; a third,
+  zone-varying idea of what resting should be would just make all of
+  them wrong some of the time. Deliberately more understated than
+  PrestigeAura's own aura, and sits behind it (lower ZIndex) so the
+  two never visually compete.
+
+**Self-review caught two things before committing:** the odds preview
+for a zone you're NOT currently standing in originally always showed
+its base (non-amplified) numbers, even for a player who owns Dedicated
+Essence -- technically true only for the active zone, understating
+every other card. Simplified to "amplified if owned, for every card,
+regardless of which one is active" -- both simpler and more honest,
+since the bonus follows the player, not a specific zone. Separately,
+the zone card list's scrolling area originally overlapped the status
+message strip at the bottom by a few percent -- caught on a layout
+re-read, not a runtime test; shrank the list's height to leave clear
+room.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
@@ -2015,6 +2122,26 @@ of sync with each other.
     account that already existed before this shipped, confirm the
     badge never appears at all, even on the very first load after
     updating.
+21. **Zones (section 39) needs one thing from you first -- see "What
+    you need to do" immediately below, it won't do anything in Studio
+    until that button exists.** Once placed: click it, confirm the
+    panel shows Earthen Grove as "📍 HERE" and The Shadowfen as
+    "🔒 UNLOCK · 300 Essence" (greyed out under 300 essence, lit up
+    orange once you have enough). Click UNLOCK -- essence should drop
+    by 300, a full-screen travel animation should play, and the panel
+    (now closed) should reveal a subtle purple glow behind the great
+    orb that wasn't there before. Reopen the panel: Shadowfen now
+    reads "📍 HERE" and Earthen Grove reads "TRAVEL". Click TRAVEL
+    back to Earthen Grove and confirm the glow turns green again and
+    the travel animation plays a second time. Collect a good number of
+    orbs in each zone and confirm Shadowfen visibly favors Shadow
+    Essence drops while Earthen Grove favors Earth -- both should still
+    occasionally drop the other type. To see Dedicated Essence's
+    amplified odds (8%/92% instead of 18%/82%) without buying the real
+    Game Pass, run
+    `game.Players.YourName:SetAttribute(1907077899, true)` in the
+    command bar and reopen the panel -- every card's odds line should
+    sharpen immediately.
 
 ## ⚠️ One thing to be careful about
 

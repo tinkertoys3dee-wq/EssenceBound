@@ -92,6 +92,7 @@ end
 local BS = game:GetService("BadgeService")
 local RP = game:GetService("ReplicatedStorage")
 local NewPlayerLuckConfig = require(RP:WaitForChild("NewPlayerLuckConfig"))
+local ZonesConfig = require(RP:WaitForChild("ZonesConfig"))
 local function loadPlayerData(player)
 	local clone = templateModule:Clone()
 	clone.Name = "PlayerData"
@@ -396,6 +397,27 @@ local function loadPlayerData(player)
 	-- nil while ineligible or expired, a real future timestamp for the
 	-- first 24 hours after a genuinely brand-new save's first join.
 	player:SetAttribute("NewPlayerLuckExpiresAt", NewPlayerLuckConfig.GetExpiresAt(data.FirstJoinAt))
+
+	-- Zones: mirror the current zone id + each PAID zone's unlock flag
+	-- onto attributes. GetEssence.luau's roll runs client-side on every
+	-- orb spawn and needs this readable without a remote round trip, same
+	-- reasoning as every other per-system mirror above. earth_zone is
+	-- never mirrored as its own unlock flag -- ZonesConfig.IsZoneUnlocked
+	-- already treats a free (UnlockCost <= 0) zone as unconditionally
+	-- unlocked regardless of what's saved, so there's nothing to check.
+	if type(data.Zones) ~= "table" then
+		data.Zones = { Current = "earth_zone", Unlocked = {} }
+	end
+	if type(data.Zones.Unlocked) ~= "table" then
+		data.Zones.Unlocked = {}
+	end
+
+	player:SetAttribute("CurrentZoneId", tostring(data.Zones.Current or "earth_zone"))
+	for _, zone in ipairs(ZonesConfig.Zones) do
+		if zone.UnlockCost > 0 then
+			player:SetAttribute(ZonesConfig.UnlockedAttributeName(zone.Id), data.Zones.Unlocked[zone.Id] == true)
+		end
+	end
 
 	player:SetAttribute("Rebirths", data.Rebirths)
 	player:SetAttribute("SeenTutorial", data.SeenTutorial)

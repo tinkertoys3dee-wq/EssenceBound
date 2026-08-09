@@ -211,6 +211,16 @@ local DefaultPlayerData = {
 		LastSpinAt = 0,
 	},
 
+	-- Zones state, driven by ZoneService (see ZonesConfig for what a zone
+	-- actually changes -- essentially just the Earth/Shadow essence roll
+	-- weighting). earth_zone is the only zone ever unlocked by default --
+	-- everything else has to be bought with essence, once, permanently.
+	-- Switching between already-unlocked zones is free and unlimited.
+	Zones = {
+		Current = "earth_zone",
+		Unlocked = { earth_zone = true },
+	},
+
 	Settings = {
 		["Music"] = true,
 		["SFX"] = true,
