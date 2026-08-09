@@ -44,15 +44,15 @@ local THEME = {
 
 local LAYOUT = {
 	-- Continues the RebirthShop (0.213) / Sanctum (0.295) / Leaderboard
-	-- (0.377) / Achievements (0.459) column at the same x=0.895, but
+	-- (0.377) / Achievements (0.459) column at the same x=0.952, but
 	-- skips past ProgressionHud's Daily/Quest/Codes stack, which now
 	-- occupies ~0.51-0.75 after being moved off this same column (see
 	-- ProgressionHud.client.luau's LAYOUT comment) -- 0.8 keeps a clear
 	-- gap below that stack instead of continuing the 0.082 stride
 	-- straight into it.
-	ButtonPosition = UDim2.fromScale(0.895, 0.8),
+	ButtonPosition = UDim2.fromScale(0.952, 0.8),
 	ButtonAnchor = Vector2.new(0, 0.5),
-	ButtonSize = UDim2.fromScale(0.062, 0.062),
+	ButtonSize = UDim2.fromScale(0.044, 0.062),
 }
 
 local function new(className, props, parent)

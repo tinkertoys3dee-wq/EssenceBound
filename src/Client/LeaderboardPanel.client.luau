@@ -43,12 +43,11 @@ local THEME = {
 }
 
 local LAYOUT = {
-	-- The slot the Prestige Shop button originally used before it was
-	-- moved to (0.895, 0.213) -- already proven not to collide with
-	-- anything on the left edge column.
-	ButtonPosition = UDim2.fromScale(0.895, 0.377),
+	-- Continue the same right-side shortcut rail and vertical rhythm used
+	-- by Prestige Shop and Sanctum.
+	ButtonPosition = UDim2.fromScale(0.952, 0.377),
 	ButtonAnchor = Vector2.new(0, 0.5),
-	ButtonSize = UDim2.fromScale(0.062, 0.062),
+	ButtonSize = UDim2.fromScale(0.044, 0.062),
 	PanelSize = UDim2.fromScale(0.5, 0.68),
 }
 

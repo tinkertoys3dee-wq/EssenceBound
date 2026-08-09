@@ -59,7 +59,8 @@ local THEME = {
 
 -- Bottom-right corner: distinct from the packed right-edge column
 -- (RebirthShop/Sanctum/Leaderboard/Achievements/Daily-Quest-Codes/
--- GroupReward span x=0.895-0.92, y=0.213-0.8 -- see GroupRewardPrompt.
+-- GroupReward and the other shortcuts use x=0.952-0.996, y=0.213-0.8;
+-- see GroupRewardPrompt. This bottom-corner button remains below them.
 -- client.luau's LAYOUT comment), distinct from FriendBonusIndicator's
 -- top-right badge (y=0.03), and distinct from bottom-CENTER where the
 -- potion timer HUD and Juice's shared relic bar live.
