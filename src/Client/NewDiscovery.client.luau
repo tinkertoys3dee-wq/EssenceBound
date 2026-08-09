@@ -59,10 +59,17 @@ local card = Instance.new("Frame")
 card.Name = "Card"
 card.AnchorPoint = Vector2.new(0.5, 0)
 card.Position = UDim2.new(0.5, 0, 0, -140) -- starts above screen
-card.Size = UDim2.new(0, 340, 0, 110)
+-- Use the available viewport on narrow phones, but retain the authored
+-- 340px card on larger screens. A fixed 340px width used to push both
+-- rounded sides off-screen on small/mobile emulators.
+card.Size = UDim2.new(0.9, 0, 0, 110)
 card.BackgroundColor3 = Color3.fromRGB(18, 14, 26)
 card.BorderSizePixel = 0
 card.Parent = screenGui
+
+local cardSizeConstraint = Instance.new("UISizeConstraint")
+cardSizeConstraint.MaxSize = Vector2.new(340, 110)
+cardSizeConstraint.Parent = card
 
 local cardCorner = Instance.new("UICorner")
 cardCorner.CornerRadius = UDim.new(0, 14)
@@ -99,8 +106,8 @@ glow.Parent = card
 local header = Instance.new("TextLabel")
 header.Name = "Header"
 header.BackgroundTransparency = 1
-header.Position = UDim2.new(0, 0, 0, 10)
-header.Size = UDim2.new(1, 0, 0, 22)
+header.Position = UDim2.new(0, 12, 0, 10)
+header.Size = UDim2.new(1, -24, 0, 22)
 header.Font = Enum.Font.GothamBold
 header.Text = "NEW ESSENCE DISCOVERED"
 header.TextColor3 = Color3.fromRGB(200, 160, 255)
@@ -113,8 +120,9 @@ header.Parent = card
 local nameLabel = Instance.new("TextLabel")
 nameLabel.Name = "EssenceName"
 nameLabel.BackgroundTransparency = 1
-nameLabel.Position = UDim2.new(0, 0, 0, 36)
-nameLabel.Size = UDim2.new(1, 0, 0, 34)
+nameLabel.Position = UDim2.new(0, 12, 0, 36)
+nameLabel.Size = UDim2.new(1, -24, 0, 34)
+nameLabel.TextScaled = true
 nameLabel.Font = Enum.Font.GothamBlack
 nameLabel.Text = "Essence Name"
 nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -123,12 +131,17 @@ nameLabel.TextXAlignment = Enum.TextXAlignment.Center
 nameLabel.ZIndex = 2
 nameLabel.Parent = card
 
+local nameSizeConstraint = Instance.new("UITextSizeConstraint")
+nameSizeConstraint.MaxTextSize = 26
+nameSizeConstraint.MinTextSize = 12
+nameSizeConstraint.Parent = nameLabel
+
 -- odds (fill this in per-discovery)
 local oddsLabel = Instance.new("TextLabel")
 oddsLabel.Name = "Odds"
 oddsLabel.BackgroundTransparency = 1
-oddsLabel.Position = UDim2.new(0, 0, 0, 76)
-oddsLabel.Size = UDim2.new(1, 0, 0, 22)
+oddsLabel.Position = UDim2.new(0, 12, 0, 76)
+oddsLabel.Size = UDim2.new(1, -24, 0, 22)
 oddsLabel.Font = Enum.Font.Gotham
 oddsLabel.Text = "Odds: 1 in 1"
 oddsLabel.TextColor3 = Color3.fromRGB(170, 170, 180)
