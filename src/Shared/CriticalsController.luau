@@ -58,7 +58,6 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TreeUpgrades = require(ReplicatedStorage:WaitForChild("TreeUpgrades"))
 local NewPlayerLuckConfig = require(ReplicatedStorage:WaitForChild("NewPlayerLuckConfig"))
-local LuckGamepassConfig = require(ReplicatedStorage:WaitForChild("LuckGamepassConfig"))
 
 -- Timed lookup rather than a bare WaitForChild: crit rolling runs on every
 -- orb spawn, so a missing SanctumUpgrades must cost the Sanctum crit bonus
@@ -120,10 +119,6 @@ local function getGuaranteedStreakLength(player)
 		reduction += NewPlayerLuckConfig.GuaranteedStreakReduction
 	end
 
-	-- Lucky Finder / Ultra Luck Game Passes (see LuckGamepassConfig) --
-	-- flat, simply-additive reductions, same as the two sources above.
-	reduction += LuckGamepassConfig.GetStreakReduction(player)
-
 	return math.max(MIN_GUARANTEED_CRIT_STREAK, BASE_GUARANTEED_CRIT_STREAK - reduction)
 end
 
@@ -147,14 +142,6 @@ function CriticalsController.GetCritChance(player)
 	local luckBonus = NewPlayerLuckConfig.IsActive(player) and NewPlayerLuckConfig.CritChanceBonus or 0
 
 	local total = TreeUpgrades.GetSummedEffectFromAttributes(player, "CritChance") + sanctumCrit + luckBonus
-
-	-- Lucky Finder / Ultra Luck Game Passes (see LuckGamepassConfig):
-	-- multiplies everything above -- 1x (no-op) for anyone who owns
-	-- neither. Applied last, still bounded by the same MAX_CRIT_CHANCE
-	-- clamp below, so owning both can shrink the climb to the ceiling but
-	-- never exceed it.
-	total *= LuckGamepassConfig.GetCritChanceMultiplier(player)
-
 	return math.min(MAX_CRIT_CHANCE, total)
 end
 

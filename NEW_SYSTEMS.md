@@ -11,14 +11,24 @@ existing gameplay system was restructured.
 This section used to be a "READ THIS FIRST" warning that three Game
 Passes took real Robux and did nothing at all -- explicitly left
 unfixed at the time since guessing what a paid feature should do isn't
-a call to make unilaterally. All three are now implemented, across two
-later passes (see sections 39 and 40 for the full writeups):
+a call to make unilaterally. All three are now implemented against
+their REAL store descriptions (see sections 39 and 40 for the full
+writeups):
 
-| Game Pass | Id | What it does now |
-|---|---|---|
-| Dedicated Essence | `1907077899` | Sharpens whichever Zone you're standing in toward its specialty essence (see section 39) |
-| Lucky Finder (+50% Luck) | `1907239833` | Multiplies crit chance ×1.5, shortens the guaranteed-crit-streak wait by 4 clicks (see section 40) |
-| Ultra Luck (+300%) | `1906063939` | Multiplies crit chance ×4.0 (stacks additively with Lucky Finder to ×4.5 if both owned), shortens the streak wait by 10 clicks (see section 40) |
+| Game Pass | Id | Store description | What it does now |
+|---|---|---|---|
+| Dedicated Essence | `1907077899` | (name only) | Sharpens whichever Zone you're standing in toward its specialty essence (section 39) |
+| Lucky Finder | `1907239833` | "Increases the base chance of finding rarer essences by 50%." | ×1.5 to the Shadow Essence weight (section 40) |
+| Ultra Luck | `1906063939` | "Stacks with regular luck to give a massive boost (x3 luck)." | ×2 to the Shadow Essence weight alone, ×3 total combined with Lucky Finder (section 40) |
+
+**An earlier version of this pass guessed crit chance for Lucky
+Finder/Ultra Luck before their real store text was available --
+wrong, replaced entirely once it was.** "Rarer essences" means Shadow
+Essence, the only rarer of the game's two essence types (Rarity 1 vs
+Earth's Rarity 0) -- both passes now multiply that weight inside
+`ZonesConfig.GetEssenceWeights`, the exact same function Dedicated
+Essence and Zones already share, so all three "Luck"-flavored passes
+and the odds a player actually sees all come from one place.
 
 For comparison, the other four Game Passes in this file already did
 something real before any of this: VIP Rank (`1909291891`) gives a
@@ -28,19 +38,6 @@ CalculateMultiplier`, Auto Absorption (`1907677938`) is read in
 `CursorCollection.client.luau`'s collection loop, and Material
 Alchemist (`1907863864`) doubles the offline-earnings base rate in
 `IdleService.server.luau`.
-
-**Why these particular meanings, and not something else:** "Luck" was
-originally left unguessed because it could plausibly have meant crit
-chance, golden-storm chance, essence rarity odds, or something else
-entirely, and a wrong guess either shortchanges someone who already
-paid for it or breaks the economy's balance. Crit chance is this
-game's own existing word for the same idea -- a random roll with a big
-visible payoff -- and reusing that already-balanced, already-capped
-system (rather than inventing a new roll from scratch) is the smallest,
-safest way to give both passes real, immediately-felt value. If either
-turns out to mean something different in practice, the entire effect
-lives in one small file (`LuckGamepassConfig.luau`) and nowhere else --
-redefining it there is the whole fix.
 
 ---
 
@@ -1963,48 +1960,42 @@ being a plain `Frame` wrapping a nested `TextButton`/`ImageButton`
 (that folder's own established shape) rather than assuming it's a raw
 button instance.
 
-## 40. Lucky Finder + Ultra Luck -- the other two dead Game Pass stubs, wired to crit chance
+## 40. Lucky Finder + Ultra Luck -- wired to essence rarity, not crit chance
 
-Companion to section 39: "Lucky Finder (+50% Luck)" and "Ultra Luck
-(+300%)" were the remaining two of the three Game Passes section 0
-originally flagged as pure stubs. Both now multiply the player's crit
-chance -- Lucky Finder ×1.5, Ultra Luck ×4.0 -- and shorten the
-guaranteed-crit-streak wait (4 clicks, 10 clicks). Owning both stacks
-by addition into one shared multiplier (1 + 0.5 + 3.0 = ×4.5), not by
-chaining 1.5 × 4.0 = ×6 -- two separate real purchases should feel
-generous together without spiraling into an uncontrolled number.
-Applied last in `CriticalsController.GetCritChance`, after every other
-source (tree, Sanctum, New Adventurer's Luck) sums together, still
-bounded by the same `MAX_CRIT_CHANCE` clamp as everything else that
-feeds into it -- 1x (no change at all) for anyone who owns neither.
+Companion to section 39: "Lucky Finder" and "Ultra Luck" were the
+remaining two of the three Game Passes section 0 originally flagged as
+pure stubs. **This replaces an earlier guess in this same file that
+wired them to crit chance instead** -- reverted in full once their
+actual store descriptions were available:
 
-**Why crit chance specifically:** it's this game's own existing word
-for the same idea a "Luck" pass promises -- a random roll with a big,
-visible payoff (bigger tint/glow/pop, a badge, the Crit Streak Combo
-callout) -- so reusing that already-balanced, already-capped system is
-a much smaller and safer change than inventing a new roll (golden-storm
-odds, essence rarity, ...) from scratch to hang two paid features off
-of. Everything both passes actually do lives in one small file,
-`LuckGamepassConfig.luau` -- if either should mean something different
-in practice, redefining it there is the entire fix, nothing else in
-the codebase needs to change.
+> Lucky Finder: "Increases the base chance of finding rarer essences
+> by 50%."
+> Ultra Luck: "Stacks with regular luck to give a massive boost
+> (x3 luck)."
 
-**One real tradeoff worth knowing about:** because this is a
-multiplier on the player's EXISTING crit chance, it does nothing
-(×1.5 or ×4 of zero is still zero) for a player who owns the pass but
-has bought no `CritChance` tree upgrades and isn't inside their New
-Adventurer's Luck window. In practice this is a narrow edge case --
-`CritChance` upgrades are cheap Tier-1 tree items most players pick up
-early regardless, and a purchase made within someone's first 24 hours
-gets amplified on top of New Adventurer's Luck's own 15% baseline
-immediately (0.15 × 4.5 = 67.5% crit chance with both passes owned) --
-but it's a real gap if a returning player somehow buys either pass
-with zero crit investment. Flagging it here rather than adding a flat
-baseline bonus on top, since "+X% Luck" reading as a literal
-percentage-of-your-own-luck multiplier (not a flat addition) is also
-the more standard convention for this kind of pass, and mixing both
-mechanisms would make the number on the label harder to trust at a
-glance.
+"Rarer essences" means Shadow Essence specifically -- the only two
+essence types in the game are Earth Essence (Rarity 0) and Shadow
+Essence (Rarity 1), see `DefaultPlayerData.luau`. Both passes multiply
+the Shadow Essence WEIGHT inside `ZonesConfig.GetEssenceWeights` --
+Lucky Finder alone is ×1.5 (its own "+50%" is unambiguous), Ultra Luck
+alone is ×2, and owning both multiplies together to exactly ×3 (1.5 ×
+2), matching Ultra Luck's own "x3 luck" headline for the stacked case.
+Someone who buys only Ultra Luck, skipping "regular luck" (Lucky
+Finder), still gets a real, standalone ×2 -- there's no sensible
+default that makes an Ultra-Luck-only purchase do nothing just because
+the store copy assumes it's bought alongside Lucky Finder.
+
+Living in `ZonesConfig.GetEssenceWeights` (the exact same function
+Dedicated Essence's zone-amplification already runs through) means
+this is a total no-op for anyone who owns neither pass, applies
+regardless of which zone the player is currently in, and both the real
+roll (`GetEssence.luau`) and the odds preview (`ZonePanel.client.luau`,
+mirrored there since that panel needs to preview every zone, not just
+the active one) can never show a number the other doesn't actually
+roll against. Multiplying the raw weight rather than solving for an
+exact target probability keeps this consistent with how every other
+bonus in this system already works -- the resulting chance still
+renormalizes against whatever Earth's weight is in the current zone.
 
 ## What to check when you open Studio
 
@@ -2188,20 +2179,21 @@ glance.
     `game.Players.YourName:SetAttribute(1907077899, true)` in the
     command bar and reopen the panel -- every card's odds line should
     sharpen immediately.
-22. **Lucky Finder / Ultra Luck (section 40)** -- buy a couple of
-    levels of `critical_chance_1` first so there's a real non-zero
-    base to multiply (see the section's own note on why a zero-base
-    player won't see anything from either pass alone). Then run
+22. **Lucky Finder / Ultra Luck (section 40)** -- open the Zones panel
+    on Earthen Grove and note the odds line (should read "🌍 82% •
+    🌑 18%"). Run
     `game.Players.YourName:SetAttribute(1907239833, true)` in the
-    command bar and click for a while -- crits should land noticeably
-    more often than before. Run
-    `game.Players.YourName:SetAttribute(1906063939, true)` on top of
-    that (both owned at once) and confirm crits get dramatically more
-    frequent still, not just marginally -- with both owned your crit
-    chance should be 4.5x whatever `critical_chance_1` alone gave you,
-    clamped at 90%. Remove both attributes (`SetAttribute(id, nil)`)
-    and confirm crit frequency drops back down to just the tree's own
-    contribution.
+    command bar (Lucky Finder) and reopen the panel -- Shadow's share
+    should visibly rise (roughly 24-25%, since ×1.5 on the weight
+    doesn't translate to a flat ×1.5 on the displayed percentage once
+    the total renormalizes -- see the section's own math). Add
+    `game.Players.YourName:SetAttribute(1906063939, true)` (Ultra
+    Luck, both now owned) and confirm Shadow's share climbs further
+    still (roughly 40%). Collect a good number of orbs and confirm
+    Shadow Essence is genuinely landing more often, not just the
+    displayed number changing. Remove both attributes
+    (`SetAttribute(id, nil)`) and confirm the odds line and real drop
+    rate both return to the un-boosted 82/18 split.
 
 ## ⚠️ One thing to be careful about
 

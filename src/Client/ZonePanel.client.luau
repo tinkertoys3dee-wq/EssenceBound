@@ -26,6 +26,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 local ZonesConfig = require(ReplicatedStorage:WaitForChild("ZonesConfig"))
+local LuckGamepassConfig = require(ReplicatedStorage:WaitForChild("LuckGamepassConfig"))
 local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
 local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
 local formatNumber = ProgressionConfig.FormatNumber
@@ -501,15 +502,25 @@ local function refresh()
 	-- one. This is a preview only: the real roll (GetEssence.luau) always
 	-- re-reads both live at collection time regardless of what this shows.
 	local ownsDedicatedEssence = player:GetAttribute(ZonesConfig.DedicatedEssenceGamepassId) == true
+	local rareEssenceMultiplier = LuckGamepassConfig.GetRareEssenceMultiplier(player)
 
 	for zoneId, entry in pairs(cards) do
 		local zone = entry.Zone
-		local weights = (ownsDedicatedEssence and zone.AmplifiedWeights) or zone.BaseWeights
-		local total = (weights["Earth Essence"] or 0) + (weights["Shadow Essence"] or 0)
+		local baseWeights = (ownsDedicatedEssence and zone.AmplifiedWeights) or zone.BaseWeights
+		-- Same "multiply the rarer essence's weight" math ZonesConfig.
+		-- GetEssenceWeights applies to the real roll -- mirrored here
+		-- rather than called directly, since that function only ever
+		-- returns the CURRENT zone's weights and this loop previews
+		-- every zone, active or not.
+		local weights = {
+			["Earth Essence"] = baseWeights["Earth Essence"] or 0,
+			["Shadow Essence"] = (baseWeights["Shadow Essence"] or 0) * rareEssenceMultiplier,
+		}
+		local total = weights["Earth Essence"] + weights["Shadow Essence"]
 		local earthPct, shadowPct = 0, 0
 		if total > 0 then
-			earthPct = math.floor(100 * (weights["Earth Essence"] or 0) / total + 0.5)
-			shadowPct = math.floor(100 * (weights["Shadow Essence"] or 0) / total + 0.5)
+			earthPct = math.floor(100 * weights["Earth Essence"] / total + 0.5)
+			shadowPct = math.floor(100 * weights["Shadow Essence"] / total + 0.5)
 		end
 
 		entry.OddsLabel.Text = ("🌍 %d%%  •  🌑 %d%%"):format(earthPct, shadowPct)
@@ -627,12 +638,14 @@ backdrop.MouseButton1Click:Connect(closePanel)
 -- Attributes are the only channel any of this reads (see ZonesConfig) --
 -- listening for these specific ones covers every way this panel's own
 -- state can change: a switch/unlock landing (CurrentZoneId, either
--- Zone_*_Unlocked), owning Dedicated Essence mid-session (changes the
--- active zone's odds), or the balance moving enough to afford a locked
--- zone that couldn't be before.
+-- Zone_*_Unlocked), owning Dedicated Essence/Lucky Finder/Ultra Luck
+-- mid-session (each changes the odds shown), or the balance moving
+-- enough to afford a locked zone that couldn't be before.
 
 player:GetAttributeChangedSignal("CurrentZoneId"):Connect(refresh)
 player:GetAttributeChangedSignal(ZonesConfig.DedicatedEssenceGamepassId):Connect(refresh)
+player:GetAttributeChangedSignal(LuckGamepassConfig.LuckyFinderGamepassId):Connect(refresh)
+player:GetAttributeChangedSignal(LuckGamepassConfig.UltraLuckGamepassId):Connect(refresh)
 for _, zone in ipairs(ZonesConfig.Zones) do
 	if zone.UnlockCost > 0 then
 		player:GetAttributeChangedSignal(ZonesConfig.UnlockedAttributeName(zone.Id)):Connect(refresh)

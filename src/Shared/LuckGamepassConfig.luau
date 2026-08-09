@@ -1,40 +1,48 @@
 --[[
 	LuckGamepassConfig (ModuleScript -> ReplicatedStorage)
 	==========================================================
-	Wires up "Lucky Finder (+50% Luck)" and "Ultra Luck (+300%)" -- two of
-	the three Game Passes flagged in NEW_SYSTEMS.md's "THREE PAID GAMEPASSES
-	DO NOTHING" section as pure stubs: real Robux, a flag set, nothing in
-	the entire codebase ever read it. The third, "Dedicated Essence", is
-	wired separately in ZonesConfig.luau (it amplifies zone odds, not crit
-	luck -- a different, better-fitting mechanic for what that name means).
+	Wires up "Lucky Finder" and "Ultra Luck" -- two of the three Game
+	Passes flagged in NEW_SYSTEMS.md's "THREE PAID GAMEPASSES DO NOTHING"
+	section as pure stubs: real Robux, a flag set, nothing in the entire
+	codebase ever read it. The third, "Dedicated Essence", is wired
+	separately in ZonesConfig.luau.
 
-	WHY CRIT CHANCE
-	-----------------
-	"Luck" is this game's own word for it already, and crits are the one
-	mechanic in the whole game explicitly built around a random roll with
-	a big, exciting payoff -- see CriticalsController.luau's own docs.
-	Reusing that existing, already-balanced, already-capped system is a
-	much smaller and safer change than inventing a new roll (a golden-storm
-	chance mod, an essence-rarity mod, ...) from scratch to hang two paid
-	features off of.
+	REAL STORE DESCRIPTIONS (an earlier pass guessed crit chance --
+	wrong; this replaces it)
+	--------------------------------------------------------------------
+	Lucky Finder: "Increases the base chance of finding rarer essences
+	by 50%."
+	Ultra Luck: "Stacks with regular luck to give a massive boost
+	(x3 luck)."
 
-	WHY ADDITIVE, NOT MULTIPLICATIVE, WHEN BOTH ARE OWNED
-	-----------------------------------------------------------
-	+50% and +300% read as percentages of the player's OWN base luck, not
-	as multipliers that compound with each other -- owning both should
-	feel generous (this is two separate real purchases), not turn into an
-	uncontrolled x6 from naively chaining 1.5 * 4.0. Both bonuses add into
-	one shared multiplier instead: 1 + 0.5 (Lucky Finder) + 3.0 (Ultra
-	Luck) = 4.5x with both owned, 1.5x or 4x with just one. Still bounded
-	by CriticalsController's own MAX_CRIT_CHANCE either way, same as every
-	other source that feeds into it.
+	"Rarer essences" means Shadow Essence specifically -- the only two
+	essence types in the game are EarthEssence (Rarity 0) and Shadow
+	Essence (Rarity 1), see DefaultPlayerData.luau. Hardcoded to Shadow
+	Essence by name rather than built as a generic "find the highest-
+	Rarity type" lookup, since there are only ever two types right now --
+	the same "don't build generality nothing needs yet" call ZonesConfig
+	already makes for its own two zones.
 
-	Also shortens the guaranteed-crit-streak wait (see CriticalsController's
-	BASE_GUARANTEED_CRIT_STREAK) -- a flat click-count reduction, since
-	"percentage of a streak length" doesn't mean much the way a chance
-	percentage does. This one genuinely does stack by simple addition (no
-	compounding risk with a flat subtraction), same as every other source
-	feeding into that number.
+	THE MATH BEHIND x1.5 / x2 / x3
+	------------------------------------
+	Lucky Finder's own "+50%" is unambiguous: x1.5 alone. Ultra Luck's
+	text describes the STACKED total with Lucky Finder as "x3 luck", not
+	its own standalone value -- so Ultra Luck's own multiplier is set to
+	x2, chosen specifically so 1.5 (Lucky Finder) * 2 (Ultra Luck) = 3,
+	matching that "x3 luck" headline exactly when both are owned. Someone
+	who buys ONLY Ultra Luck (skipping "regular luck") still gets a real,
+	standalone x2 -- there's no reasonable default that makes an
+	Ultra-Luck-only purchase do nothing just because the marketing copy
+	assumes it's bought alongside Lucky Finder.
+
+	WHERE THIS APPLIES
+	--------------------
+	Multiplies the Shadow Essence WEIGHT ZonesConfig.GetEssenceWeights
+	returns, whichever zone the player is currently in -- not a fixed
+	target probability. Both the real roll (GetEssence.luau) and the
+	odds preview (ZonePanel.client.luau) read that one function, so
+	wiring it there once means neither can ever show a number the other
+	doesn't actually roll against.
 ]]
 
 local LuckGamepassConfig = {}
@@ -42,35 +50,21 @@ local LuckGamepassConfig = {}
 LuckGamepassConfig.LuckyFinderGamepassId = 1907239833
 LuckGamepassConfig.UltraLuckGamepassId = 1906063939
 
-LuckGamepassConfig.LuckyFinderCritChanceBonus = 0.5 -- "+50% Luck"
-LuckGamepassConfig.UltraLuckCritChanceBonus = 3.0   -- "+300%"
+LuckGamepassConfig.LuckyFinderMultiplier = 1.5 -- "+50%", alone
+LuckGamepassConfig.UltraLuckMultiplier = 2.0    -- combines with Lucky Finder's 1.5x to make exactly x3
 
-LuckGamepassConfig.LuckyFinderStreakReduction = 4
-LuckGamepassConfig.UltraLuckStreakReduction = 10
-
--- Multiplies whatever crit chance the player already has from every
--- other source (tree, Sanctum, New Adventurer's Luck) -- 1 if neither
--- pass is owned, i.e. a total no-op for anyone who hasn't bought either.
-function LuckGamepassConfig.GetCritChanceMultiplier(player: Instance): number
+-- 1 (no-op) for a player who owns neither; multiplicative, not additive,
+-- since the store description explicitly frames this as one multiplier
+-- STACKING with another, not two separate bonuses summing into one pool.
+function LuckGamepassConfig.GetRareEssenceMultiplier(player: Instance): number
 	local multiplier = 1
 	if player:GetAttribute(LuckGamepassConfig.LuckyFinderGamepassId) then
-		multiplier += LuckGamepassConfig.LuckyFinderCritChanceBonus
+		multiplier *= LuckGamepassConfig.LuckyFinderMultiplier
 	end
 	if player:GetAttribute(LuckGamepassConfig.UltraLuckGamepassId) then
-		multiplier += LuckGamepassConfig.UltraLuckCritChanceBonus
+		multiplier *= LuckGamepassConfig.UltraLuckMultiplier
 	end
 	return multiplier
-end
-
-function LuckGamepassConfig.GetStreakReduction(player: Instance): number
-	local reduction = 0
-	if player:GetAttribute(LuckGamepassConfig.LuckyFinderGamepassId) then
-		reduction += LuckGamepassConfig.LuckyFinderStreakReduction
-	end
-	if player:GetAttribute(LuckGamepassConfig.UltraLuckGamepassId) then
-		reduction += LuckGamepassConfig.UltraLuckStreakReduction
-	end
-	return reduction
 end
 
 return LuckGamepassConfig

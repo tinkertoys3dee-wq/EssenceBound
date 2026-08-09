@@ -24,6 +24,15 @@
 	further. Pure upside for anyone who already bought it; it simply did
 	nothing before.
 
+	Also applies LuckGamepassConfig's Lucky Finder / Ultra Luck multiplier
+	to the Shadow Essence weight specifically -- their real store text
+	("increases the chance of finding rarer essences") means Shadow
+	Essence, the only rarer of this game's two types (Rarity 1 vs Earth's
+	Rarity 0). Multiplying the weight, not solving for an exact target
+	probability, keeps this consistent with how every other bonus here
+	already works -- the resulting chance still renormalizes against
+	whatever Earth's weight is in the current zone, same as it always has.
+
 	GetEssence.luau (the actual roll) and ZoneService.server.luau (unlock/
 	switch + attribute mirroring) both read this; ZonePanel.client.luau
 	(the picker UI) and ZoneAmbience.client.luau (the persistent per-zone
@@ -31,9 +40,17 @@
 	and odds.
 ]]
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LuckGamepassConfig = require(ReplicatedStorage:WaitForChild("LuckGamepassConfig"))
+
 local ZonesConfig = {}
 
 ZonesConfig.DedicatedEssenceGamepassId = 1907077899
+
+-- The one essence type LuckGamepassConfig's multiplier applies to -- see
+-- that module's own header for why "rarer essences" means this one
+-- specifically rather than a generic highest-Rarity lookup.
+local RARER_ESSENCE_NAME = "Shadow Essence"
 
 -- Ordered: index 1 is the default/fallback zone for any player who
 -- somehow has no valid CurrentZoneId (never happens in practice, but
@@ -113,9 +130,11 @@ function ZonesConfig.GetCurrentZone(player)
 end
 
 -- The actual roll table GetEssence.luau spins against: the current zone's
--- weights, sharpened if the player owns Dedicated Essence. Safe to call
--- with a nil player (returns the default zone's base weights) so
--- GetEssence never has to special-case a missing player itself.
+-- weights, sharpened if the player owns Dedicated Essence, then further
+-- sharpened toward Shadow Essence specifically if they own Lucky Finder
+-- and/or Ultra Luck. Safe to call with a nil player (returns the default
+-- zone's base weights, unmultiplied) so GetEssence never has to
+-- special-case a missing player itself.
 function ZonesConfig.GetEssenceWeights(player)
 	local zone = ZonesConfig.GetCurrentZone(player)
 	local owned = player and player:GetAttribute(ZonesConfig.DedicatedEssenceGamepassId) == true
@@ -128,6 +147,11 @@ function ZonesConfig.GetEssenceWeights(player)
 	for essenceName, weight in pairs(weights) do
 		copy[essenceName] = weight
 	end
+
+	if player and copy[RARER_ESSENCE_NAME] then
+		copy[RARER_ESSENCE_NAME] *= LuckGamepassConfig.GetRareEssenceMultiplier(player)
+	end
+
 	return copy
 end
 
