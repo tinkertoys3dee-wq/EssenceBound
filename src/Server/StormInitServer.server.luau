@@ -30,10 +30,12 @@ local function GetPlayerData(player)
 	return data
 end
 
-Players.PlayerAdded:Connect(function(player)
+local function onPlayerAdded(player)
 	local controller = StormController.new(player, GetPlayerData, EssenceStormEvent)
 	controller:Start()
-end)
+end
+
+Players.PlayerAdded:Connect(onPlayerAdded)
 
 Players.PlayerRemoving:Connect(function(player)
 	local controller = StormController.Get(player)
@@ -41,6 +43,21 @@ Players.PlayerRemoving:Connect(function(player)
 		controller:Stop()
 	end
 end)
+
+-- Every other init script in this codebase (GroupRewardService,
+-- PotionTimerService, RebirthShopService, SanctumService,
+-- ProgressionService, LeaderboardService, WheelService,
+-- AchievementsService, ProductPurchaseHandler) also loops over
+-- Players:GetPlayers() to catch anyone already in the server -- this one
+-- didn't. In live play that rarely matters (joins almost always land after
+-- server scripts finish starting), but a Studio multi-client playtest can
+-- easily have a couple of test players already registered before this
+-- script's PlayerAdded connection above is made, and without this loop
+-- they'd silently never get a StormController for the rest of the session
+-- -- no automatic storms, and ManualStormSummon would just do nothing.
+for _, existingPlayer in ipairs(Players:GetPlayers()) do
+	task.spawn(onPlayerAdded, existingPlayer)
+end
 
 ManualStormSummon.OnServerEvent:Connect(function(player)
 	local controller = StormController.Get(player)

@@ -338,12 +338,25 @@ returnEvent.OnServerEvent:Connect(function(plr, quantity)
 	OrbController.Heal(plr, quantity)
 end)
 
--- Only cleans up this script's OWN new comboState table -- PlayerDatas
--- above has no such cleanup and predates this change; not touching it.
+-- Cleans up both comboState AND PlayerDatas. PlayerDatas used to be left
+-- behind here forever: keyed by UserId and only ever lazily created (see
+-- getOrInitPlayerSession's `if not PlayerDatas[userId] then` guard), never
+-- cleared. Every player who ever joined this server process pinned a
+-- permanent entry in memory -- their old PlayerData table plus two
+-- destroyed-but-still-referenced leaderstat Instances, none of it ever
+-- garbage collected. Worse than a slow leak: a player who reconnects to
+-- this SAME server process (same UserId) hit that stale, non-nil entry and
+-- silently kept reading/writing their OLD, disconnected PlayerData and
+-- leaderstat references for the rest of the session -- never shown in the
+-- UI, never saved by PlayerDataHandler (which requires the NEW PlayerData
+-- instance), so their essence gains would appear to just vanish until the
+-- server restarted. Clearing it here means a rejoin gets a fresh session
+-- via getOrInitPlayerSession exactly like a first join would.
 game:GetService("Players").PlayerRemoving:Connect(function(plr)
 	local state = comboState[plr]
 	if state and state.DecayThread then
 		task.cancel(state.DecayThread)
 	end
 	comboState[plr] = nil
+	PlayerDatas[plr.UserId] = nil
 end)

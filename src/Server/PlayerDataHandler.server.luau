@@ -98,21 +98,15 @@ local function loadPlayerData(player)
 	clone.Name = "PlayerData"
 	clone.Parent = player
 
-	local playerFolder = Instance.new("Folder")
-	playerFolder.Name = player.UserId
-	playerFolder.Parent = RP:WaitForChild("PlayerOrbs")
-
-	local health = Instance.new("IntValue")
-	health.Name = "Health"
-	health.Value = 100
-	health.Parent = playerFolder
-
-	local maxHealth = Instance.new("IntValue")
-	maxHealth.Name = "MaxHealth"
-	maxHealth.Value = 100
-	maxHealth.Parent = playerFolder
-
-	local data = require(clone) 
+	-- A per-player Folder + Health/MaxHealth IntValues used to be created
+	-- here under ReplicatedStorage.PlayerOrbs[UserId] on every single join,
+	-- and never destroyed on leave -- an unbounded, network-replicated
+	-- Instance leak that grew with every player who ever joined a given
+	-- server, on top of costing every connected client's own copy of
+	-- ReplicatedStorage. Confirmed dead: EssenceOrbController.luau owns HP
+	-- entirely internally now (OrbCurrentHP/OrbMaxHP attributes), and a
+	-- repo-wide search turns up no other reader of PlayerOrbs at all.
+	local data = require(clone)
 
 	local key = "Player_" .. player.UserId
 	local success, result = withRetries(function()

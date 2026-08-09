@@ -2085,6 +2085,99 @@ the two top-right badges, and this whole right-edge column all still
 have documented, non-overlapping Y ranges. No other collisions found
 among anything this code can actually see the position of.
 
+## 42. Multiplayer audit -- does this actually work with several people on one server?
+
+Asked directly: does the game work correctly with multiple people on the
+same server? Read every script in `src/Server/` (26 files) plus every
+Shared module they depend on for the two ways Roblox multiplayer code
+actually breaks: module-scope state that's global to the whole server
+process instead of keyed per player, and per-player state that IS keyed
+correctly but never gets cleared when someone leaves.
+
+**Short answer: yes, with three real bugs fixed below.** None of them were
+about two players interfering with each other's currency or upgrades --
+every purchase/reward path in this game (`RebirthShopService`,
+`SanctumService`, `ZoneService`, `ProgressionService`, `WheelService`,
+`AchievementsService`, `OrbClickManager`, `TreeUpgrades`, `RebirthHandler`,
+`EssenceMultiplier`) already keys its state correctly by `player` or
+`player.UserId` and never trusts anything the client sends over a shared
+remote. The bugs were all about **server-lifetime hygiene**: state that
+outlives the player it belongs to, which only ever shows up once real
+player turnover happens on a long-running server -- exactly the scenario a
+quick single-player Studio test would never surface.
+
+**Fixed:**
+
+1. **`OrbClickManager.server.luau`'s `PlayerDatas` table never cleared on
+   `PlayerRemoving`.** It's keyed by `UserId` and only ever lazily created
+   (`if not PlayerDatas[userId] then ... end`), so every player who ever
+   joined a given server process left a permanent entry behind -- their
+   `PlayerData` table plus two leaderstat Instance references, none of it
+   ever garbage collected. The bigger problem: a player who reconnects to
+   the *same* server process (same `UserId` -- a dropped connection,
+   an intentional rejoin) hit that stale, non-nil entry and kept
+   reading/writing their OLD, disconnected `PlayerData`/leaderstat
+   references for the rest of the session. Nothing crashed -- their
+   essence gains just silently stopped showing up anywhere, and never got
+   saved, because `PlayerDataHandler` saves off the NEW `PlayerData`
+   instance the rejoin created, not the stale one this script was still
+   holding. Fixed by clearing `PlayerDatas[plr.UserId]` in the
+   `PlayerRemoving` handler that already existed for `comboState`.
+
+2. **`PlayerDataHandler.server.luau` leaked a Folder + 2 IntValues per
+   join, forever.** `loadPlayerData` created
+   `ReplicatedStorage.PlayerOrbs[UserId]/{Health, MaxHealth}` on every
+   single join and never destroyed it on leave -- worse than a Lua-table
+   leak, since Instances under `ReplicatedStorage` replicate to and sit in
+   memory on every connected client too, not just the server. Confirmed
+   dead before removing it: `EssenceOrbController.luau` owns HP entirely
+   through attributes now (`OrbCurrentHP`/`OrbMaxHP`), and a repo-wide
+   search for `PlayerOrbs` turned up no other reader anywhere, client or
+   server. Removed the dead creation code outright rather than just adding
+   cleanup for something with zero remaining function.
+
+3. **`StormInitServer.server.luau` only wired new players through
+   `Players.PlayerAdded`,** with no loop over `Players:GetPlayers()` to
+   catch anyone already in the server -- unlike every other init script in
+   this codebase (`GroupRewardService`, `PotionTimerService`,
+   `RebirthShopService`, `SanctumService`, `ProgressionService`,
+   `LeaderboardService`, `WheelService`, `AchievementsService`,
+   `ProductPurchaseHandler` all have this exact loop, specifically for
+   Studio script-reload/multi-client-playtest scenarios). Confirmed this
+   is the only place `StormController.new` is ever called and the feature
+   is genuinely live (client + `ProductPurchaseHandler`'s Essence Rain
+   product both reference it) before fixing. In a live server this barely
+   matters, since real joins land after scripts finish starting -- but in
+   Studio's multi-client Play testing, test players can already be
+   registered before this script's `PlayerAdded` connection is made, and
+   without this loop they'd silently never get a `StormController` for
+   the whole session: no automatic storms, and the manual-summon button
+   would just do nothing. Added the same defensive loop every other init
+   script already uses.
+
+**Checked and confirmed correct (no changes needed):** every purchase/sync
+service (`RebirthShopService`, `SanctumService`, `WheelService`,
+`AchievementsService`, `ZoneService`, `ProgressionService`) keys its
+debounce/pending-push tables by `player` and clears every one of them in
+`PlayerRemoving` -- `ProgressionService` in particular clears nine separate
+per-player tables in one function, all correctly. `EssenceOrbController`'s
+`orbStates[player]` has an explicit `Cleanup(player)` wired to
+`PlayerRemoving` as a backstop. `EPMService.ActiveSessions[UserId]` is set
+unconditionally on every join (not lazily, so a rejoin can't inherit a
+stale entry) and cleared by `PlayerDataHandler` on leave.
+`FriendBonusService` deliberately avoids a per-player cache altogether
+(friend counts depend on who ELSE is in the server, so it recomputes
+everyone on every join/leave) and guards overlapping recomputes with a
+token so a slower stale call can't overwrite a newer one -- a genuinely
+good piece of multiplayer-race handling, not something that needed
+fixing. `LeaderboardService`'s cross-player snapshot and `EssenceRushService`'s
+whole-server event timer are correctly GLOBAL, not per-player, by design.
+The core economy math (`RebirthHandler.luau`, `TreeUpgrades.luau`,
+`EssenceMultiplier.luau`) holds no module-scope state at all -- every
+function takes `player`/`playerData` as arguments and works on exactly
+what it's given, which is what makes it safe to share across however many
+players are on the server at once.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
