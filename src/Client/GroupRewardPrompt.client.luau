@@ -368,17 +368,13 @@ new("UIGradient", {
 	Color = ColorSequence.new(THEME.Accent, Color3.fromRGB(121, 70, 160)),
 	Rotation = 45,
 }, crest)
-local crestLabel = new("TextLabel", {
+local crestLabel = new("ImageLabel", {
 	Size = UDim2.fromScale(1, 1),
 	BackgroundTransparency = 1,
-	Font = Enum.Font.GothamBlack,
-	Text = "M",
-	TextColor3 = THEME.White,
-	TextScaled = true,
+	Image = "rbxassetid://127976500372870",
 	ZIndex = 108,
 }, crest)
-constrainText(crestLabel, 16, 34)
-
+corner(crestLabel, UDim.new(0.28, 0))
 local eyebrow = new("TextLabel", {
 	Name = "Eyebrow",
 	Position = UDim2.fromScale(0.195, 0.047),
