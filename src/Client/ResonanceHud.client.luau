@@ -8,6 +8,7 @@ local config = require(ReplicatedStorage:WaitForChild("ResonanceConfig"))
 local remotes = ReplicatedStorage:WaitForChild("ResonanceRemotes")
 local sync = remotes:WaitForChild("Sync")
 local activate = remotes:WaitForChild("Activate")
+local requestSnapshot = remotes:WaitForChild("RequestSnapshot")
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "ResonanceHud"
@@ -82,7 +83,10 @@ button.Activated:Connect(function()
 	end
 end)
 
-sync.OnClientEvent:Connect(function(data)
+local function applySnapshot(data)
+	if type(data) ~= "table" then
+		return
+	end
 	current = data
 	receivedAt = os.clock()
 	local active = data.OverdriveRemaining > 0
@@ -100,8 +104,21 @@ sync.OnClientEvent:Connect(function(data)
 		data.MasteryLevel
 	)
 	button.Text = active and "ACTIVE\n2x" or (data.Pulse >= config.PulseRequired and "ACTIVATE" or "CHARGING")
-	button.BackgroundColor3 = data.Pulse >= config.PulseRequired and Color3.fromRGB(126, 93, 255)
+	button.BackgroundColor3 = data.Pulse >= config.PulseRequired and not active and Color3.fromRGB(126, 93, 255)
 		or Color3.fromRGB(73, 64, 99)
+end
+
+sync.OnClientEvent:Connect(applySnapshot)
+
+-- Request the authoritative initial state after the event listener exists.
+-- This works independently for every client and closes the join-order race.
+task.spawn(function()
+	local ok, data = pcall(function()
+		return requestSnapshot:InvokeServer()
+	end)
+	if ok then
+		applySnapshot(data)
+	end
 end)
 
 -- Keep the active countdown fluid between server snapshots. This is display
@@ -114,6 +131,8 @@ RunService.RenderStepped:Connect(function()
 	meterText.Text = string.format("OVERDRIVE  %.1fs", remaining)
 	fill.Size = UDim2.fromScale(math.clamp(remaining / config.MaxOverdriveSeconds, 0, 1), 1)
 	if remaining <= 0 then
+		current.OverdriveRemaining = 0
 		button.Text = "CHARGING"
+		button.BackgroundColor3 = Color3.fromRGB(73, 64, 99)
 	end
 end)

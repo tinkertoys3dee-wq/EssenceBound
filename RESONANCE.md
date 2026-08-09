@@ -19,6 +19,11 @@ All reward-bearing state is owned by `ResonanceService` on the server. The UI
 only requests activation and renders server snapshots. Collections enter the
 system after `OrbClickManager` has validated their type and quantity.
 
+Session state is stored by `Player` and every expiry timer carries a per-player
+generation token, so simultaneous collections cannot reset another player's
+Harmony. Clients request their own initial snapshot after connecting the sync
+listener, preventing join order from leaving one player's HUD uninitialized.
+
 ## Balance knobs
 
 All durations, caps, gains, mastery XP requirements, and multipliers live in

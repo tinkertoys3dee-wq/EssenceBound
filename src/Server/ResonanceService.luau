@@ -17,6 +17,9 @@ sync.Parent = folder
 local activate = folder:FindFirstChild("Activate") or Instance.new("RemoteEvent")
 activate.Name = "Activate"
 activate.Parent = folder
+local requestSnapshot = folder:FindFirstChild("RequestSnapshot") or Instance.new("RemoteFunction")
+requestSnapshot.Name = "RequestSnapshot"
+requestSnapshot.Parent = folder
 
 local function getData(player)
 	local module = player:FindFirstChild("PlayerData")
@@ -47,7 +50,15 @@ end
 local function stateFor(player)
 	local state = states[player]
 	if not state then
-		state = { Harmony = 0, Pulse = 0, LastType = nil, LastAt = 0, OverdriveUntil = 0, LastActivation = 0 }
+		state = {
+			Harmony = 0,
+			Pulse = 0,
+			LastType = nil,
+			LastAt = 0,
+			HarmonyGeneration = 0,
+			OverdriveUntil = 0,
+			LastActivation = 0,
+		}
 		states[player] = state
 	end
 	return state
@@ -109,6 +120,25 @@ function Service.ProcessCollection(player, orbType, isCritical)
 		state.Harmony = 0
 	end
 	state.LastType, state.LastAt = orbType, now
+	state.HarmonyGeneration += 1
+	local harmonyGeneration = state.HarmonyGeneration
+
+	-- The multiplier attribute must expire even if this player stops
+	-- collecting. Without a server timer, Harmony remained active forever and
+	-- incorrectly boosted idle earnings. The generation token makes each
+	-- player's latest collection supersede only their own older timer.
+	task.delay(Config.ComboWindow, function()
+		local current = states[player]
+		if not current or current.HarmonyGeneration ~= harmonyGeneration then
+			return
+		end
+		current.Harmony = 0
+		current.LastType = nil
+		if player.Parent then
+			player:SetAttribute("ResonanceHarmony", 0)
+			send(player)
+		end
+	end)
 
 	if state.OverdriveUntil > now then
 		state.OverdriveUntil =
@@ -161,6 +191,14 @@ activate.OnServerEvent:Connect(function(player)
 		end
 	end)
 end)
+
+-- A RemoteFunction avoids the PlayerAdded/LocalScript startup race: an
+-- initial RemoteEvent can fire before the client has connected its listener.
+-- No client input is accepted and snapshots are scoped to the invoking
+-- player, so one player can never query another player's session state.
+requestSnapshot.OnServerInvoke = function(player)
+	return snapshot(player)
+end
 
 local function initializePlayer(player)
 	task.spawn(function()
