@@ -11,6 +11,7 @@ local MarketplaceService = game:GetService("MarketplaceService")
 
 local IdleUpgrades = require(ReplicatedStorage:WaitForChild("IdleUpgrades"))
 local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
+local GroupRewardConfig = require(ReplicatedStorage:WaitForChild("GroupRewardConfig"))
 local EPMService = require(game:GetService("ServerScriptService"):WaitForChild("EPMService"))
 
 local Events = ReplicatedStorage:WaitForChild("Remotes")
@@ -135,6 +136,9 @@ local function GrantOfflineEarnings(player)
 	-- 2. Offline Upgrade Multiplier (added to base percent)
 	local upgradePercent = IdleUpgrades.GetOfflineEarningsPercent(player)
 	local finalOfflinePercent = basePercent + (upgradePercent or 0)
+	local memberOfflineMultiplier = player:GetAttribute("GroupMember") == true
+		and GroupRewardConfig.OfflineEarningsMultiplier
+		or 1
 
 	-- 3. Global Essence Multiplier
 	local globalMultiplier = 1
@@ -153,7 +157,9 @@ local function GrantOfflineEarnings(player)
 		if dict.Discovered == true then
 			local epm = dict.savedEPM or 0
 			if epm > 0 then
-				local offlineReward = math.floor(epm * minutesOffline * globalMultiplier * finalOfflinePercent)
+				local offlineReward = math.floor(
+					epm * minutesOffline * globalMultiplier * finalOfflinePercent * memberOfflineMultiplier
+				)
 
 				if offlineReward > 0 then
 					AddEssence(player, essenceId, offlineReward)

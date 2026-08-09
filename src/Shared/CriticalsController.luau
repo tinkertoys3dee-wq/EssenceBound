@@ -58,6 +58,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TreeUpgrades = require(ReplicatedStorage:WaitForChild("TreeUpgrades"))
 local NewPlayerLuckConfig = require(ReplicatedStorage:WaitForChild("NewPlayerLuckConfig"))
+local GroupRewardConfig = require(ReplicatedStorage:WaitForChild("GroupRewardConfig"))
 
 -- Timed lookup rather than a bare WaitForChild: crit rolling runs on every
 -- orb spawn, so a missing SanctumUpgrades must cost the Sanctum crit bonus
@@ -140,8 +141,15 @@ function CriticalsController.GetCritChance(player)
 	-- clamped by the same MAX_CRIT_CHANCE as everything else below, so it
 	-- can never push a player past the existing ceiling either.
 	local luckBonus = NewPlayerLuckConfig.IsActive(player) and NewPlayerLuckConfig.CritChanceBonus or 0
+	local groupBonus = player:GetAttribute("GroupMember") == true and GroupRewardConfig.CritChanceBonus or 0
 
-	local total = TreeUpgrades.GetSummedEffectFromAttributes(player, "CritChance") + sanctumCrit + luckBonus
+	-- Mundane Studios members get the same small, additive treatment as
+	-- New Player Luck. The server owns GroupMember and the existing global
+	-- cap still applies after every source has been stacked.
+	local total = TreeUpgrades.GetSummedEffectFromAttributes(player, "CritChance")
+		+ sanctumCrit
+		+ luckBonus
+		+ groupBonus
 	return math.min(MAX_CRIT_CHANCE, total)
 end
 

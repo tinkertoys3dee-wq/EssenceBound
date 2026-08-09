@@ -945,15 +945,23 @@ permanent essence bonus for players who've joined the game's Roblox
 group -- unlike a gamepass, group membership actively
 helps the game itself (shouts, wall posts reach every member). Checked
 on join server-side (`Player:IsInGroup`, cached to a `GroupMember`
-attribute so `EssenceMultiplier.CalculateMultiplier` -- which runs on
-every single collection -- never makes a live API call) and folded into
-the multiplier stack the same way every other bonus in that function
-already works. It is now configured for **Mundane Studios** (group
-`15575113`) at a **+35% essence** multiplier. Non-members see a delayed
-join popup plus a persistent 👥 reminder button. The popup opens the
-community page through `GuiService:OpenBrowserWindowAsync`, and its
-"I've joined" action asks the server for a rate-limited authoritative
-recheck so the reward can activate without requiring a rejoin.
+attribute so hot reward paths never make a live API call) and folded into
+the same server-owned bonus stack used by the rest of the game. It is
+configured for **Mundane Studios** (group `15575113`) with three permanent
+member benefits: **+35% essence**, **+5% critical chance**, and **+15%
+offline earnings**. The essence bonus is read by `EssenceMultiplier`, the
+crit bonus is added and capped inside `CriticalsController`, and the extra
+offline bonus is applied by `IdleService`; the client only displays the
+same values from `GroupRewardConfig` and cannot grant any of them.
+
+Non-members see a delayed, responsive community panel plus a persistent
+FREE reminder button. The panel now has a layered EssenceBound-style
+frame, animated ambient glows, a community crest, three dedicated benefit
+cards, clearer verification states, outside-click/Escape closing, and a
+short success confirmation. It opens the community page through
+`GuiService:OpenBrowserWindowAsync`, and its "I've joined" action asks the
+server for a rate-limited authoritative recheck so every benefit can
+activate without requiring a rejoin.
 
 ## 18. Fixed a purchase-crashing nil in ProductPurchaseHandler
 
@@ -2211,10 +2219,12 @@ players are on the server at once.
    repeatedly after that, just bump `WhatsNewConfig.CurrentVersion` by 1
    each time rather than trying to reset the save.
 9. **Test Group Reward with a Mundane Studios non-member and member.** A
-   non-member should see the +35% popup and 👥 reminder; confirm Join opens
-   the right community page. After joining, press "I've joined — check"
-   and confirm the popup and reminder disappear and essence payouts rise
-   by 35% without requiring a rejoin (see section 17).
+   non-member should see the new three-card panel and FREE reminder;
+   confirm Join opens the right community page. After joining, press
+   "I've joined — verify" and confirm the success state appears, then the
+   panel/reminder disappear. Essence payouts should rise by 35%, displayed
+   crit chance by 5 percentage points, and offline harvest payouts by an
+   additional 15%, all without requiring a rejoin (see section 17).
 10. **Confirm the loading screen still plays its glitch sounds AND still
     reaches the game** (see section 22, both fixes). Both should be
     silent/invisible if everything's already set up correctly in

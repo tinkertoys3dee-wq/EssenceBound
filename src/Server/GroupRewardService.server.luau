@@ -1,9 +1,10 @@
 --[[
 	GroupRewardService (Script -> ServerScriptService)
 	===================================================
-	Checks Roblox group membership on join and mirrors the result
-	onto a `GroupMember` player attribute, which EssenceMultiplier reads
-	like every other multiplicative bonus in the game.
+	Checks Roblox group membership on join and mirrors the result onto a
+	`GroupMember` player attribute. EssenceMultiplier, CriticalsController,
+	and IdleService read that one server-owned state for the configured
+	member benefits.
 
 	A complete no-op until GroupRewardConfig.GroupId is set to a real
 	group id -- see that file for why this is safe to ship unconfigured.
