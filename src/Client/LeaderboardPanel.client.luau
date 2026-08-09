@@ -44,9 +44,16 @@ local THEME = {
 
 local LAYOUT = {
 	-- The slot the Prestige Shop button originally used before it was
-	-- moved to (0.895, 0.213) -- already proven not to collide with
-	-- anything on the left edge column.
-	ButtonPosition = UDim2.fromScale(0.895, 0.377),
+	-- moved to (0.92, 0.213) -- same column, same reasoning.
+	--
+	-- Was 0.895: a real screenshot showed this whole column (Ranks,
+	-- Prestige Shop, Sanctum, Goals) rendering directly on top of
+	-- MainGui.Right.Holder's own live nav bar (Upgrades/Zones/Rebirth/
+	-- Index/Shop/Settings -- see UIInitializerHooks.client.luau), which
+	-- occupies that same x=0.895 band. 0.92 matches ProgressionHud's
+	-- Daily/Quest/Codes stack, confirmed clear of that same nav bar in
+	-- the same screenshot -- proven-safe, not a second guess.
+	ButtonPosition = UDim2.fromScale(0.92, 0.377),
 	ButtonAnchor = Vector2.new(0, 0.5),
 	ButtonSize = UDim2.fromScale(0.062, 0.062),
 	PanelSize = UDim2.fromScale(0.5, 0.68),

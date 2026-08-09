@@ -2028,6 +2028,51 @@ exact target probability keeps this consistent with how every other
 bonus in this system already works -- the resulting chance still
 renormalizes against whatever Earth's weight is in the current zone.
 
+## 41. Fixed a real collision: five buttons were rendering on top of MainGui.Right.Holder's own nav bar
+
+Reported directly, with a screenshot: Prestige Shop, Sanctum, Ranks,
+Goals, and Group Reward's buttons (all originally at `x=0.895`) were
+rendering directly on top of `MainGui.Right.Holder`'s own live nav bar
+(Upgrades / Zones / Rebirth / Index / Shop / Settings, wired generically
+in `UIInitializerHooks.client.luau`) -- text and icons visibly jumbled
+together in the same screen region. This folder's UI properties were
+never in this repo to begin with (see "One thing to be careful about"
+below), so this was never something a code-only read could have caught
+-- the screenshot was the only way to actually see it.
+
+**The fix:** all five moved from `x=0.895` to `x=0.92`, matching
+`ProgressionHud`'s Daily/Quest/Codes stack, which the SAME screenshot
+showed sitting cleanly to the right of that nav bar -- proven-safe
+already, not a second guess. None of these five needed a Y change; the
+existing 0.082 stride between them (and the 0.8 gap Group Reward
+already kept below the Daily/Quest/Codes stack) was never the problem,
+so it carries over unchanged. Touched: `RebirthShopPanel.client.luau`,
+`SanctumPanel.client.luau`, `LeaderboardPanel.client.luau`,
+`AchievementsPanel.client.luau`, `GroupRewardPrompt.client.luau`, plus
+`ProgressionHud.client.luau`'s own comment (its position didn't
+change, but the comment explaining why 0.92 was chosen did, since it's
+now the reason five OTHER files match it instead of the other way
+around).
+
+**Not fixed, for lack of evidence either way:** the two top-right
+badges, 👥 Friend Bonus and 🍀 New Adventurer's Luck (`x=0.985`,
+anchored at the RIGHT edge rather than the left, so they extend
+further left than they might look -- roughly `0.775` to `0.985`).
+Neither was visible in the reported screenshot (0 friends online, and
+whatever this save's New Adventurer's Luck state was didn't show the
+badge either), so there's no evidence they collide with anything --
+but also no evidence they don't, since `Right.Holder`'s actual
+vertical extent still isn't known precisely. Worth a specific check
+once one of those badges is actually on screen (see item 24 below for
+how to force each one).
+
+While auditing this, re-checked every OTHER self-built button/badge
+this codebase has for overlaps against EACH OTHER (not just against
+Right.Holder) -- Fortune Wheel's floating button (bottom-right corner),
+the two top-right badges, and this whole right-edge column all still
+have documented, non-overlapping Y ranges. No other collisions found
+among anything this code can actually see the position of.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
@@ -2234,6 +2279,25 @@ renormalizes against whatever Earth's weight is in the current zone.
     this script captured it as the default (a load-order issue worth
     flagging back if it happens, not something the checklist itself
     can fix).
+24. **The Right.Holder collision fix (section 41)** -- this is the one
+    worth checking most carefully, since it was fixed from a
+    screenshot rather than something testable from code alone. Confirm
+    Prestige Shop / Sanctum / Ranks / Goals / Group Reward no longer
+    overlap Right.Holder's own Upgrades/Zones/Rebirth/Index/Shop/
+    Settings nav bar, and separately confirm THIS move didn't create a
+    new collision with the Daily/Quest/Codes stack now sharing its x
+    column (they're at very different y positions, but that's exactly
+    the kind of thing that's obvious in five seconds of actually
+    looking and easy to miss by just reading the numbers). Then check
+    the two flagged-but-unverified badges specifically: get a friend
+    online in the same server (👥 Friend Bonus only appears above 0
+    friends) and, separately, check 🍀 New Adventurer's Luck on a
+    fresh account (or force it via
+    `require(game.Players.YourName.PlayerData).FirstJoinAt = os.time()`
+    then rejoin) -- confirm NEITHER overlaps Right.Holder either. If
+    one does, its fix is the same one-line move every button in
+    section 41 got: shift its `x` in the relevant file's `LAYOUT`
+    table.
 
 ## ⚠️ One thing to be careful about
 
