@@ -4,6 +4,7 @@ local gui = player:WaitForChild("PlayerGui"):WaitForChild("MainGui")
 local Left = gui:WaitForChild("Left")
 local currencys = Left:WaitForChild("Currencys"):WaitForChild("ScrollingFrame")
 local RP = game:GetService("ReplicatedStorage")
+local EssenceConfig = require(RP:WaitForChild("EssenceConfig"))
 local EssenceVisuals = require(RP:WaitForChild("EssenceVisuals"))
 local PlayerStats = Left:WaitForChild("Playerstats")
 
@@ -114,84 +115,75 @@ local ShadowEssenceDisplayText= ShadowEssenceDisplay:WaitForChild("Value")
 
 local SolarEssenceleaderstat = leaderstats:WaitForChild("Solar Essence")
 
--- Solar has no legacy Studio-authored counter, so build one in the same
--- scrolling currency rail. It is intentionally self-contained and padded:
--- a filesystem sync cannot make the new currency exist in data but vanish
--- from the HUD just because an old place file lacks a matching frame.
-local SolarEssenceDisplay = currencys:FindFirstChild("Solar Essence")
-if not SolarEssenceDisplay then
-	SolarEssenceDisplay = Instance.new("Frame")
-	SolarEssenceDisplay.Name = "Solar Essence"
-	SolarEssenceDisplay.Size = ShadowEssenceDisplay.Size
-	SolarEssenceDisplay.LayoutOrder = ShadowEssenceDisplay.LayoutOrder + 1
-	SolarEssenceDisplay.BackgroundColor3 = Color3.fromRGB(43, 22, 42)
-	SolarEssenceDisplay.BackgroundTransparency = 0.08
-	SolarEssenceDisplay.BorderSizePixel = 0
-	SolarEssenceDisplay:SetAttribute("AstralAccentColor", Color3.fromRGB(255, 190, 62))
-	SolarEssenceDisplay.Parent = currencys
-
-	local solarCorner = Instance.new("UICorner")
-	solarCorner.CornerRadius = UDim.new(0.22, 0)
-	solarCorner.Parent = SolarEssenceDisplay
-	local solarStroke = Instance.new("UIStroke")
-	solarStroke.Color = Color3.fromRGB(255, 190, 62)
-	solarStroke.Thickness = 1.6
-	solarStroke.Transparency = 0.22
-	solarStroke.Parent = SolarEssenceDisplay
-	local solarGradient = Instance.new("UIGradient")
-	solarGradient.Rotation = 18
-	solarGradient.Color = ColorSequence.new(Color3.fromRGB(74, 27, 38), Color3.fromRGB(27, 15, 42))
-	solarGradient.Parent = SolarEssenceDisplay
-
-	local orb = Instance.new("ImageLabel")
-	orb.Name = "SolarOrb"
-	orb.AnchorPoint = Vector2.new(0, 0.5)
-	orb.Position = UDim2.fromScale(0.035, 0.5)
-	orb.Size = UDim2.fromScale(0.22, 0.82)
-	orb.BackgroundTransparency = 1
-	orb.ZIndex = 3
-	orb.Parent = SolarEssenceDisplay
-	local orbAspect = Instance.new("UIAspectRatioConstraint")
-	orbAspect.AspectRatio = 1
-	orbAspect.DominantAxis = Enum.DominantAxis.Height
-	orbAspect.Parent = orb
-	EssenceVisuals.ApplyToImage(orb, "Solar Essence")
-
-	local name = Instance.new("TextLabel")
-	name.Name = "CurrencyName"
-	name.Position = UDim2.fromScale(0.29, 0.12)
-	name.Size = UDim2.fromScale(0.66, 0.27)
-	name.BackgroundTransparency = 1
-	name.Font = Enum.Font.GothamBold
-	name.Text = "MYTHIC SOLAR"
-	name.TextColor3 = Color3.fromRGB(255, 220, 126)
-	name.TextScaled = true
-	name.TextXAlignment = Enum.TextXAlignment.Left
-	name.ZIndex = 3
-	name.Parent = SolarEssenceDisplay
-	local nameConstraint = Instance.new("UITextSizeConstraint")
-	nameConstraint.MinTextSize = 7
-	nameConstraint.MaxTextSize = 12
-	nameConstraint.Parent = name
-
-	local value = Instance.new("TextLabel")
-	value.Name = "Value"
-	value.Position = UDim2.fromScale(0.29, 0.4)
-	value.Size = UDim2.fromScale(0.66, 0.46)
-	value.BackgroundTransparency = 1
-	value.Font = Enum.Font.GothamBlack
-	value.Text = "0"
-	value.TextColor3 = Color3.fromRGB(255, 248, 213)
-	value.TextScaled = true
-	value.TextXAlignment = Enum.TextXAlignment.Left
-	value.ZIndex = 3
-	value.Parent = SolarEssenceDisplay
-	local valueConstraint = Instance.new("UITextSizeConstraint")
-	valueConstraint.MinTextSize = 10
-	valueConstraint.MaxTextSize = 20
-	valueConstraint.Parent = value
+-- Solar has no legacy Studio-authored row. Clone Shadow's existing row so
+-- the three counters share the exact same dimensions, padding, typography,
+-- and alignment; only the icon and Solar palette should differ.
+local previousSolarDisplay = currencys:FindFirstChild("Solar Essence")
+if previousSolarDisplay then
+	previousSolarDisplay:Destroy()
 end
+
+local SolarEssenceDisplay = ShadowEssenceDisplay:Clone()
+SolarEssenceDisplay.Name = "Solar Essence"
+SolarEssenceDisplay.LayoutOrder = ShadowEssenceDisplay.LayoutOrder + 1
+SolarEssenceDisplay:SetAttribute("AstralAccentColor", EssenceConfig.GetColor("Solar Essence"))
+
+-- A currency row should be presentation only. If the authored template ever
+-- gains a LocalScript, cloning it must not duplicate behavior or connections.
+for _, descendant in ipairs(SolarEssenceDisplay:GetDescendants()) do
+	if descendant:IsA("LocalScript") or descendant:IsA("Script") then
+		descendant:Destroy()
+	end
+end
+
+SolarEssenceDisplay.Parent = currencys
 local SolarEssenceDisplayText = SolarEssenceDisplay:WaitForChild("Value")
+
+local solarColor = EssenceConfig.GetColor("Solar Essence", Color3.fromRGB(255, 196, 64))
+local solarHighlight = Color3.fromRGB(255, 235, 142)
+SolarEssenceDisplayText.TextColor3 = solarColor
+SolarEssenceDisplayText.TextStrokeColor3 = EssenceConfig.Get("Solar Essence").DeepColor
+
+-- UIGradient overrides TextColor3, so recolor any gradient inherited from
+-- the Shadow value instead of allowing the Solar number to remain purple.
+for _, child in ipairs(SolarEssenceDisplayText:GetChildren()) do
+	if child:IsA("UIGradient") then
+		child.Color = ColorSequence.new(solarHighlight, solarColor)
+	end
+end
+
+local function findCurrencyIcon(row)
+	local bestIcon = nil
+	local bestScore = -math.huge
+	local shadowIconId = tostring(EssenceConfig.Get("Shadow Essence").IconAssetId)
+	for _, descendant in ipairs(row:GetDescendants()) do
+		if descendant:IsA("ImageLabel") or descendant:IsA("ImageButton") then
+			local lowerName = string.lower(descendant.Name)
+			local score = 0
+			if string.find(descendant.Image, shadowIconId, 1, true) then score += 100 end
+			if string.find(lowerName, "icon", 1, true) then score += 12 end
+			if string.find(lowerName, "orb", 1, true) then score += 12 end
+			if string.find(lowerName, "essence", 1, true) then score += 6 end
+			if descendant.Parent == row then score += 3 end
+			if descendant.Image ~= "" then score += 1 end
+			if score > bestScore then
+				bestScore = score
+				bestIcon = descendant
+			end
+		end
+	end
+	return bestIcon
+end
+
+local solarIcon = findCurrencyIcon(SolarEssenceDisplay)
+if solarIcon then
+	solarIcon.Name = "Solar Essence Icon"
+	solarIcon.ImageColor3 = Color3.new(1, 1, 1)
+	solarIcon.ImageRectOffset = Vector2.zero
+	solarIcon.ImageRectSize = Vector2.zero
+	solarIcon.ScaleType = Enum.ScaleType.Fit
+	EssenceVisuals.ApplyToImage(solarIcon, "Solar Essence")
+end
 
 -- The authored rail was sized for two currencies. Let its existing layout
 -- drive the vertical canvas so the new third row is scrollable on small
