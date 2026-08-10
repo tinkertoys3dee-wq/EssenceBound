@@ -2495,11 +2495,12 @@ same molten-corona presentation through `EssenceVisuals.luau`.
 
 Source art ships at `assets/solar-essence-orb.svg`: transparent 1024×1024 SVG
 with corona blades, prominences, plasma orbits, granulation, molten bands, and
-a white-hot stellar heart. Roblox needs the SVG uploaded before it has an
-`rbxassetid`; until then, `EssenceVisuals` draws the matching art from native
-Roblox UI shapes everywhere at runtime. After upload, place the numeric id in
-Solar's `IconAssetId` field in `EssenceConfig.luau`; every surface will switch
-to it automatically without another per-screen edit.
+a white-hot stellar heart. Roblox image assets accept raster formats rather
+than SVG, so export it to a transparent PNG before uploading. Until a raster
+asset id exists, `EssenceVisuals` draws the matching art from native Roblox UI
+shapes everywhere at runtime. After upload, place the numeric id in Solar's
+`IconAssetId` field in `EssenceConfig.luau`; every surface will switch to it
+automatically without another per-screen edit.
 
 ## What to check when you open Studio
 

@@ -111,7 +111,8 @@ ZonesConfig.Zones = {
 		BaseWeights = { ["Earth Essence"] = 15, ["Shadow Essence"] = 15, ["Solar Essence"] = 70 },
 		AmplifiedWeights = { ["Earth Essence"] = 6, ["Shadow Essence"] = 6, ["Solar Essence"] = 88 },
 		-- No uploaded Roblox image is required: ZoneAmbience and ZonePanel
-		-- render Solar's matching source SVG through EssenceVisuals.
+		-- render a native presentation matching the source SVG through
+		-- EssenceVisuals.
 	},
 }
 
