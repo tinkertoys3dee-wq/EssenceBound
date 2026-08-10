@@ -3,7 +3,7 @@
 	========================================================
 	Displays the 13 Roblox badges (grid, earned/locked/secret) and the new
 	in-game Milestones (list with a progress bar and a claim button) that
-	AchievementsService.server.luau tracks.
+	AchievementsService.server.luau tracks
 
 	Rows/cells are built ONCE at load and only ever have their properties
 	UPDATED on each sync -- not destroyed and rebuilt -- because the server
