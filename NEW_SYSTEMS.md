@@ -10,7 +10,7 @@ existing gameplay system was restructured.
 
 This section used to be a "READ THIS FIRST" warning that three Game
 Passes took real Robux and did nothing at all -- explicitly left
-unfixed at the time since guessing what a paid feature should do isn't
+unfixed at the time since guessing what a paid feature should do isn'
 a call to make unilaterally. All three are now implemented against
 their REAL store descriptions (see sections 39 and 40 for the full
 writeups):
