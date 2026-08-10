@@ -1,6 +1,6 @@
 --[[
 	GroupRewardPrompt (LocalScript -> StarterPlayerScripts)
-	========================================================
+	=======================================================
 	A polished, responsive community-reward panel for non-members. The
 	client only presents benefits and asks for a recheck; GroupRewardService
 	verifies membership server-side and owns the GroupMember attribute.
