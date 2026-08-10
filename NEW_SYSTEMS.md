@@ -18,14 +18,14 @@ writeups):
 | Game Pass | Id | Store description | What it does now |
 |---|---|---|---|
 | Dedicated Essence | `1907077899` | (name only) | Sharpens whichever Zone you're standing in toward its specialty essence (section 39) |
-| Lucky Finder | `1907239833` | "Increases the base chance of finding rarer essences by 50%." | ×1.5 to the Shadow Essence weight (section 40) |
-| Ultra Luck | `1906063939` | "Stacks with regular luck to give a massive boost (x3 luck)." | ×2 to the Shadow Essence weight alone, ×3 total combined with Lucky Finder (section 40) |
+| Lucky Finder | `1907239833` | "Increases the base chance of finding rarer essences by 50%." | ×1.5 to every non-common essence weight (section 40) |
+| Ultra Luck | `1906063939` | "Stacks with regular luck to give a massive boost (x3 luck)." | ×2 to every non-common weight alone, ×3 total combined with Lucky Finder (section 40) |
 
 **An earlier version of this pass guessed crit chance for Lucky
 Finder/Ultra Luck before their real store text was available --
-wrong, replaced entirely once it was.** "Rarer essences" means Shadow
-Essence, the only rarer of the game's two essence types (Rarity 1 vs
-Earth's Rarity 0) -- both passes now multiply that weight inside
+wrong, replaced entirely once it was.** "Rarer essences" now means both
+Shadow (Rare) and Solar (Mythic), while Earth remains Common -- both
+passes multiply every non-common weight inside
 `ZonesConfig.GetEssenceWeights`, the exact same function Dedicated
 Essence and Zones already share, so all three "Luck"-flavored passes
 and the odds a player actually sees all come from one place.
@@ -375,16 +375,15 @@ The automatic Essence Storm (every 5 minutes minimum, even at zero
 upgrades — so most sessions that clear the first few minutes will see
 one) used to land as nothing but a text label quietly updating in the
 corner. Its first flash/callout pass fixed the silence; section 47 now
-supersedes that small treatment with a complete storm-eye arrival,
-persistent weather layer, lightning, energy rain, real Earth/Shadow orb
-previews, comet-tailed collectibles and a distinct exit. Golden storms
+supersedes that small treatment with a complete tri-essence storm-eye
+arrival, persistent weather, lightning, energy rain, real Earth/Shadow/Solar
+orb previews, comet-tailed collectibles and a distinct exit. Golden storms
 receive their own stronger palette and sound. This remains purely
 cosmetic; duration, spawn rate, collection validation, payouts and the
 server's golden roll are untouched.
 
-All rewards scale with rebirth count, so they stay meaningful for a
-returning player without breaking a new one. Everything pays out in
-ordinary in-game essence — nothing here costs Robux or pressures a
+Earth rewards scale with rebirth count, while fixed mythic Solar bonuses
+preserve their endgame value. Nothing here costs Robux or pressures a
 purchase.
 
 ### How it integrates
@@ -618,7 +617,7 @@ entirely missing.
 
 **`src/Server/LeaderboardService.server.luau`** (new) owns two
 `OrderedDataStore`s -- `EssenceLeaderboard` (lifetime `TotalEssenceGathered`,
-both essence types combined) and `RebirthsLeaderboard`. Deliberately
+all essence types combined) and `RebirthsLeaderboard`. Deliberately
 conservative on DataStore budget since this is a pure social/cosmetic
 feature that must never risk anything else:
 
@@ -1879,23 +1878,23 @@ of sync with each other.
 ## 39. Zones -- pick a zone, lean into an essence type, watch it actually look different
 
 Requested directly: a picker that lets a player choose which "zone"
-they're collecting in, where a new zone costs essence to unlock, each
-zone weights the Earth/Shadow essence roll differently (both types
-still drop everywhere -- picking a zone leans into a currency, it
-never locks the other one out), the split "amplified depending on
-gamepasses" is a real mechanic now, and switching zones plays a travel
+they're collecting in, where new zones cost essence to unlock, each
+zone weights the complete Earth/Shadow/Solar catalog differently (all
+three retain a non-zero trace chance in every zone), and the split is
+amplified by relevant gamepasses. Switching zones plays a travel
 animation. All of it new; nothing existing was restructured to build
 it -- `EssenceOrbController`'s HP/click mechanics are completely
 untouched, there's still exactly one orb to click. A zone is a reskin
 of the same click loop with a different essence-type roll under it,
 not a second physical map.
 
-**Two zones, live now, in `ZonesConfig.luau`:**
+**Three zones, live now, in `ZonesConfig.luau`:**
 
-| Zone | Cost | Odds (base → with Dedicated Essence) |
+| Zone | Cost / gate | Base weights → with Dedicated Essence |
 |---|---|---|
-| 🌍 Earthen Grove | Free, always unlocked | 82% Earth / 18% Shadow → 92% / 8% |
-| 🌑 The Shadowfen | 300 Earth Essence | 18% Earth / 82% Shadow → 8% / 92% |
+| 🌍 Earthen Grove | Free | 81 Earth / 18 Shadow / 1 Solar → 92 / 7 / 1 |
+| 🌑 The Shadowfen | 300 Earth | 17 Earth / 82 Shadow / 1 Solar → 7 / 92 / 1 |
+| ☀️ The Sunforge | Rebirth 4; 500K Earth + 25K Shadow | 15 Earth / 15 Shadow / 70 Solar → 6 / 6 / 88 |
 
 Switching between zones you already own is free and unlimited --
 only the first unlock of a paid zone ever costs anything, and
@@ -1916,10 +1915,9 @@ before, it does something on-brand now. (The other two, Lucky Finder
 and Ultra Luck, are wired up too now -- see section 40.)
 
 **New files:**
-- `ZonesConfig.luau` (Shared) -- zone data (name, icon, cost, both
-  weight tables) plus every helper every other file below shares, so
-  none of them can drift out of sync with each other on names, costs,
-  or odds.
+- `ZonesConfig.luau` (Shared) -- zone data (name, icon, cost, base and
+  amplified weight tables) plus every shared helper used below, so names,
+  costs, and odds cannot drift between systems.
 - `ZoneService.server.luau` -- the only thing that actually unlocks or
   switches a zone. Same `RemoteFunction` returning `(success, message,
   result)` convention `WheelService`'s `SpinFunction` already
@@ -1927,7 +1925,7 @@ and Ultra Luck, are wired up too now -- see section 40.)
   `TreeUpgrades.PurchaseUpgrade` already does (the leaderstat's
   `Quantity` attribute directly, never `PlayerData` first).
 - `GetEssence.luau` (Shared, **edited**, not new) -- the actual
-  Earth/Shadow roll now reads `ZonesConfig.GetEssenceWeights(player)`
+  complete essence roll now reads `ZonesConfig.GetEssenceWeights(player)`
   instead of a flat, everyone-gets-the-same 50/50 table. `GetOddsText`
   (the "1 in N" text on a first discovery) now takes the player too, so
   it can never show odds that don't match what they're actually zoned
@@ -1941,15 +1939,14 @@ and Ultra Luck, are wired up too now -- see section 40.)
 - `ZoneAmbience.client.luau` -- a persistent, subtle glow behind the
   great orb, tinted to whichever zone is current, so a zone actually
   looks different for as long as you stay there, not just for the
-  few seconds the travel animation plays. Same safe "additive sibling
-  layer, never touches `LargeOrb`'s own properties" pattern
-  `PrestigeAura.client.luau` already established -- `LargeOrb.
-  ImageColor3` is already fought over by more than one existing
-  effect reverting to their own hardcoded "resting" white; a third,
-  zone-varying idea of what resting should be would just make all of
-  them wrong some of the time. Deliberately more understated than
-  PrestigeAura's own aura, and sits behind it (lower ZIndex) so the
-  two never visually compete.
+  few seconds the travel animation plays. Its glow remains an additive
+  sibling behind `LargeOrb`, and it deliberately leaves `ImageColor3`
+  alone because several existing effects already animate that property.
+  The configured zone orb art itself does swap: Grove restores the captured
+  Studio image, Shadowfen uses the uploaded Shadow orb, and Sunforge builds
+  the native Solar presentation. It remains more understated than
+  PrestigeAura's own aura and sits behind it (lower ZIndex), so the two
+  never visually compete.
 
 **Self-review caught two things before committing:** the odds preview
 for a zone you're NOT currently standing in originally always showed
@@ -2015,10 +2012,10 @@ actual store descriptions were available:
 > Ultra Luck: "Stacks with regular luck to give a massive boost
 > (x3 luck)."
 
-"Rarer essences" means Shadow Essence specifically -- the only two
-essence types in the game are Earth Essence (Rarity 0) and Shadow
-Essence (Rarity 1), see `DefaultPlayerData.luau`. Both passes multiply
-the Shadow Essence WEIGHT inside `ZonesConfig.GetEssenceWeights` --
+"Rarer essences" means every catalog entry above Common: Shadow
+Essence (Rare) and Solar Essence (Mythic), see `EssenceConfig.luau`.
+Both passes multiply every non-common WEIGHT inside
+`ZonesConfig.GetEssenceWeights` --
 Lucky Finder alone is ×1.5 (its own "+50%" is unambiguous), Ultra Luck
 alone is ×2, and owning both multiplies together to exactly ×3 (1.5 ×
 2), matching Ultra Luck's own "x3 luck" headline for the stacked case.
@@ -2381,20 +2378,19 @@ duration in the server payload and correctly labels the mixed event
 "ESSENCE STORM" rather than "EARTH STORM." Reward math, spawn interval,
 orb cap, server collection checks and golden multipliers were not changed.
 
-## 48. Rebirth now resets Shadow Essence too
+## 48. Rebirth resets every spendable essence
 
-`RebirthHandler.PerformRebirth` now resets both spendable essence balances in
-one server-authoritative transaction. Shadow Essence previously survived in
-full while Earth Essence and the Earth upgrade tree reset, creating a prestige
-loophole. Rebirth Echo's retention percentage now applies consistently to
-both balances: without Echo both become zero; with its 15% level, both retain
-15% (floored). Both leaderstat quantities, mirrored player attributes,
-PlayerData quantities and saved-EPM baselines are updated together.
+`RebirthHandler.PerformRebirth` resets Earth, Shadow, and Solar balances in
+one server-authoritative transaction. Shadow previously survived in full
+while Earth and the upgrade tree reset, creating a prestige loophole; Solar
+uses the corrected contract from launch. Rebirth Echo applies consistently to
+all three: without Echo they become zero; with its 15% level, every balance
+retains 15% (floored). Leaderstat quantities, player attributes, PlayerData,
+and saved-EPM baselines are updated together.
 
-`LifetimeShadowEssence` deliberately does not reset—it is a permanent earned
-total used by the Sanctum multiplier—and purchased Sanctum/Prestige upgrades
-still survive. The fix removes hoarded spendable currency without erasing the
-permanent progression Shadow Essence already bought.
+`LifetimeShadowEssence` and `LifetimeSolarEssence` deliberately do not reset:
+they are permanent earned totals used by Shadow synergy and Solar Radiance.
+Purchased Sanctum/Prestige upgrades still survive.
 
 ## 49. End-branch upgrades are priced like endgame upgrades now
 
@@ -2436,6 +2432,74 @@ No effect, maximum level, prerequisite, rebirth gate or early/midgame price
 changed. `TreeUpgrades` remains the one source read by both the tooltip and
 the server purchase path, so the newly displayed costs are exactly what gets
 deducted.
+
+## 50. Solar Essence -- a complete mythic progression layer
+
+Solar Essence is a real third currency rather than an icon pasted onto one
+screen. `EssenceConfig.luau` is now the authoritative ordered catalog for
+Earth, Shadow, and Solar; collection validation, session leaderstats,
+discovery, odds, colors, Index data, HUD rendering, storm pools, tutorials,
+quests, and rewards derive from that catalog instead of maintaining separate
+two-item allowlists.
+
+Solar is intentionally discoverable before endgame but specialized later:
+
+| Zone | Earth | Shadow | Solar | With Dedicated Essence |
+|---|---:|---:|---:|---|
+| Earthen Grove | 81 | 18 | 1 | 92 / 7 / 1 |
+| The Shadowfen | 17 | 82 | 1 | 7 / 92 / 1 |
+| The Sunforge | 15 | 15 | 70 | 6 / 6 / 88 |
+
+The Sunforge unlocks at Rebirth 4 for 500,000 Earth + 25,000 Shadow. Its
+mixed cost is validated completely before either balance is touched, so a
+failed second-currency check cannot partially spend the first. Lucky Finder,
+Ultra Luck, and temporary Prophecy luck amplify both non-common types (Rare
+Shadow and Mythic Solar), and the Zones UI previews those exact live weights.
+Essence Storm drops now roll against the same current-zone table instead of a
+uniform Earth/Shadow list.
+
+Every Solar find permanently builds **Solar Radiance**: +5% global essence
+per order of magnitude of lifetime Solar, capped at +50%. The multiplier reads
+`LifetimeSolarEssence`, so spending Solar never makes a player weaker. The
+spendable balance resets on rebirth alongside Earth and Shadow; Rebirth Echo
+retains 15% of all three while every lifetime counter survives.
+
+Solar has several earn paths without becoming a free faucet: normal/storm
+orbs, fixed rare Fortune Wheel payouts (20/40/250), a fixed 100-Solar day-7
+streak cache, the three-essence discovery milestone, and restrained offline
+harvesting after discovery. Solar EPM is bounded to 1–6/min and its second
+offline multiplier pass is capped at 2×; this prevents a one-time Wheel/Daily
+payout or an extreme late-game multiplier from turning into thousands of
+unearned mythic currency overnight.
+
+The existing tree's strongest terminals and capstones are now genuine mixed
+currency sinks:
+
+| Upgrade | Solar | Other cost at first rank |
+|---|---:|---|
+| Overload Shots | 100 | 35K Earth |
+| Core Resilience | 150 | 50K Earth |
+| Rebirth Echo | 250 | 100K Earth + 2.5K Shadow |
+| Automation Core | 250 | 75K Earth |
+| Manual Storm Summon | 350 | 125K Earth |
+| Essence Magnet Field / Double Crit | 500 each | 150K Earth each |
+| Storm Caller Ascension | 750 | 250K Earth + 5K Shadow (rank 1) |
+| Twin Orb Manifestation | 1K | 750K Earth + 10K Shadow |
+| Essence Convergence | 5K | 2.5M Earth + 50K Shadow |
+
+The Solar counter is created in the existing padded/scrollable currency rail,
+and its Index slot is cloned and live-bound even when the Studio-authored GUI
+only contains the old two slots. Discoveries, offline rewards, zone cards,
+travel, storms, falling orbs, trails, and the great Sunforge orb all use the
+same molten-corona presentation through `EssenceVisuals.luau`.
+
+Source art ships at `assets/solar-essence-orb.svg`: transparent 1024×1024 SVG
+with corona blades, prominences, plasma orbits, granulation, molten bands, and
+a white-hot stellar heart. Roblox needs the SVG uploaded before it has an
+`rbxassetid`; until then, `EssenceVisuals` draws the matching art from native
+Roblox UI shapes everywhere at runtime. After upload, place the numeric id in
+Solar's `IconAssetId` field in `EssenceConfig.luau`; every surface will switch
+to it automatically without another per-screen edit.
 
 ## What to check when you open Studio
 
@@ -2610,20 +2674,20 @@ deducted.
     account that already existed before this shipped, confirm the
     badge never appears at all, even on the very first load after
     updating.
-21. **Zones (section 39)** -- click the authored Zones button and confirm
-    the panel shows Earthen Grove as "📍 HERE" and The Shadowfen as
-    "🔒 UNLOCK · 300 Essence" (greyed out under 300 essence, lit up
-    orange once you have enough). Click UNLOCK -- essence should drop
-    by 300, a full-screen travel animation should play, and the panel
+21. **Zones (sections 39/50)** -- click the authored Zones button and
+    confirm Earthen Grove is "📍 HERE", Shadowfen costs 300 Earth, and
+    Sunforge shows its Rebirth-4 gate before the 500K Earth + 25K Shadow
+    mixed cost. Unlock Shadowfen -- Earth should drop by exactly 300, a
+    full-screen travel animation should play, and the panel
     (now closed) should reveal a subtle purple glow behind the great
     orb that wasn't there before. Reopen the panel: Shadowfen now
     reads "📍 HERE" and Earthen Grove reads "TRAVEL". Click TRAVEL
     back to Earthen Grove and confirm the glow turns green again and
     the travel animation plays a second time. Collect a good number of
-    orbs in each zone and confirm Shadowfen visibly favors Shadow
-    Essence drops while Earthen Grove favors Earth -- both should still
-    occasionally drop the other type. To see Dedicated Essence's
-    amplified odds (8%/92% instead of 18%/82%) without buying the real
+    orbs in each zone and confirm Shadowfen visibly favors Shadow,
+    Earthen Grove favors Earth, and Sunforge favors Solar -- every zone
+    should still show trace drops of the other types. To see Dedicated Essence's
+    amplified specialty odds without buying the real
     Game Pass, run
     `game.Players.YourName:SetAttribute(1907077899, true)` in the
     command bar and reopen the panel -- every card's odds line should
@@ -2631,21 +2695,21 @@ deducted.
     `MainGui.Right.Holder.ZonesButton` in a Studio copy and re-run: a
     fallback ZONES button should appear in the same slot and open the
     same panel.
-22. **Lucky Finder / Ultra Luck (section 40)** -- open the Zones panel
-    on Earthen Grove and note the odds line (should read "🌍 82% •
-    🌑 18%"). Run
+22. **Lucky Finder / Ultra Luck (sections 40/50)** -- open Zones on
+    Earthen Grove and note the base line (roughly 🌍 81% • 🌑 18% •
+    ☀️ 1%). Run
     `game.Players.YourName:SetAttribute(1907239833, true)` in the
     command bar (Lucky Finder) and reopen the panel -- Shadow's share
-    should visibly rise (roughly 24-25%, since ×1.5 on the weight
+    should visibly rise to roughly 25% and Solar remain roughly 1% (×1.5
     doesn't translate to a flat ×1.5 on the displayed percentage once
     the total renormalizes -- see the section's own math). Add
     `game.Players.YourName:SetAttribute(1906063939, true)` (Ultra
-    Luck, both now owned) and confirm Shadow's share climbs further
-    still (roughly 40%). Collect a good number of orbs and confirm
-    Shadow Essence is genuinely landing more often, not just the
+    Luck, both now owned) and confirm roughly 59% Earth / 39% Shadow /
+    2% Solar. Collect a good number of orbs and confirm the non-common
+    types genuinely land more often, not just the
     displayed number changing. Remove both attributes
     (`SetAttribute(id, nil)`) and confirm the odds line and real drop
-    rate both return to the un-boosted 82/18 split.
+    rate both return to the un-boosted 81/18/1 split.
 23. **Shadowfen orb image (section 39 addendum)** -- travel to the
     Shadowfen and confirm the great orb's actual picture changes (not
     just the ambient glow color) to the configured image right as the
@@ -2723,44 +2787,56 @@ deducted.
     actions exactly once, and Output should remain free of new UI errors.
 28. **Zone orb cards + attunement travel (section 46)** -- open Zones on both
     desktop and a narrow phone emulator. Earthen Grove must show the green
-    Earth collectible and Shadowfen the purple Shadow collectible, each with
+    Earth collectible, Shadowfen the purple Shadow collectible, and the
+    unlocked Sunforge its molten Solar collectible, each with
     its own pedestal/orbit/specialty pill and without touching the card edge,
-    description or action button. Travel both directions. Confirm the gates
+    description or action button. Travel among all unlocked zones. Confirm the gates
     fully cover every corner, input is blocked only during the cinematic, the
     portal uses the destination's matching orb/color, all three status beats
     and the meter are readable, and controls work again immediately after the
     reveal. Rapidly reopen/close the picker afterward and confirm no stale
     callback hides the HUD or replays an old destination.
-29. **Essence Storm spectacle (section 47)** -- use Manual Storm Summon or a
+29. **Essence Storm spectacle (sections 47/50)** -- use Manual Storm Summon or a
     server-side forced storm. The active bar should start full, say ESSENCE
     STORM, and drain against the real duration. Confirm the storm eye contains
-    both exact orb images, its banner clears quickly, rain/lightning/tint do
-    not block any HUD or falling-orb click, and Earth/Shadow drops have the
-    matching aura/tail. End the storm and verify every persistent visual fades
-    away. Force another storm while one is already active to check the shorter
+    all three orb presentations, its banner clears quickly, rain/lightning/tint
+    do not block any HUD or falling-orb click, and Earth/Shadow/Solar drops use
+    current-zone odds with matching aura/tail. End the storm and verify every
+    persistent visual fades away. Force another storm while one is already
+    active to check the shorter
     SURGE treatment. For golden QA, temporarily force `isGolden = true` in
     `StormController:_startStorm`, confirm the complete gold palette and
     stronger entrance, then revert that temporary test edit. Let one full
     storm run with the mobile performance graph open: pooled streak count must
     stay flat and Output must remain clean.
-30. **Shadow Essence rebirth reset (section 48)** -- seed a test account with
-    enough Earth Essence to rebirth and a visible Shadow balance. With no
-    Rebirth Echo, perform a real rebirth and confirm both leaderstats and both
-    `EarthEssence`/`ShadowEssence` player attributes become 0. Repeat with
-    `rebirth_echo` level 1 and confirm both retain exactly 15% (floored).
-    Before/after each attempt, compare `LifetimeShadowEssence` and a purchased
-    Sanctum level: neither permanent value may decrease, while both spendable
+30. **All-essence rebirth reset (sections 48/50)** -- seed Earth, Shadow, and
+    Solar balances. With no Rebirth Echo, perform a real rebirth and confirm
+    all three leaderstat quantities and player attributes become 0. Repeat with
+    `rebirth_echo` level 1 and confirm all three retain exactly 15% (floored).
+    Before/after each attempt, compare every lifetime attribute and a purchased
+    Sanctum level: no permanent value may decrease, while all three spendable
     `PlayerData.Essences[*].Quantity` values must match their displayed
     leaderstats after the transaction and after a rejoin.
-31. **Endgame price audit (section 49)** -- inspect every Tier 3/4 node in
+31. **Endgame price audit (sections 49/50)** -- inspect every Tier 3/4 node in
     the upgrade tooltip and compare it to the table above. Essence Magnet
-    Field must show 150K, Twin Orb 750K and final Convergence 2.5M; buying a
-    test node must deduct that exact displayed amount once. Check one Tier 1
+    Field must show 150K Earth + 500 Solar, Twin Orb 750K Earth + 10K Shadow
+    + 1K Solar, and Convergence 2.5M Earth + 50K Shadow + 5K Solar; buying a
+    test node must deduct every displayed amount exactly once. Check one Tier 1
     and Tier 2 route as a regression guard—their prices must be unchanged.
     For a leveled late node such as Storm Caller, buy successive ranks and
     confirm the existing growth still advances the price rather than leaving
     every rank at its new base. Finally rebirth and verify the nodes reset as
     before; this pass changes cost only, not the tree's reset contract.
+32. **Solar end-to-end (section 50)** -- on a clean account confirm the HUD
+    shows a padded Solar row, the Index counts 3 total entries, and Grove odds
+    show a 1% Solar trace. Force or wait for a Solar roll: the molten native
+    orb, MYTHIC SOLAR collection burst, discovery card, leaderstat, Index slot,
+    unique count, rarest essence, lifetime attribute, and Radiance multiplier
+    should update together. At Rebirth 4, buy Sunforge with both currencies and
+    confirm Solar becomes the dominant drop. Claim day 7 and force the three
+    Solar Wheel rewards, checking fixed 100 / 20-or-40 / 250 payouts rather
+    than rebirth-scaled amounts. Finally rejoin after offline time: Solar may
+    pay only after discovery and its saved EPM must remain inside 1–6/min.
 
 ## ⚠️ One thing to be careful about
 

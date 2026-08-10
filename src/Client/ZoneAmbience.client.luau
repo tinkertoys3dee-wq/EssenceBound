@@ -47,6 +47,7 @@ local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 
 local ZonesConfig = require(ReplicatedStorage:WaitForChild("ZonesConfig"))
+local EssenceVisuals = require(ReplicatedStorage:WaitForChild("EssenceVisuals"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -141,7 +142,12 @@ end
 -- screen (both react to the same CurrentZoneId attribute landing at
 -- roughly the same moment), which masks most of the swap anyway.
 local function applyZoneImage(zone)
-	LargeOrb.Image = zone.OrbImage or defaultOrbImage
+	EssenceVisuals.Clear(LargeOrb)
+	if zone.SpecialtyEssence == "Solar Essence" then
+		EssenceVisuals.ApplyToImage(LargeOrb, "Solar Essence", { Scale = 0.98 })
+	else
+		LargeOrb.Image = zone.OrbImage or defaultOrbImage
+	end
 end
 
 local function onZoneChanged(isInitial)

@@ -96,6 +96,8 @@ end
 local function formatReward(reward)
 	if reward.Type == "Essence" then
 		return "+" .. formatNumber(reward.Amount) .. " 🌿"
+	elseif reward.Type == "SolarEssence" then
+		return "+" .. formatNumber(reward.Amount) .. " ☀️"
 	elseif reward.Type == "Shards" then
 		return "+" .. tostring(reward.Amount) .. " 🔷"
 	end

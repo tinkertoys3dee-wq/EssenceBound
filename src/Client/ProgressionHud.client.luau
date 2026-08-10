@@ -873,13 +873,20 @@ for index, reward in ipairs(ProgressionConfig.DailyRewards) do
 	}, card)
 	new("UITextSizeConstraint", { MaxTextSize = 15 }, amountLabel)
 
+	local bonusParts = {}
+	if (tonumber(reward.SolarEssence) or 0) > 0 then
+		table.insert(bonusParts, "+" .. ProgressionConfig.FormatNumber(reward.SolarEssence) .. " ☀")
+	end
+	if reward.Potion then
+		table.insert(bonusParts, "BOOST")
+	end
 	local bonusLabel = new("TextLabel", {
 		Name = "Bonus",
 		Position = UDim2.fromScale(0, 0.82),
 		Size = UDim2.fromScale(1, 0.15),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamMedium,
-		Text = reward.Potion and "+ BOOST" or "",
+		Text = table.concat(bonusParts, " • "),
 		TextColor3 = THEME.Accent,
 		TextScaled = true,
 		ZIndex = 113,

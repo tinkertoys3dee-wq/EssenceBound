@@ -114,6 +114,7 @@ end
 
 local PU = game:GetService("ReplicatedStorage"):WaitForChild("Cloneables"):WaitForChild("HoverPopup")
 local Data = require(game.ReplicatedStorage:WaitForChild("EssenceDatas"))
+local EssenceVisuals = require(game.ReplicatedStorage:WaitForChild("EssenceVisuals"))
 
 local function createTooltip()
 	local PUC = PU:Clone()
@@ -139,6 +140,44 @@ end
 -- Assuming your grid slots are inside a frame called "GridContainer"
 local gridContainer = script.Parent -- Adjust this path to point to the frame holding your slots
 
+-- Existing place files only authored Earth/Shadow slots. Create Solar from
+-- the closest visual template before binding hover handlers, so it joins the
+-- same grid and cannot be absent from the Index after a filesystem sync.
+local solarSlot = gridContainer:FindFirstChild("Solar Essence")
+if not solarSlot then
+	local template = gridContainer:FindFirstChild("Shadow Essence") or gridContainer:FindFirstChild("Earth Essence")
+	if template and template:IsA("GuiObject") then
+		solarSlot = template:Clone()
+		solarSlot.Name = "Solar Essence"
+		solarSlot.LayoutOrder = template.LayoutOrder + 1
+		solarSlot.Visible = player:GetAttribute("SolarEssenceDiscovered") == true
+		solarSlot:SetAttribute("AstralAccentColor", Color3.fromRGB(255, 190, 62))
+		solarSlot.Parent = gridContainer
+
+		for _, descendant in ipairs(solarSlot:GetDescendants()) do
+			if descendant:IsA("TextLabel") or descendant:IsA("TextButton") then
+				descendant.Text = descendant.Text:gsub("Shadow", "Solar"):gsub("SHADOW", "SOLAR")
+			end
+		end
+
+		local image = (solarSlot:IsA("ImageLabel") or solarSlot:IsA("ImageButton"))
+			and solarSlot
+			or solarSlot:FindFirstChildWhichIsA("ImageLabel", true)
+			or solarSlot:FindFirstChildWhichIsA("ImageButton", true)
+		if image then
+			EssenceVisuals.ApplyToImage(image, "Solar Essence")
+		end
+	end
+end
+
+if solarSlot then
+	local function refreshSolarVisibility()
+		solarSlot.Visible = player:GetAttribute("SolarEssenceDiscovered") == true
+	end
+	refreshSolarVisibility()
+	player:GetAttributeChangedSignal("SolarEssenceDiscovered"):Connect(refreshSolarVisibility)
+end
+
 for _, slot in pairs(gridContainer:GetChildren()) do
 	if slot:IsA("GuiButton") or slot:IsA("Frame") then
 
@@ -149,7 +188,7 @@ for _, slot in pairs(gridContainer:GetChildren()) do
 			-- Was `if slot.Name ~= "Frame" then` -- a blocklist that only
 			-- excludes one specific non-essence name, rather than an
 			-- allowlist of the essences this actually has data for.
-			-- EssenceDatas only defines "Earth Essence"/"Shadow Essence",
+			-- EssenceDatas is catalog-derived (Earth/Shadow/Solar),
 			-- so any OTHER non-"Frame" child in this grid would have hit
 			-- Data[slot.Name].Rarity on a nil table and errored. Checking
 			-- Data[slot.Name] directly is both the real requirement and
@@ -158,7 +197,9 @@ for _, slot in pairs(gridContainer:GetChildren()) do
 				popup.Title.Text = slot.Name -- E.g., "Water Essence"
 
 				if slot.Name == "Shadow Essence" then
-					popup.Description.Text = "Rarity: ".. Data[slot.Name].Rarity.. "\n".. "Discovered: ".. tostring(player:WaitForChild(slot.Name).Value).. "\n\n".. "X^.02 Extra Essence Per Shadow Essence"
+					popup.Description.Text = "Rarity: ".. Data[slot.Name].Rarity.. "\n".. "Discovered: ".. tostring(player:WaitForChild(slot.Name).Value).. "\n\n".. "Lifetime Shadow empowers global essence with a 0.2 power curve."
+				elseif slot.Name == "Solar Essence" then
+					popup.Description.Text = "Rarity: ".. Data[slot.Name].Rarity.. "\n".. "Discovered: ".. tostring(player:WaitForChild(slot.Name).Value).. "\n\n".. "Solar Radiance gains +5% per lifetime order of magnitude, up to +50%."
 				else
 					popup.Description.Text = "Rarity: ".. Data[slot.Name].Rarity.. "\n".. "Discovered: ".. tostring(player:WaitForChild(slot.Name).Value)
 				end

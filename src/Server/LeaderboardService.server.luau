@@ -2,7 +2,7 @@
 	LeaderboardService (Script -> ServerScriptService)
 	===================================================
 	Global, cross-server leaderboards: Total Essence Gathered (lifetime,
-	both essence types combined -- see OrbClickManager's
+	every essence type combined -- see OrbClickManager's
 	TotalEssenceGathered increment), Rebirths, and This Week (essence
 	gathered since the player's own weekly baseline, see below). Backed by
 	OrderedDataStore, refreshed on a timer and broadcast to every online

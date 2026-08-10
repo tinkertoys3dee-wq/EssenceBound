@@ -36,6 +36,8 @@ local SoundService       = game:GetService("SoundService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui    = LocalPlayer:WaitForChild("PlayerGui")
+local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
+local EssenceVisuals = require(ReplicatedStorage:WaitForChild("EssenceVisuals"))
 
 --// REMOTE EVENT
 local OfflineEssenceRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("OfflineEssenceReward")
@@ -98,6 +100,7 @@ local ESSENCE_COLOR_KEYWORDS = {
 	Light  = Color3.fromRGB(255, 250, 200),
 	Dark   = Color3.fromRGB(90, 40, 120),
 	Gold   = Color3.fromRGB(255, 200, 60),
+	Solar  = Color3.fromRGB(255, 184, 48),
 }
 
 local DEFAULT_ICON_COLOR = Color3.fromRGB(120, 220, 150) -- matches the green orb in your screenshot
@@ -514,6 +517,9 @@ local function createRewardRow(essenceName, amount, layoutOrder)
 	iconGlyph.ScaleType = Enum.ScaleType.Fit
 	iconGlyph.ZIndex = 6
 	iconGlyph.Parent = iconCircle
+	if EssenceConfig.Get(essenceName) then
+		EssenceVisuals.ApplyToImage(iconGlyph, essenceName)
+	end
 
 	-- Essence name label (given generous width + left offset from icon)
 	local nameLabel = Instance.new("TextLabel")

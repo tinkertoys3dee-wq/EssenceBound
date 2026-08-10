@@ -23,8 +23,8 @@
 	session a purpose, playtime chests give a reason to stay past the
 	first few minutes, and the daily streak gives a reason to return.
 
-	All rewards here are ordinary in-game essence (plus, on day 7, a
-	short boost that uses the existing potion system). Deliberately
+	Rewards here are ordinary in-game essence, with a small guaranteed
+	Solar Essence cache and short boost on day 7. Deliberately
 	nothing here costs Robux or pressures a purchase -- these systems
 	exist to make the game worth playing, not to sell anything.
 ]]
@@ -127,6 +127,7 @@ ProgressionConfig.DailyRewards = {
 	{
 		Day = 7,
 		Essence = 40000,
+		SolarEssence = 100,
 		Icon = "👑",
 		Title = "Day 7",
 		-- Uses the existing PotionTimerService effect, so this needs no

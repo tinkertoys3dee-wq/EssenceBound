@@ -151,6 +151,15 @@ ClaimRemote.OnServerEvent:Connect(function(player, milestoneId)
 		if earthStat then
 			local current = tonumber(earthStat:GetAttribute("Quantity")) or 0
 			earthStat:SetAttribute("Quantity", current + reward.Amount)
+			data.TotalEssenceGathered = (tonumber(data.TotalEssenceGathered) or 0) + reward.Amount
+		end
+	elseif reward.Type == "SolarEssence" then
+		local leaderstats = player:FindFirstChild("leaderstats")
+		local solarStat = leaderstats and leaderstats:FindFirstChild("Solar Essence")
+		if solarStat then
+			local current = tonumber(solarStat:GetAttribute("Quantity")) or 0
+			solarStat:SetAttribute("Quantity", current + reward.Amount)
+			data.TotalEssenceGathered = (tonumber(data.TotalEssenceGathered) or 0) + reward.Amount
 		end
 	elseif reward.Type == "Shards" then
 		-- Same path the Prestige Shop / Shard Rain use.

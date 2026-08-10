@@ -22,6 +22,8 @@ local ZonesConfig = require(ReplicatedStorage:WaitForChild("ZonesConfig"))
 local LuckGamepassConfig = require(ReplicatedStorage:WaitForChild("LuckGamepassConfig"))
 local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
 local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
+local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
+local EssenceVisuals = require(ReplicatedStorage:WaitForChild("EssenceVisuals"))
 local formatNumber = ProgressionConfig.FormatNumber
 
 local player = Players.LocalPlayer
@@ -338,6 +340,7 @@ for index, zone in ipairs(ZonesConfig.Zones) do
 		ScaleType = Enum.ScaleType.Fit,
 		ZIndex = 205,
 	}, iconBg)
+	EssenceVisuals.ApplyToImage(orbImage, zone.SpecialtyEssence, { Scale = 0.98 })
 	local orbScale = new("UIScale", { Scale = 1 }, orbImage)
 
 	local glyphBadge = new("TextLabel", {
@@ -940,7 +943,7 @@ local function playZoneTransition(zone, onComplete)
 	portalDiscGradient.Color = ColorSequence.new(deepColor, middleColor)
 	portalStroke.Color = highlightColor
 	glyphStroke.Color = highlightColor
-	transitionOrb.Image = zone.EssenceOrbImage or ""
+	EssenceVisuals.ApplyToImage(transitionOrb, zone.SpecialtyEssence, { Scale = 0.98 })
 	transitionGlyph.Text = zone.Icon
 	transitionGlyph.BackgroundColor3 = deepColor
 	transitionName.Text = string.upper(zone.Name)
@@ -1134,37 +1137,26 @@ local function refresh()
 	subtitle.Text = ("📍 Currently in: %s %s"):format(currentZone and currentZone.Icon or "", currentZone and currentZone.Name or "")
 
 	local leaderstats = player:FindFirstChild("leaderstats")
-	local earthStat = leaderstats and leaderstats:FindFirstChild("Earth Essence")
-	local earthQuantity = earthStat and tonumber(earthStat:GetAttribute("Quantity")) or 0
+	local rebirths = tonumber(player:GetAttribute("Rebirths")) or 0
 
 	-- Dedicated Essence amplifies WHICHEVER zone you're standing in, not
 	-- just the one you happen to be in right now -- so every card's
 	-- preview should reflect ownership the same way, not only the active
 	-- one. This is a preview only: the real roll (GetEssence.luau) always
 	-- re-reads both live at collection time regardless of what this shows.
-	local ownsDedicatedEssence = player:GetAttribute(ZonesConfig.DedicatedEssenceGamepassId) == true
-	local rareEssenceMultiplier = LuckGamepassConfig.GetRareEssenceMultiplier(player)
-
 	for zoneId, entry in pairs(cards) do
 		local zone = entry.Zone
-		local baseWeights = (ownsDedicatedEssence and zone.AmplifiedWeights) or zone.BaseWeights
-		-- Same "multiply the rarer essence's weight" math ZonesConfig.
-		-- GetEssenceWeights applies to the real roll -- mirrored here
-		-- rather than called directly, since that function only ever
-		-- returns the CURRENT zone's weights and this loop previews
-		-- every zone, active or not.
-		local weights = {
-			["Earth Essence"] = baseWeights["Earth Essence"] or 0,
-			["Shadow Essence"] = (baseWeights["Shadow Essence"] or 0) * rareEssenceMultiplier,
-		}
-		local total = weights["Earth Essence"] + weights["Shadow Essence"]
-		local earthPct, shadowPct = 0, 0
-		if total > 0 then
-			earthPct = math.floor(100 * weights["Earth Essence"] / total + 0.5)
-			shadowPct = math.floor(100 * weights["Shadow Essence"] / total + 0.5)
+		local weights = ZonesConfig.GetEssenceWeightsForZone(zone, player)
+		local total = 0
+		for _, weight in pairs(weights) do
+			total += weight
 		end
-
-		entry.OddsLabel.Text = ("🌍 %d%%  •  🌑 %d%%"):format(earthPct, shadowPct)
+		local oddsParts = {}
+		for _, essence in ipairs(EssenceConfig.Ordered) do
+			local percent = total > 0 and math.floor(100 * (weights[essence.Name] or 0) / total + 0.5) or 0
+			table.insert(oddsParts, ("%s %d%%"):format(essence.Glyph, percent))
+		end
+		entry.OddsLabel.Text = table.concat(oddsParts, "  •  ")
 
 		local isCurrent = zoneId == currentZoneId
 		local unlocked = ZonesConfig.IsZoneUnlocked(player, zoneId)
@@ -1193,10 +1185,28 @@ local function refresh()
 			button.BackgroundColor3 = THEME.Green
 			button.Text = "TRAVEL"
 		else
-			local canAfford = earthQuantity >= zone.UnlockCost
-			button.Active = canAfford
-			button.BackgroundColor3 = canAfford and THEME.Accent or THEME.Locked
-			button.Text = ("🔒 UNLOCK\n%s Essence"):format(formatNumber(zone.UnlockCost))
+			local requiredRebirth = tonumber(zone.RebirthRequired) or 0
+			if rebirths < requiredRebirth then
+				button.Active = false
+				button.BackgroundColor3 = THEME.Locked
+				button.Text = ("🔒 REBIRTH %d\nREQUIRED"):format(requiredRebirth)
+			else
+				local canAfford = true
+				local costParts = {}
+				local unlockCosts = ZonesConfig.GetUnlockCosts(zone)
+				for _, essence in ipairs(EssenceConfig.Ordered) do
+					local amount = unlockCosts[essence.DataKey]
+					if amount then
+						local stat = leaderstats and leaderstats:FindFirstChild(essence.Name)
+						local balance = stat and tonumber(stat:GetAttribute("Quantity")) or 0
+						canAfford = canAfford and balance >= amount
+						table.insert(costParts, ("%s %s"):format(formatNumber(amount), essence.ShortName))
+					end
+				end
+				button.Active = canAfford
+				button.BackgroundColor3 = canAfford and THEME.Accent or THEME.Locked
+				button.Text = "🔒 UNLOCK\n" .. table.concat(costParts, " + ")
+			end
 		end
 	end
 end
@@ -1335,16 +1345,22 @@ player:GetAttributeChangedSignal(LuckGamepassConfig.LuckyFinderGamepassId):Conne
 player:GetAttributeChangedSignal(LuckGamepassConfig.UltraLuckGamepassId):Connect(refresh)
 player:GetAttributeChangedSignal("ProphecyRareWeightMultiplier"):Connect(refresh)
 for _, zone in ipairs(ZonesConfig.Zones) do
-	if zone.UnlockCost > 0 then
+	if next(zone.UnlockCosts or {}) then
 		player:GetAttributeChangedSignal(ZonesConfig.UnlockedAttributeName(zone.Id)):Connect(refresh)
 	end
 end
+player:GetAttributeChangedSignal("Rebirths"):Connect(refresh)
 
 task.spawn(function()
 	local leaderstats = player:WaitForChild("leaderstats", 15)
-	local earthStat = leaderstats and leaderstats:WaitForChild("Earth Essence", 15)
-	if earthStat then
-		earthStat:GetAttributeChangedSignal("Quantity"):Connect(refresh)
+	if not leaderstats then
+		return
+	end
+	for _, essence in ipairs(EssenceConfig.Ordered) do
+		local stat = leaderstats:WaitForChild(essence.Name, 15)
+		if stat then
+			stat:GetAttributeChangedSignal("Quantity"):Connect(refresh)
+		end
 	end
 end)
 

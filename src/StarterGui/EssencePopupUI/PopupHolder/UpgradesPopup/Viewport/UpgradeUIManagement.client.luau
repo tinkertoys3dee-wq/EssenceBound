@@ -342,7 +342,7 @@ BuyRemote.OnClientEvent:Connect(function(upgradeName, tier, newdata)
 	-- 2. Format Costs (Renamed loop variable to avoid shadowing)
 	local costsText = ""
 	for currencyName, cost in pairs(TreeUpgrades.GetCostForNextLevel(upgradeName, tier)) do
-		costsText = costsText .. currencyName .. ": " .. cost .. "\n"
+		costsText = costsText .. TreeUpgrades.GetCurrencyDisplayName(currencyName) .. ": " .. cost .. "\n"
 	end
 
 	child:SetAttribute("Cost", costsText)
@@ -486,7 +486,7 @@ local function onRebirth(trueReset)
 			local Costs = ""
 			local requires = "\n"
 			for name, cost in pairs(TreeUpgrades.GetCostForNextLevel(IndexData.Id, IndexData.CurrentLevel)) do
-				Costs = Costs .. name .. ": " .. cost .. "\n"
+				Costs = Costs .. TreeUpgrades.GetCurrencyDisplayName(name) .. ": " .. cost .. "\n"
 			end
 			for indexx, prerequisite in pairs(IndexData.Prerequisites) do
 				if indexx == #IndexData.Prerequisites - 1 then

@@ -131,8 +131,13 @@ local DefaultPlayerData = {
 			DisplayName = "Shadow Essence",
 			savedEPM = 0
 		},
-		-- Add more essence types here later, e.g.:
-		-- FireEssence = { Quantity = 0 },
+		SolarEssence = {
+			Quantity = 0,
+			Discovered = false,
+			Rarity = 2,
+			DisplayName = "Solar Essence",
+			savedEPM = 0,
+		},
 	},
 	
 	Upgrades = {},
@@ -149,6 +154,12 @@ local DefaultPlayerData = {
 	-- whose lifetime total is behind their current balance has it raised to
 	-- match, so nobody loses multiplier when this field first appears.
 	LifetimeShadowEssence = 0,
+
+	-- Solar Radiance reads a lifetime total for the same player-friendly
+	-- reason as Shadow synergy: spending Solar on endgame upgrades must not
+	-- reduce the permanent power earned by finding it. Returning saves are
+	-- automatically migrated to at least their current Solar balance.
+	LifetimeSolarEssence = 0,
 
 	-- [upgradeId] = level, for the Shadow Sanctum (see SanctumUpgrades).
 	-- Kept separate from Upgrades so a rebirth, which wipes the Earth
@@ -224,8 +235,8 @@ local DefaultPlayerData = {
 	},
 
 	-- Zones state, driven by ZoneService (see ZonesConfig for what a zone
-	-- actually changes -- essentially just the Earth/Shadow essence roll
-	-- weighting). earth_zone is the only zone ever unlocked by default --
+	-- actually changes -- the Earth/Shadow/Solar essence roll weighting).
+	-- earth_zone is the only zone ever unlocked by default --
 	-- everything else has to be bought with essence, once, permanently.
 	-- Switching between already-unlocked zones is free and unlimited.
 	Zones = {

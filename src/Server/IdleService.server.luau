@@ -157,8 +157,15 @@ local function GrantOfflineEarnings(player)
 		if dict.Discovered == true then
 			local epm = dict.savedEPM or 0
 			if epm > 0 then
+				-- Solar EPM already reflects the player's multiplied active
+				-- production and is capped in EPMService. Limit the second global
+				-- multiplier pass here so a high-end build cannot exponentiate a
+				-- mythic offline rate into tens of thousands overnight.
+				local offlineGlobalMultiplier = essenceId == "SolarEssence"
+					and math.min(globalMultiplier, 2)
+					or globalMultiplier
 				local offlineReward = math.floor(
-					epm * minutesOffline * globalMultiplier * finalOfflinePercent * memberOfflineMultiplier
+					epm * minutesOffline * offlineGlobalMultiplier * finalOfflinePercent * memberOfflineMultiplier
 				)
 
 				if offlineReward > 0 then
@@ -173,7 +180,7 @@ local function GrantOfflineEarnings(player)
 
 					totalEarnedDisplay += offlineReward
 
-					rewards[essenceId] = offlineReward
+					rewards[dict.DisplayName or essenceId] = offlineReward
 				end
 			end
 		end

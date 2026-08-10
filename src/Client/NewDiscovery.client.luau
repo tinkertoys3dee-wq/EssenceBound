@@ -21,6 +21,8 @@
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
+local EssenceVisuals = require(ReplicatedStorage:WaitForChild("EssenceVisuals"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -102,12 +104,25 @@ glow.ImageTransparency = 0.55
 glow.ZIndex = 0
 glow.Parent = card
 
+local orbPreview = Instance.new("ImageLabel")
+orbPreview.Name = "DiscoveredOrb"
+orbPreview.AnchorPoint = Vector2.new(0, 0.5)
+orbPreview.Position = UDim2.fromScale(0.035, 0.55)
+orbPreview.Size = UDim2.fromScale(0.2, 0.62)
+orbPreview.BackgroundTransparency = 1
+orbPreview.ZIndex = 3
+orbPreview.Parent = card
+local orbAspect = Instance.new("UIAspectRatioConstraint")
+orbAspect.AspectRatio = 1
+orbAspect.DominantAxis = Enum.DominantAxis.Height
+orbAspect.Parent = orbPreview
+
 -- top label: "New essence discovered!"
 local header = Instance.new("TextLabel")
 header.Name = "Header"
 header.BackgroundTransparency = 1
-header.Position = UDim2.new(0, 12, 0, 10)
-header.Size = UDim2.new(1, -24, 0, 22)
+header.Position = UDim2.new(0.23, 0, 0, 10)
+header.Size = UDim2.new(0.73, 0, 0, 22)
 header.Font = Enum.Font.GothamBold
 header.Text = "NEW ESSENCE DISCOVERED"
 header.TextColor3 = Color3.fromRGB(200, 160, 255)
@@ -120,8 +135,8 @@ header.Parent = card
 local nameLabel = Instance.new("TextLabel")
 nameLabel.Name = "EssenceName"
 nameLabel.BackgroundTransparency = 1
-nameLabel.Position = UDim2.new(0, 12, 0, 36)
-nameLabel.Size = UDim2.new(1, -24, 0, 34)
+nameLabel.Position = UDim2.new(0.23, 0, 0, 36)
+nameLabel.Size = UDim2.new(0.73, 0, 0, 34)
 nameLabel.TextScaled = true
 nameLabel.Font = Enum.Font.GothamBlack
 nameLabel.Text = "Essence Name"
@@ -140,8 +155,8 @@ nameSizeConstraint.Parent = nameLabel
 local oddsLabel = Instance.new("TextLabel")
 oddsLabel.Name = "Odds"
 oddsLabel.BackgroundTransparency = 1
-oddsLabel.Position = UDim2.new(0, 12, 0, 76)
-oddsLabel.Size = UDim2.new(1, -24, 0, 22)
+oddsLabel.Position = UDim2.new(0.23, 0, 0, 76)
+oddsLabel.Size = UDim2.new(0.73, 0, 0, 22)
 oddsLabel.Font = Enum.Font.Gotham
 oddsLabel.Text = "Odds: 1 in 1"
 oddsLabel.TextColor3 = Color3.fromRGB(170, 170, 180)
@@ -158,8 +173,15 @@ local queue = {}
 local isShowing = false
 
 local function playPopup(essenceName, oddsText)
+	local definition = EssenceConfig.Get(essenceName) or EssenceConfig.Get("Earth Essence")
 	nameLabel.Text = essenceName
 	oddsLabel.Text = "Odds: " .. oddsText
+	card:SetAttribute("AstralAccentColor", definition.Color)
+	cardStroke.Color = definition.Color
+	glow.ImageColor3 = definition.Color
+	header.TextColor3 = definition.Color:Lerp(Color3.fromRGB(255, 255, 255), 0.28)
+	nameLabel.TextColor3 = definition.Color:Lerp(Color3.fromRGB(255, 255, 255), 0.58)
+	EssenceVisuals.ApplyToImage(orbPreview, essenceName)
 
 	card.Position = UDim2.new(0.5, 0, 0, -140)
 	card.Visible = true

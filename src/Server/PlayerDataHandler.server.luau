@@ -159,8 +159,15 @@ local function loadPlayerData(player)
 	ShadowEssence:SetAttribute("Quantity", data.Essences["Shadow Essence"].Quantity)
 	ShadowEssence.Parent = leaderstats
 
+	local SolarEssence = Instance.new("StringValue")
+	SolarEssence.Name = "Solar Essence"
+	SolarEssence.Value = formatNumber(data.Essences.SolarEssence.Quantity)
+	SolarEssence:SetAttribute("Quantity", data.Essences.SolarEssence.Quantity)
+	SolarEssence.Parent = leaderstats
+
 	player:SetAttribute("ShadowEssence", data.Essences["Shadow Essence"].Quantity)
 	player:SetAttribute("EarthEssence", data.Essences.EarthEssence.Quantity)
+	player:SetAttribute("SolarEssence", data.Essences.SolarEssence.Quantity)
 
 	-- ===== LIFETIME SHADOW ESSENCE =====
 	-- Migration for saves written before this field existed: a lifetime
@@ -172,9 +179,20 @@ local function loadPlayerData(player)
 	)
 	player:SetAttribute("ShadowEssenceLifetime", data.LifetimeShadowEssence)
 
+	-- ===== LIFETIME SOLAR ESSENCE =====
+	-- Mirrors Shadow's spend-safe migration/tracking contract. Solar's
+	-- permanent Radiance multiplier reads this total, never the spendable
+	-- balance, so buying a capstone cannot make the player weaker.
+	data.LifetimeSolarEssence = math.max(
+		tonumber(data.LifetimeSolarEssence) or 0,
+		tonumber(data.Essences.SolarEssence.Quantity) or 0
+	)
+	player:SetAttribute("SolarEssenceLifetime", data.LifetimeSolarEssence)
+
 	-- Tracks deltas so only genuine INCOME counts toward the lifetime
 	-- total -- spending in the Shadow Sanctum must not reduce it.
 	local lastShadowQuantity = tonumber(data.Essences["Shadow Essence"].Quantity) or 0
+	local lastSolarQuantity = tonumber(data.Essences.SolarEssence.Quantity) or 0
 
 	-- Mirror Sanctum levels onto attributes. The systems those upgrades
 	-- affect (EssenceOrbController, CollectionUpgrades, EssenceMultiplier)
@@ -189,10 +207,12 @@ local function loadPlayerData(player)
 	
 	player:SetAttribute("ShadowEssenceDiscovered", data.Essences["Shadow Essence"].Discovered)
 	player:SetAttribute("EarthEssenceDiscovered", data.Essences.EarthEssence.Discovered)
+	player:SetAttribute("SolarEssenceDiscovered", data.Essences.SolarEssence.Discovered)
 	
 	EarthEssence.AttributeChanged:Connect(function(attribute)
 		if attribute == "Quantity" then
 			data.Essences.EarthEssence.Quantity = EarthEssence:GetAttribute("Quantity")
+			player:SetAttribute("EarthEssence", EarthEssence:GetAttribute("Quantity"))
 			
 			if not player:GetAttribute("4008378896042305") and data.Essences.EarthEssence.Quantity >= 500 then
 				player:SetAttribute("4008378896042305", true)
@@ -243,6 +263,51 @@ local function loadPlayerData(player)
 					-- listen for changes instead of only ever reading the
 					-- value once at join -- same stale-leaderstat bug class.
 					player:SetAttribute("RarestEssence", HighestDiscovered)
+				end
+			end
+		end
+	end)
+
+	SolarEssence.AttributeChanged:Connect(function(attribute)
+		if attribute == "Quantity" then
+			data.Essences.SolarEssence.Quantity = SolarEssence:GetAttribute("Quantity")
+			player:SetAttribute("SolarEssence", SolarEssence:GetAttribute("Quantity"))
+			SolarEssence.Value = formatNumber(data.Essences.SolarEssence.Quantity)
+
+			local current = tonumber(SolarEssence:GetAttribute("Quantity")) or 0
+			local gained = current - lastSolarQuantity
+			lastSolarQuantity = current
+			if gained > 0 then
+				data.LifetimeSolarEssence = (tonumber(data.LifetimeSolarEssence) or 0) + gained
+				player:SetAttribute("SolarEssenceLifetime", data.LifetimeSolarEssence)
+			end
+
+			if data.Essences.SolarEssence.Discovered == false then
+				player:SetAttribute("SolarEssenceDiscovered", true)
+				data.Essences.SolarEssence.Discovered = true
+
+				local discoveryValue = player:FindFirstChild(data.Essences.SolarEssence.DisplayName)
+				if discoveryValue then
+					discoveryValue.Value = true
+				end
+
+				local highestDiscovered = nil
+				local previousRarity = -1
+				local discoveries = 0
+				for _, values in pairs(data.Essences) do
+					if values.Discovered then
+						discoveries += 1
+						if values.Rarity > previousRarity then
+							previousRarity = values.Rarity
+							highestDiscovered = values.DisplayName
+						end
+					end
+				end
+
+				if highestDiscovered then
+					data.RarestEssence = highestDiscovered
+					data.UniqueEssences = discoveries
+					player:SetAttribute("RarestEssence", highestDiscovered)
 				end
 			end
 		end
@@ -397,7 +462,7 @@ local function loadPlayerData(player)
 	-- orb spawn and needs this readable without a remote round trip, same
 	-- reasoning as every other per-system mirror above. earth_zone is
 	-- never mirrored as its own unlock flag -- ZonesConfig.IsZoneUnlocked
-	-- already treats a free (UnlockCost <= 0) zone as unconditionally
+	-- already treats a zone with no UnlockCosts as unconditionally
 	-- unlocked regardless of what's saved, so there's nothing to check.
 	if type(data.Zones) ~= "table" then
 		data.Zones = { Current = "earth_zone", Unlocked = {} }
@@ -408,7 +473,7 @@ local function loadPlayerData(player)
 
 	player:SetAttribute("CurrentZoneId", tostring(data.Zones.Current or "earth_zone"))
 	for _, zone in ipairs(ZonesConfig.Zones) do
-		if zone.UnlockCost > 0 then
+		if next(zone.UnlockCosts or {}) then
 			player:SetAttribute(ZonesConfig.UnlockedAttributeName(zone.Id), data.Zones.Unlocked[zone.Id] == true)
 		end
 	end
@@ -439,7 +504,9 @@ local function loadPlayerData(player)
 		SE[essence] = dict.Quantity
 		local temp = dict.savedEPM
 		if not temp or temp == 0 then 
-			temp = 50
+			-- Mythic Solar must not inherit the legacy 50/min offline floor;
+			-- see EPMService for the matching live-session calculation.
+			temp = essence == "SolarEssence" and 1 or 50
 		end
 		savedEPM[essence] = temp
 	end

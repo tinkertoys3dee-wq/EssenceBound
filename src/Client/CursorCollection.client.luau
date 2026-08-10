@@ -13,6 +13,7 @@ local playerGui = player:WaitForChild("PlayerGui")
 local RP = game:GetService("ReplicatedStorage")
 local Remotes = RP:WaitForChild("Remotes")
 local CollectionUpgrades = require(RP:WaitForChild("CollectionUpgrades"))
+local EssenceConfig = require(RP:WaitForChild("EssenceConfig"))
 
 -- ============================================================
 -- CONFIG
@@ -299,10 +300,10 @@ local critLanded = game:GetService("ReplicatedStorage"):WaitForChild("CritLanded
 local Juice = require(RP:WaitForChild("Juice"))
 local juiceLayer = Juice.GetLayer(playerGui)
 
-local ORB_TINTS = {
-	["Earth Essence"] = Color3.fromRGB(120, 240, 160),
-	["Shadow Essence"] = Color3.fromRGB(170, 130, 255),
-}
+local ORB_TINTS = {}
+for _, essence in ipairs(EssenceConfig.Ordered) do
+	ORB_TINTS[essence.Name] = essence.Color
+end
 local CRIT_GOLD = Color3.fromRGB(255, 205, 80)
 
 local collectSound = Juice.FindSound("SFX/UI/UIPop")
@@ -332,31 +333,34 @@ local function playCollectFeel(orb, isCrit, isGolden)
 	end
 
 	local tint = ORB_TINTS[orb:GetAttribute("OrbType")] or ORB_TINTS["Earth Essence"]
+	local isSolar = orb:GetAttribute("OrbType") == "Solar Essence"
 	if isCrit or isGolden then
 		tint = CRIT_GOLD
 	end
 
 	if collectSound then
 		Juice.PlaySound(collectSound, {
-			Pitch = Juice.PitchForStreak(collectStreak, 18) * (isCrit and 1.25 or 1),
-			Volume = isCrit and 0.5 or 0.32,
+			Pitch = Juice.PitchForStreak(collectStreak, 18) * (isCrit and 1.25 or (isSolar and 1.12 or 1)),
+			Volume = (isCrit or isSolar) and 0.5 or 0.32,
 		})
 	end
 
 	Juice.Ring(juiceLayer, center, {
 		Color = tint,
-		StartSize = isCrit and 34 or 24,
-		EndSize = isCrit and 130 or 78,
-		Duration = 0.4,
-		Thickness = isCrit and 3 or 2,
+		StartSize = isCrit and 34 or (isSolar and 30 or 24),
+		EndSize = isCrit and 130 or (isSolar and 118 or 78),
+		Duration = isSolar and 0.52 or 0.4,
+		Thickness = (isCrit or isSolar) and 3 or 2,
 	})
 
 	Juice.Burst(juiceLayer, center, {
-		Count = isCrit and 12 or 5,
-		Colors = { tint, Color3.fromRGB(255, 255, 255) },
-		Distance = isCrit and 130 or 60,
-		Duration = 0.5,
-		Size = isCrit and { 5, 11 } or { 3, 7 },
+		Count = isCrit and 12 or (isSolar and 10 or 5),
+		Colors = isSolar
+			and { tint, Color3.fromRGB(255, 111, 33), Color3.fromRGB(255, 255, 225) }
+			or { tint, Color3.fromRGB(255, 255, 255) },
+		Distance = isCrit and 130 or (isSolar and 115 or 60),
+		Duration = isSolar and 0.68 or 0.5,
+		Size = (isCrit or isSolar) and { 5, 11 } or { 3, 7 },
 	})
 
 	-- A crit previously looked identical to any other collection once the
@@ -367,6 +371,13 @@ local function playCollectFeel(orb, isCrit, isGolden)
 			Duration = 0.85,
 			Rise = 80,
 			TextSize = 30,
+		})
+	elseif isSolar then
+		Juice.FloatText(juiceLayer, center, "MYTHIC SOLAR!", {
+			Color = ORB_TINTS["Solar Essence"],
+			Duration = 1.05,
+			Rise = 88,
+			TextSize = 28,
 		})
 	end
 end
@@ -385,7 +396,7 @@ local function CollectEffect(orb)
 	-- before touching the orb at all, so a stray/misconfigured instance
 	-- can't be "collected" (Bail/FX/reparent) OR reach the network at all.
 	local orbType = orb:GetAttribute("OrbType")
-	if orbType ~= "Earth Essence" and orbType ~= "Shadow Essence" then
+	if not EssenceConfig.IsValidName(orbType) then
 		warn("[CursorCollection] Skipped a collection with an unrecognized OrbType: " .. tostring(orbType) .. " (" .. orb:GetFullName() .. ")")
 		return
 	end
@@ -405,16 +416,9 @@ local function CollectEffect(orb)
 	collectionFireable:FireServer(orbType, essenceValue, isCrit, isGolden)
 	critLanded:Fire(isCrit == true)
 
-	if orbType == "Shadow Essence" then
-		local discovered = player:GetAttribute("ShadowEssenceDiscovered") or false
-		if not discovered then
-			newDiscovery:Fire(orbType, GetEssences.GetOddsText(orbType, player))
-		end
-	elseif orbType == "Earth Essence" then
-		local discovered = player:GetAttribute("EarthEssenceDiscovered") or false
-		if not discovered then
-			newDiscovery:Fire(orbType, GetEssences.GetOddsText(orbType, player))
-		end
+	local discoveryAttribute = EssenceConfig.GetDiscoveryAttribute(orbType)
+	if discoveryAttribute and not (player:GetAttribute(discoveryAttribute) or false) then
+		newDiscovery:Fire(orbType, GetEssences.GetOddsText(orbType, player))
 	end
 	if orb:FindFirstChild("Shadow") then
 		orb:FindFirstChild("Shadow"):Destroy()

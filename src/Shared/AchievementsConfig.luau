@@ -69,9 +69,9 @@ AchievementsConfig.Badges = {
 -- =========================================================================
 -- MILESTONES (in-game only, real rewards)
 -- =========================================================================
--- Reward.Type: "Essence" (added to Earth Essence, the same leaderstat path
--- every other essence grant in the game uses) or "Shards" (Prestige Shop
--- currency, same attribute path the Prestige Shop / Shard Rain use).
+-- Reward.Type: "Essence" (Earth), "SolarEssence" (mythic Solar), or
+-- "Shards" (Prestige Shop currency). All essence grants use their normal
+-- leaderstat Quantity path so persistence/lifetime tracking stays central.
 --
 -- Amounts are deliberately modest relative to the tree's own costs (see
 -- TreeUpgrades' pass notes) -- these are a nice bonus for hitting a goal
@@ -83,6 +83,12 @@ AchievementsConfig.Milestones = {
 		Description = "Discover both Earth Essence and Shadow Essence.",
 		Stat = "UniqueEssences", Target = 2,
 		Reward = { Type = "Essence", Amount = 150 },
+	},
+	{
+		Id = "milestone_solar_trinity", Name = "The Essence Trinity", Icon = "☀️",
+		Description = "Discover Earth, Shadow, and mythic Solar Essence.",
+		Stat = "UniqueEssences", Target = 3,
+		Reward = { Type = "SolarEssence", Amount = 250 },
 	},
 	{
 		Id = "milestone_first_harvest", Name = "First Harvest", Icon = "🌿",

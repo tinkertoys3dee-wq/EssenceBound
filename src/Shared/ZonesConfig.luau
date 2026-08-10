@@ -2,13 +2,11 @@
 	ZonesConfig (ModuleScript -> ReplicatedStorage)
 	===================================================
 	Data + shared helpers for Zones: a player picks which "zone" they're
-	collecting in, and each zone weights the Earth/Shadow essence roll
-	differently -- Zone 1 (Earthen Grove, always unlocked) favors Earth
-	Essence, Zone 2 (The Shadowfen, costs essence to unlock) favors Shadow
-	Essence. Both zones still drop BOTH essence types on purpose -- picking
-	a zone is about leaning into a currency, never locking the other one
-	out, so nobody's stuck unable to discover Shadow Essence at all just
-	because they haven't unlocked Zone 2 yet.
+	collecting in, and each zone weights the complete essence catalog.
+	Earthen Grove favors Earth, Shadowfen favors Shadow, and the Rebirth-4
+	Sunforge heavily favors Solar. Every zone still has a non-zero chance
+	for all three, so a mythic Solar discovery is possible before its
+	dedicated destination without making that destination irrelevant.
 
 	There's still only ONE orb to click (EssenceOrbController's HP/Fire
 	mechanics are completely untouched by any of this) -- "zones" are a
@@ -25,13 +23,10 @@
 	nothing before.
 
 	Also applies LuckGamepassConfig's Lucky Finder / Ultra Luck multiplier
-	to the Shadow Essence weight specifically -- their real store text
-	("increases the chance of finding rarer essences") means Shadow
-	Essence, the only rarer of this game's two types (Rarity 1 vs Earth's
-	Rarity 0). Multiplying the weight, not solving for an exact target
-	probability, keeps this consistent with how every other bonus here
-	already works -- the resulting chance still renormalizes against
-	whatever Earth's weight is in the current zone, same as it always has.
+	to every non-common weight. Their real store text says "rarer essences,"
+	so both rare Shadow and mythic Solar benefit while common Earth remains
+	the baseline. Multiplying weights (rather than forcing exact target
+	percentages) keeps the bonuses composable across all three zones.
 
 	GetEssence.luau (the actual roll) and ZoneService.server.luau (unlock/
 	switch + attribute mirroring) both read this; ZonePanel.client.luau
@@ -42,6 +37,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LuckGamepassConfig = require(ReplicatedStorage:WaitForChild("LuckGamepassConfig"))
+local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
 
 local ZonesConfig = {}
 
@@ -54,14 +50,10 @@ ZonesConfig.DedicatedEssenceGamepassId = 1907077899
 -- zone entry below); this table is specifically the explicit menu/transition
 -- preview for each zone's specialty essence.
 ZonesConfig.EssenceOrbImages = {
-	["Earth Essence"] = "rbxassetid://79479049281587",
-	["Shadow Essence"] = "rbxassetid://106130917603943",
+	["Earth Essence"] = EssenceConfig.GetIconImage("Earth Essence"),
+	["Shadow Essence"] = EssenceConfig.GetIconImage("Shadow Essence"),
+	["Solar Essence"] = EssenceConfig.GetIconImage("Solar Essence"),
 }
-
--- The one essence type LuckGamepassConfig's multiplier applies to -- see
--- that module's own header for why "rarer essences" means this one
--- specifically rather than a generic highest-Rarity lookup.
-local RARER_ESSENCE_NAME = "Shadow Essence"
 
 -- Ordered: index 1 is the default/fallback zone for any player who
 -- somehow has no valid CurrentZoneId (never happens in practice, but
@@ -71,13 +63,15 @@ ZonesConfig.Zones = {
 		Id = "earth_zone",
 		Name = "Earthen Grove",
 		Icon = "🌍",
-		Description = "The grove you started in. Leans Earth Essence, but Shadow still turns up.",
+		Description = "The living grove. Earth dominates, with rare Shadow and mythic Solar traces.",
 		Color = Color3.fromRGB(120, 200, 110),
 		SpecialtyEssence = "Earth Essence",
 		EssenceOrbImage = ZonesConfig.EssenceOrbImages["Earth Essence"],
 		UnlockCost = 0, -- always unlocked
-		BaseWeights = { ["Earth Essence"] = 82, ["Shadow Essence"] = 18 },
-		AmplifiedWeights = { ["Earth Essence"] = 92, ["Shadow Essence"] = 8 }, -- w/ Dedicated Essence
+		UnlockCosts = {},
+		RebirthRequired = 0,
+		BaseWeights = { ["Earth Essence"] = 81, ["Shadow Essence"] = 18, ["Solar Essence"] = 1 },
+		AmplifiedWeights = { ["Earth Essence"] = 92, ["Shadow Essence"] = 7, ["Solar Essence"] = 1 },
 		-- No OrbImage -- ZoneAmbience.client.luau keeps whatever LargeOrb's
 		-- own Image already is for this zone, captured once at load rather
 		-- than a second hardcoded asset id here that could drift out of
@@ -87,16 +81,37 @@ ZonesConfig.Zones = {
 		Id = "shadow_zone",
 		Name = "The Shadowfen",
 		Icon = "🌑",
-		Description = "A fog-choked hollow. Leans Shadow Essence, but Earth still turns up.",
+		Description = "A fog-choked hollow. Shadow dominates, with Earth and mythic Solar traces.",
 		Color = Color3.fromRGB(150, 90, 220),
 		SpecialtyEssence = "Shadow Essence",
 		EssenceOrbImage = ZonesConfig.EssenceOrbImages["Shadow Essence"],
 		UnlockCost = 300,
-		BaseWeights = { ["Earth Essence"] = 18, ["Shadow Essence"] = 82 },
-		AmplifiedWeights = { ["Earth Essence"] = 8, ["Shadow Essence"] = 92 },
+		UnlockCosts = { EarthEssence = 300 },
+		RebirthRequired = 0,
+		BaseWeights = { ["Earth Essence"] = 17, ["Shadow Essence"] = 82, ["Solar Essence"] = 1 },
+		AmplifiedWeights = { ["Earth Essence"] = 7, ["Shadow Essence"] = 92, ["Solar Essence"] = 1 },
 		-- ZoneAmbience applies this to the giant center orb on every switch
 		-- (including initial spawn into an already-selected Shadow zone).
 		OrbImage = ZonesConfig.EssenceOrbImages["Shadow Essence"],
+	},
+	{
+		Id = "solar_zone",
+		Name = "The Sunforge",
+		Icon = "☀️",
+		Description = "A stellar foundry above the clouds, overflowing with mythic Solar Essence.",
+		Color = Color3.fromRGB(255, 176, 54),
+		SpecialtyEssence = "Solar Essence",
+		EssenceOrbImage = ZonesConfig.EssenceOrbImages["Solar Essence"],
+		-- Multi-currency, server-authoritative unlock. Solar itself is not
+		-- required, avoiding a catch-22 for players who have not hit the 1%
+		-- global discovery yet.
+		UnlockCost = 500000, -- legacy/primary-cost compatibility
+		UnlockCosts = { EarthEssence = 500000, ["Shadow Essence"] = 25000 },
+		RebirthRequired = 4,
+		BaseWeights = { ["Earth Essence"] = 15, ["Shadow Essence"] = 15, ["Solar Essence"] = 70 },
+		AmplifiedWeights = { ["Earth Essence"] = 6, ["Shadow Essence"] = 6, ["Solar Essence"] = 88 },
+		-- No uploaded Roblox image is required: ZoneAmbience and ZonePanel
+		-- render Solar's matching source SVG through EssenceVisuals.
 	},
 }
 
@@ -125,13 +140,25 @@ function ZonesConfig.IsZoneUnlocked(player, zoneId)
 	if not zone then
 		return false
 	end
-	if zone.UnlockCost <= 0 then
+	if not next(zone.UnlockCosts or {}) then
 		return true
 	end
 	if not player then
 		return false
 	end
 	return player:GetAttribute(ZonesConfig.UnlockedAttributeName(zoneId)) == true
+end
+
+function ZonesConfig.GetUnlockCosts(zoneOrId)
+	local zone = type(zoneOrId) == "table" and zoneOrId or ZonesConfig.GetZoneById(zoneOrId)
+	if not zone then
+		return {}
+	end
+	local costs = {}
+	for currency, amount in pairs(zone.UnlockCosts or {}) do
+		costs[currency] = amount
+	end
+	return costs
 end
 
 -- Falls back to the default zone for a missing/invalid/not-yet-replicated
@@ -153,12 +180,13 @@ end
 
 -- The actual roll table GetEssence.luau spins against: the current zone's
 -- weights, sharpened if the player owns Dedicated Essence, then further
--- sharpened toward Shadow Essence specifically if they own Lucky Finder
+-- sharpened toward every non-common essence if they own Lucky Finder
 -- and/or Ultra Luck. Safe to call with a nil player (returns the default
 -- zone's base weights, unmultiplied) so GetEssence never has to
 -- special-case a missing player itself.
-function ZonesConfig.GetEssenceWeights(player)
-	local zone = ZonesConfig.GetCurrentZone(player)
+function ZonesConfig.GetEssenceWeightsForZone(zoneOrId, player)
+	local zone = type(zoneOrId) == "table" and zoneOrId or ZonesConfig.GetZoneById(zoneOrId)
+	zone = zone or ZonesConfig.Zones[1]
 	local owned = player and player:GetAttribute(ZonesConfig.DedicatedEssenceGamepassId) == true
 	local weights = (owned and zone.AmplifiedWeights) or zone.BaseWeights
 
@@ -170,11 +198,20 @@ function ZonesConfig.GetEssenceWeights(player)
 		copy[essenceName] = weight
 	end
 
-	if player and copy[RARER_ESSENCE_NAME] then
-		copy[RARER_ESSENCE_NAME] *= LuckGamepassConfig.GetRareEssenceMultiplier(player)
+	if player then
+		local rareMultiplier = LuckGamepassConfig.GetRareEssenceMultiplier(player)
+		for essenceName, weight in pairs(copy) do
+			if EssenceConfig.IsRare(essenceName) then
+				copy[essenceName] = weight * rareMultiplier
+			end
+		end
 	end
 
 	return copy
+end
+
+function ZonesConfig.GetEssenceWeights(player)
+	return ZonesConfig.GetEssenceWeightsForZone(ZonesConfig.GetCurrentZone(player), player)
 end
 
 return ZonesConfig

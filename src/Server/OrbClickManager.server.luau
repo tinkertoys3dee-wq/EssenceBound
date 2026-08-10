@@ -4,6 +4,7 @@ local Events = RP:WaitForChild("Remotes")
 local OrbClick = Events:WaitForChild("ClickOrb")
 local collected = Events:WaitForChild("Collection")
 local PlayerDatas = {}
+local EssenceConfig = require(RP:WaitForChild("EssenceConfig"))
 
 -- TODO: point this at wherever EssenceOrbController actually lives in your
 -- tree (it requires "EssenceUpgrades" as a sibling via script.Parent, so
@@ -135,12 +136,14 @@ local EssenceMulti = require(RP:WaitForChild("EssenceMultiplier"))
 local function getOrInitPlayerSession(plr)
 	local userId = plr.UserId
 	if not PlayerDatas[userId] then
-		PlayerDatas[userId] = {
-			["data"] = require(plr:WaitForChild("PlayerData")),
-			["Earth Essence leaderstat"] = plr:WaitForChild("leaderstats"):WaitForChild("Earth Essence"),
-			["Shadow Essence leaderstat"] = plr:WaitForChild("leaderstats"):WaitForChild("Shadow Essence")
-
+		local session = {
+			data = require(plr:WaitForChild("PlayerData")),
 		}
+		local leaderstats = plr:WaitForChild("leaderstats")
+		for _, essence in ipairs(EssenceConfig.Ordered) do
+			session[essence.Name .. " leaderstat"] = leaderstats:WaitForChild(essence.Name)
+		end
+		PlayerDatas[userId] = session
 	end
 
 	-- Defensive/idempotent: safe even if PlayerAdded already Init'd this
@@ -238,7 +241,7 @@ collected.OnServerEvent:Connect(function(plr, orbName, quantity, crit, gold)
 	-- Defensive validation: orbName/quantity come straight from the
 	-- client's FireServer call, and everything below indexes off orbName
 	-- directly (Essences[temp], the "<orbName> leaderstat" session key).
-	-- An unrecognized orbName (nil, or anything that isn't one of the two
+	-- An unrecognized orbName (nil, or anything outside EssenceConfig)
 	-- real essence types -- seen in practice, cause not fully confirmed,
 	-- but a direct/malformed FireServer call from an exploit would
 	-- produce exactly this) used to reach the Essences[temp]["Quantity"]
@@ -254,7 +257,7 @@ collected.OnServerEvent:Connect(function(plr, orbName, quantity, crit, gold)
 	-- The quantity checks below (NaN/non-positive/over-ceiling) close the
 	-- forged-currency gap described above -- see MAX_QUANTITY_PER_
 	-- COLLECTION's comment for why 5000 is safe headroom, not a tight fit.
-	if (orbName ~= "Earth Essence" and orbName ~= "Shadow Essence")
+	if not EssenceConfig.IsValidName(orbName)
 		or type(quantity) ~= "number"
 		or quantity ~= quantity -- NaN: the only number that's never equal to itself
 		or quantity <= 0
@@ -296,10 +299,7 @@ collected.OnServerEvent:Connect(function(plr, orbName, quantity, crit, gold)
 	-- to one number but not the other.
 	local multiplier = EssenceMulti.CalculateMultiplier(plr, isGolden, crit)
 	local essenceGained = math.floor(multiplier * quantity)
-	local temp = orbName
-	if orbName == "Earth Essence" then
-		temp = "EarthEssence"
-	end
+	local temp = EssenceConfig.GetDataKey(orbName)
 	local newEssence = essenceGained + PlayerDatas[plr.UserId]["data"]["Essences"][temp]["Quantity"]
 	PlayerDatas[plr.UserId]["data"]["TotalEssenceGathered"] += essenceGained
 	PlayerDatas[plr.UserId][orbName.." leaderstat"]:SetAttribute("Quantity",newEssence)

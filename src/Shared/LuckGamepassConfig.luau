@@ -15,13 +15,11 @@
 	Ultra Luck: "Stacks with regular luck to give a massive boost
 	(x3 luck)."
 
-	"Rarer essences" means Shadow Essence specifically -- the only two
-	essence types in the game are EarthEssence (Rarity 0) and Shadow
-	Essence (Rarity 1), see DefaultPlayerData.luau. Hardcoded to Shadow
-	Essence by name rather than built as a generic "find the highest-
-	Rarity type" lookup, since there are only ever two types right now --
-	the same "don't build generality nothing needs yet" call ZonesConfig
-	already makes for its own two zones.
+	"Rarer essences" means every catalog entry above common rarity. That
+	now includes Shadow Essence (Rare) and Solar Essence (Mythic). The
+	multiplier is applied to each rare weight before the table is
+	renormalized, so it improves both finds without changing the meaning of
+	a zone's specialty bias.
 
 	THE MATH BEHIND x1.5 / x2 / x3
 	------------------------------------
@@ -37,12 +35,10 @@
 
 	WHERE THIS APPLIES
 	--------------------
-	Multiplies the Shadow Essence WEIGHT ZonesConfig.GetEssenceWeights
-	returns, whichever zone the player is currently in -- not a fixed
-	target probability. Both the real roll (GetEssence.luau) and the
-	odds preview (ZonePanel.client.luau) read that one function, so
-	wiring it there once means neither can ever show a number the other
-	doesn't actually roll against.
+	Multiplies every non-common essence WEIGHT ZonesConfig returns,
+	whichever zone the player is currently in -- not a fixed target
+	probability. Both the real roll and every zone preview use the same
+	shared helper, so the displayed percentages remain the actual odds.
 ]]
 
 local LuckGamepassConfig = {}

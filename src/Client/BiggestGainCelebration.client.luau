@@ -1,7 +1,7 @@
 --[[
 	BiggestGainCelebration (LocalScript -> StarterPlayerScripts)
 	================================================================
-	Celebrates a session personal best: the single biggest Earth Essence
+	Celebrates a session personal best: the single biggest essence
 	gain observed since this player joined, beaten by a meaningful
 	margin -- not just a marginal +2 over the last one. Distinct from
 	UIManagement.client.luau's milestone celebrations, which fire when
@@ -47,13 +47,13 @@ local TweenService = game:GetService("TweenService")
 
 local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
 local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
+local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
 local formatNumber = ProgressionConfig.FormatNumber
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 local leaderstats = player:WaitForChild("leaderstats")
-local earthEssence = leaderstats:WaitForChild("Earth Essence")
 
 local function new(className, props, parent)
 	local instance = Instance.new(className)
@@ -88,7 +88,7 @@ local banner = new("Frame", {
 	Name = "Banner",
 	AnchorPoint = Vector2.new(0.5, 0),
 	Position = UDim2.fromScale(0.5, 0.1),
-	Size = UDim2.fromScale(0.36, 0.06),
+	Size = UDim2.fromScale(0.48, 0.06),
 	BackgroundColor3 = Color3.fromRGB(24, 12, 40),
 	BackgroundTransparency = 1,
 	Visible = false,
@@ -116,11 +116,17 @@ new("UITextSizeConstraint", { MaxTextSize = 22 }, bannerLabel)
 -- LAST one's fade-out timer actually allowed to complete.
 local activeBannerToken = 0
 
-local function showBanner(amount)
+local function showBanner(amount, essenceName)
 	activeBannerToken += 1
 	local myToken = activeBannerToken
 
-	bannerLabel.Text = ("🏆 NEW BEST THIS SESSION: +%s"):format(formatNumber(amount))
+	local essence = EssenceConfig.Get(essenceName)
+	local glyph = essence and essence.Glyph or "✦"
+	bannerLabel.Text = ("🏆 NEW BEST: +%s %s %s"):format(formatNumber(amount), glyph, essenceName)
+	if essence then
+		bannerLabel.TextColor3 = essence.Color:Lerp(Color3.fromRGB(255, 255, 255), 0.32)
+		bannerStroke.Color = essence.Color
+	end
 	banner.Visible = true
 	banner.BackgroundTransparency = 1
 	bannerStroke.Transparency = 1
@@ -158,14 +164,18 @@ end
 
 local MIN_IMPROVEMENT_RATIO = 1.2 -- a new best must beat the old one by at least 20% to celebrate
 
-local sessionBest = 0
-local hasBaseline = false
-local lastQuantity = 0
+-- Currency scales are intentionally incomparable (a late Earth payout may
+-- be millions while one Solar find is mythic), so each essence keeps its
+-- own personal best. Otherwise a large Earth gain could permanently silence
+-- every Solar celebration for the rest of the session.
+local sessionBests = {}
+local hasBaselines = {}
+local lastQuantities = {}
 
-local function onQuantityChanged()
-	local current = tonumber(earthEssence:GetAttribute("Quantity")) or 0
-	local delta = current - lastQuantity
-	lastQuantity = current
+local function onQuantityChanged(stat, essenceName)
+	local current = tonumber(stat:GetAttribute("Quantity")) or 0
+	local delta = current - (lastQuantities[essenceName] or current)
+	lastQuantities[essenceName] = current
 
 	-- Ignores decreases (spending on an upgrade, the Sanctum, etc.) --
 	-- only genuine gains count toward a "biggest gain" record.
@@ -173,14 +183,14 @@ local function onQuantityChanged()
 		return
 	end
 
-	if delta > sessionBest then
-		local previousBest = sessionBest
-		sessionBest = delta
+	local previousBest = sessionBests[essenceName] or 0
+	if delta > previousBest then
+		sessionBests[essenceName] = delta
 
-		if hasBaseline and previousBest > 0 and delta >= previousBest * MIN_IMPROVEMENT_RATIO then
-			showBanner(delta)
+		if hasBaselines[essenceName] and previousBest > 0 and delta >= previousBest * MIN_IMPROVEMENT_RATIO then
+			showBanner(delta, essenceName)
 		end
-		hasBaseline = true
+		hasBaselines[essenceName] = true
 	end
 end
 
@@ -190,6 +200,12 @@ task.spawn(function()
 		return
 	end
 
-	lastQuantity = tonumber(earthEssence:GetAttribute("Quantity")) or 0
-	earthEssence:GetAttributeChangedSignal("Quantity"):Connect(onQuantityChanged)
+	for _, essence in ipairs(EssenceConfig.Ordered) do
+		local essenceName = essence.Name
+		local stat = leaderstats:WaitForChild(essenceName)
+		lastQuantities[essenceName] = tonumber(stat:GetAttribute("Quantity")) or 0
+		stat:GetAttributeChangedSignal("Quantity"):Connect(function()
+			onQuantityChanged(stat, essenceName)
+		end)
+	end
 end)

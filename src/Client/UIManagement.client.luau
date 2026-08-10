@@ -4,6 +4,7 @@ local gui = player:WaitForChild("PlayerGui"):WaitForChild("MainGui")
 local Left = gui:WaitForChild("Left")
 local currencys = Left:WaitForChild("Currencys"):WaitForChild("ScrollingFrame")
 local RP = game:GetService("ReplicatedStorage")
+local EssenceVisuals = require(RP:WaitForChild("EssenceVisuals"))
 local PlayerStats = Left:WaitForChild("Playerstats")
 
 
@@ -110,6 +111,98 @@ local EarthEssenceDisplayText= EarthEssenceDisplay:WaitForChild("Value")
 local ShadowEssenceleaderstat = leaderstats:WaitForChild("Shadow Essence")
 local ShadowEssenceDisplay = currencys:WaitForChild("Shadow Essence")
 local ShadowEssenceDisplayText= ShadowEssenceDisplay:WaitForChild("Value")
+
+local SolarEssenceleaderstat = leaderstats:WaitForChild("Solar Essence")
+
+-- Solar has no legacy Studio-authored counter, so build one in the same
+-- scrolling currency rail. It is intentionally self-contained and padded:
+-- a filesystem sync cannot make the new currency exist in data but vanish
+-- from the HUD just because an old place file lacks a matching frame.
+local SolarEssenceDisplay = currencys:FindFirstChild("Solar Essence")
+if not SolarEssenceDisplay then
+	SolarEssenceDisplay = Instance.new("Frame")
+	SolarEssenceDisplay.Name = "Solar Essence"
+	SolarEssenceDisplay.Size = ShadowEssenceDisplay.Size
+	SolarEssenceDisplay.LayoutOrder = ShadowEssenceDisplay.LayoutOrder + 1
+	SolarEssenceDisplay.BackgroundColor3 = Color3.fromRGB(43, 22, 42)
+	SolarEssenceDisplay.BackgroundTransparency = 0.08
+	SolarEssenceDisplay.BorderSizePixel = 0
+	SolarEssenceDisplay:SetAttribute("AstralAccentColor", Color3.fromRGB(255, 190, 62))
+	SolarEssenceDisplay.Parent = currencys
+
+	local solarCorner = Instance.new("UICorner")
+	solarCorner.CornerRadius = UDim.new(0.22, 0)
+	solarCorner.Parent = SolarEssenceDisplay
+	local solarStroke = Instance.new("UIStroke")
+	solarStroke.Color = Color3.fromRGB(255, 190, 62)
+	solarStroke.Thickness = 1.6
+	solarStroke.Transparency = 0.22
+	solarStroke.Parent = SolarEssenceDisplay
+	local solarGradient = Instance.new("UIGradient")
+	solarGradient.Rotation = 18
+	solarGradient.Color = ColorSequence.new(Color3.fromRGB(74, 27, 38), Color3.fromRGB(27, 15, 42))
+	solarGradient.Parent = SolarEssenceDisplay
+
+	local orb = Instance.new("ImageLabel")
+	orb.Name = "SolarOrb"
+	orb.AnchorPoint = Vector2.new(0, 0.5)
+	orb.Position = UDim2.fromScale(0.035, 0.5)
+	orb.Size = UDim2.fromScale(0.22, 0.82)
+	orb.BackgroundTransparency = 1
+	orb.ZIndex = 3
+	orb.Parent = SolarEssenceDisplay
+	local orbAspect = Instance.new("UIAspectRatioConstraint")
+	orbAspect.AspectRatio = 1
+	orbAspect.DominantAxis = Enum.DominantAxis.Height
+	orbAspect.Parent = orb
+	EssenceVisuals.ApplyToImage(orb, "Solar Essence")
+
+	local name = Instance.new("TextLabel")
+	name.Name = "CurrencyName"
+	name.Position = UDim2.fromScale(0.29, 0.12)
+	name.Size = UDim2.fromScale(0.66, 0.27)
+	name.BackgroundTransparency = 1
+	name.Font = Enum.Font.GothamBold
+	name.Text = "MYTHIC SOLAR"
+	name.TextColor3 = Color3.fromRGB(255, 220, 126)
+	name.TextScaled = true
+	name.TextXAlignment = Enum.TextXAlignment.Left
+	name.ZIndex = 3
+	name.Parent = SolarEssenceDisplay
+	local nameConstraint = Instance.new("UITextSizeConstraint")
+	nameConstraint.MinTextSize = 7
+	nameConstraint.MaxTextSize = 12
+	nameConstraint.Parent = name
+
+	local value = Instance.new("TextLabel")
+	value.Name = "Value"
+	value.Position = UDim2.fromScale(0.29, 0.4)
+	value.Size = UDim2.fromScale(0.66, 0.46)
+	value.BackgroundTransparency = 1
+	value.Font = Enum.Font.GothamBlack
+	value.Text = "0"
+	value.TextColor3 = Color3.fromRGB(255, 248, 213)
+	value.TextScaled = true
+	value.TextXAlignment = Enum.TextXAlignment.Left
+	value.ZIndex = 3
+	value.Parent = SolarEssenceDisplay
+	local valueConstraint = Instance.new("UITextSizeConstraint")
+	valueConstraint.MinTextSize = 10
+	valueConstraint.MaxTextSize = 20
+	valueConstraint.Parent = value
+end
+local SolarEssenceDisplayText = SolarEssenceDisplay:WaitForChild("Value")
+
+-- The authored rail was sized for two currencies. Let its existing layout
+-- drive the vertical canvas so the new third row is scrollable on small
+-- screens instead of being created correctly but clipped below the fold.
+if currencys:FindFirstChildWhichIsA("UIListLayout") or currencys:FindFirstChildWhichIsA("UIGridLayout") then
+	if currencys.AutomaticCanvasSize == Enum.AutomaticSize.None then
+		currencys.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	elseif currencys.AutomaticCanvasSize == Enum.AutomaticSize.X then
+		currencys.AutomaticCanvasSize = Enum.AutomaticSize.XY
+	end
+end
 
 -- =========================================================================
 -- CURRENCY DISPLAY
@@ -258,6 +351,7 @@ end
 
 bindCurrencyDisplay(EarthEsseceleaderstat, EarthEssenceDisplayText, true)
 bindCurrencyDisplay(ShadowEssenceleaderstat, ShadowEssenceDisplayText, false)
+bindCurrencyDisplay(SolarEssenceleaderstat, SolarEssenceDisplayText, false)
 
 local UpdateTimer = Left:WaitForChild("UpdateTimer")
 -- Internal refresh countdown, not something a player needs to see ("Next

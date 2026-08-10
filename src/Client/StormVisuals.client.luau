@@ -8,10 +8,10 @@
 
 	The effect has three layers:
 	  1. a restrained full-screen weather grade that never consumes input,
-	  2. a dual-essence storm eye using the real Earth/Shadow orb artwork,
+	  2. a tri-essence storm eye using Earth, Shadow, and Solar orb artwork,
 	  3. pooled rain streaks plus short, self-cleaning lightning strikes.
 
-	Only three looping tweens (the portal rings and dual-orb orbit) live for
+	Only three looping tweens (the portal rings and tri-orb orbit) live for
 	the storm's duration.
 	Rain streaks are pooled, lightning instances are Debris-cleaned, and a
 	storm token invalidates every delayed callback as soon as the event ends
@@ -26,6 +26,7 @@ local TweenService = game:GetService("TweenService")
 
 local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
 local ZonesConfig = require(ReplicatedStorage:WaitForChild("ZonesConfig"))
+local EssenceVisuals = require(ReplicatedStorage:WaitForChild("EssenceVisuals"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -291,7 +292,7 @@ local stormGlyph = new("TextLabel", {
 }, core)
 
 -- The actual collectible assets orbit the storm eye, making it immediately
--- clear that this event rains both essence currencies—not generic sparks.
+-- clear that this event rains every essence currency—not generic sparks.
 local orbOrbit = new("Frame", {
 	Name = "StormEssenceOrbit",
 	AnchorPoint = Vector2.new(0.5, 0.5),
@@ -325,6 +326,20 @@ local shadowOrb = new("ImageLabel", {
 	Active = false,
 	ZIndex = 10,
 }, orbOrbit)
+local solarOrb = new("ImageLabel", {
+	Name = "SolarEssenceOrb",
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.fromScale(0.5, 0.05),
+	Size = UDim2.fromScale(0.27, 0.27),
+	BackgroundTransparency = 1,
+	ScaleType = Enum.ScaleType.Fit,
+	Active = false,
+	ZIndex = 11,
+}, orbOrbit)
+
+EssenceVisuals.ApplyToImage(earthOrb, "Earth Essence")
+EssenceVisuals.ApplyToImage(shadowOrb, "Shadow Essence")
+EssenceVisuals.ApplyToImage(solarOrb, "Solar Essence", { Scale = 1.08 })
 
 local banner = new("CanvasGroup", {
 	Name = "StormArrivalBanner",
@@ -368,8 +383,8 @@ new("UIGradient", {
 
 local bannerTitle = new("TextLabel", {
 	Name = "StormTitle",
-	Position = UDim2.fromScale(0.13, 0.16),
-	Size = UDim2.fromScale(0.74, 0.36),
+	Position = UDim2.fromScale(0.13, 0.2),
+	Size = UDim2.fromScale(0.74, 0.33),
 	BackgroundTransparency = 1,
 	Font = Enum.Font.GothamBlack,
 	Text = "ESSENCE STORM",
@@ -436,6 +451,22 @@ local bannerShadow = new("ImageLabel", {
 }, banner)
 new("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Height }, bannerShadow)
 
+local bannerSolar = new("ImageLabel", {
+	Name = "SolarPreview",
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.fromScale(0.5, 0.075),
+	Size = UDim2.fromScale(0.065, 0.31),
+	BackgroundTransparency = 1,
+	ScaleType = Enum.ScaleType.Fit,
+	Active = false,
+	ZIndex = 14,
+}, banner)
+new("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Height }, bannerSolar)
+
+EssenceVisuals.ApplyToImage(bannerEarth, "Earth Essence")
+EssenceVisuals.ApplyToImage(bannerShadow, "Shadow Essence")
+EssenceVisuals.ApplyToImage(bannerSolar, "Solar Essence", { Scale = 1.04 })
+
 local normalPalette = {
 	Primary = Color3.fromRGB(105, 207, 255),
 	Secondary = Color3.fromRGB(190, 105, 255),
@@ -445,7 +476,7 @@ local normalPalette = {
 	Rain = {
 		Color3.fromRGB(117, 232, 168),
 		Color3.fromRGB(183, 118, 255),
-		Color3.fromRGB(132, 216, 255),
+		Color3.fromRGB(255, 184, 48),
 	},
 }
 
@@ -793,7 +824,7 @@ local function beginStorm(isGolden)
 	showBanner(
 		isGolden and "✦ GOLDEN ESSENCE STORM ✦" or "⚡ ESSENCE STORM ⚡",
 		isGolden and "THE SKY HAS TURNED TO GOLD" or "THE VEIL IS RAINING ESSENCE",
-		isGolden and "MASSIVE PAYOUTS  •  COLLECT EVERYTHING" or "EARTH + SHADOW ORBS  •  COLLECT THE RAIN",
+		isGolden and "MASSIVE PAYOUTS  •  COLLECT EVERYTHING" or "EARTH + SHADOW + SOLAR  •  COLLECT THE RAIN",
 		2.45
 	)
 

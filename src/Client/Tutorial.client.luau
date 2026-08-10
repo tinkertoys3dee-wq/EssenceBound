@@ -57,6 +57,7 @@ local remote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("LoadingDo
 
 local UpdData = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("UpdateData")
 local RequestStarterGift = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("RequestTutorialStarterGift")
+local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
 
 -- Cloneable demo orb used by the "collect orbs" tutorial step
 local orbTemplate = ReplicatedStorage:WaitForChild("Cloneables"):WaitForChild("OrbClickableTemplate")
@@ -521,13 +522,14 @@ local function startFirstCollectionWatch(ctx)
 	end
 
 	local leaderstats = player:WaitForChild("leaderstats")
-	local earthStat = leaderstats:WaitForChild("Earth Essence")
-	local shadowStat = leaderstats:WaitForChild("Shadow Essence")
-
-	-- Baseline captured NOW, not assumed to be 0 -- defensive in case this
-	-- step somehow re-runs or a player already has a balance for any reason.
-	local baselineEarth = earthStat:GetAttribute("Quantity") or 0
-	local baselineShadow = shadowStat:GetAttribute("Quantity") or 0
+	local watchedStats = {}
+	for _, essence in ipairs(EssenceConfig.Ordered) do
+		local stat = leaderstats:WaitForChild(essence.Name)
+		table.insert(watchedStats, {
+			Stat = stat,
+			Baseline = stat:GetAttribute("Quantity") or 0,
+		})
+	end
 
 	local function onSuccess()
 		if cancelled or succeeded then
@@ -548,16 +550,14 @@ local function startFirstCollectionWatch(ctx)
 		end)
 	end
 
-	table.insert(connections, earthStat:GetAttributeChangedSignal("Quantity"):Connect(function()
-		if (earthStat:GetAttribute("Quantity") or 0) > baselineEarth then
-			onSuccess()
-		end
-	end))
-	table.insert(connections, shadowStat:GetAttributeChangedSignal("Quantity"):Connect(function()
-		if (shadowStat:GetAttribute("Quantity") or 0) > baselineShadow then
-			onSuccess()
-		end
-	end))
+	for _, watched in ipairs(watchedStats) do
+		local entry = watched
+		table.insert(connections, entry.Stat:GetAttributeChangedSignal("Quantity"):Connect(function()
+			if (entry.Stat:GetAttribute("Quantity") or 0) > entry.Baseline then
+				onSuccess()
+			end
+		end))
+	end
 
 	-- Escalating hints, then an escape hatch -- generous waits since the
 	-- goal is genuine comprehension, not speed, but nobody should ever be

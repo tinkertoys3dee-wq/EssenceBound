@@ -114,6 +114,9 @@ end
 
 local function rewardSummary(result): string
 	local lines = { ("+%s ESSENCE"):format(ProgressionConfig.FormatNumber(result.Essence or 0)) }
+	if (result.SolarEssence or 0) > 0 then
+		table.insert(lines, ("+%s SOLAR ESSENCE"):format(ProgressionConfig.FormatNumber(result.SolarEssence)))
+	end
 	if result.Shards then
 		table.insert(lines, ("+%d PRESTIGE SHARDS"):format(result.Shards))
 	end

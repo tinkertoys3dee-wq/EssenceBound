@@ -86,9 +86,10 @@ WheelConfig.Tiers = {
 -- into this list, never a reward that then has to go find a slot).
 -- Weights sum to 100 for a readable "X% chance" if that's ever surfaced.
 --
--- Essence is scaled by rebirths the same way every other reward in the
--- game is (ProgressionConfig.ScaleReward) -- WheelService applies that;
--- this table only holds the base numbers.
+-- Earth Essence scales with rebirths like other retention rewards.
+-- Mythic Solar amounts stay fixed: its capstone costs are fixed too, and
+-- multiplying a Jackpot by dozens of late-game rebirths would erase that
+-- economy. WheelService applies those two contracts separately.
 WheelConfig.Segments = {
 	{
 		Id = "spark", Label = "Spark", Icon = "✨", Color = Color3.fromRGB(120, 200, 255),
@@ -125,14 +126,14 @@ WheelConfig.Segments = {
 	},
 	{
 		Id = "cache", Label = "Radiant Cache", Icon = "📦", Color = Color3.fromRGB(255, 205, 80),
-		Tier = "Rare", Weight = 4, Essence = 12000,
-		Description = "The wheel opens a cache packed with radiant Essence.",
+		Tier = "Rare", Weight = 4, Essence = 12000, SolarEssence = 40,
+		Description = "The wheel opens a cache containing Earth Essence and mythic Solar sparks.",
 		RevealQuote = "THE CACHE OPENS",
 	},
 	{
 		Id = "prestige", Label = "Prestige Spark", Icon = "🔥", Color = Color3.fromRGB(230, 80, 90),
 		Tier = "Epic", Weight = 2,
-		Essence = 3000,
+		Essence = 3000, SolarEssence = 20,
 		Shards = 2,
 		Description = "Prestige fire spills from an exceptionally rare landing.",
 		RevealQuote = "PRESTIGE FIRE ANSWERS",
@@ -140,10 +141,10 @@ WheelConfig.Segments = {
 	{
 		Id = "jackpot", Label = "JACKPOT", Icon = "👑", Color = Color3.fromRGB(255, 221, 84),
 		Tier = "Jackpot", Weight = 1,
-		Essence = 30000,
+		Essence = 30000, SolarEssence = 250,
 		Potion = { Effect = "EssenceX15", Duration = 20 * 60 },
 		PotionLabel = "+ 1.5x Essence (20 min)",
-		Description = "The crown lands: the wheel yields its richest fortune.",
+		Description = "The crown lands: the wheel yields its richest fortune and a Solar core.",
 		RevealQuote = "THE CROWN CHOOSES YOU",
 	},
 }

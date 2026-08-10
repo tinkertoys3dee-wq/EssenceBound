@@ -47,9 +47,20 @@ function EPMService.getEPM(player)
 			return session.SavedEPM
 		end
 		-- Otherwise, calculate their real-time session average
-		currentEPM[name] = math.max(math.floor(essenceGained / minutesPlayed),50)
+		-- Solar is a mythic endgame currency. Reusing the legacy 50/minimum
+		-- floor would turn a single discovery into thousands of free Solar
+		-- after one offline cap and erase every Solar-priced capstone. It can
+		-- still be harvested while away, but at a restrained 1/min floor.
+		local measuredEPM = math.floor(essenceGained / minutesPlayed)
+		if name == "SolarEssence" then
+			-- A bounded window also prevents a one-time wheel/daily payout from
+			-- becoming the player's permanent offline Solar production rate.
+			currentEPM[name] = math.clamp(measuredEPM, 1, 6)
+		else
+			currentEPM[name] = math.max(measuredEPM, 50)
+		end
 	end
-	-- Return the current average, but never let it dip below a base rate (e.g., 50)
+	-- Return the current average, with a rarity-appropriate safety floor.
 	return currentEPM
 end
 

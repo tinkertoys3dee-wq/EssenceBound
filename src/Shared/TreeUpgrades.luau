@@ -110,6 +110,13 @@
 		multi-million endgame sink. See section 49 of NEW_SYSTEMS.md for the
 		exact before/after audit.
 
+		Pass 10: Solar Essence turns the existing multi-currency support into
+		real progression. Early and midgame nodes remain Earth-only; selected
+		Tier 3 terminal abilities and every major Tier 4 capstone now require
+		Solar, with Shadow added where the fantasy is a true convergence. This
+		keeps Solar relevant without forcing an unowned Studio-authored node
+		into the tree or blocking a new player from their first upgrades.
+
 	PLAYER DATA SHAPE (you supply/store this however you like - DataStore, profile service, etc):
 
 		playerData = {
@@ -131,6 +138,9 @@
 		cost table instead of hardcoding "Essence". Nothing in this module assumes there is
 		only one currency.
 ]]
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
 
 local EssenceUpgrades = {}
 
@@ -217,7 +227,7 @@ local Upgrades = {
 		Id = "overload_shots", Name = "Overload Shots",
 		Description = "One-off: clicking has a chance to trigger a bonus overload wave of extra orbs.",
 		Branch = "OrbCore", Tier = 3, Prerequisites = {"shatter_force_2"}, RebirthRequired = 2,
-		MaxLevel = 1, BaseCost = {EarthEssence = 35000}, CostGrowth = 1,
+		MaxLevel = 1, BaseCost = {EarthEssence = 35000, SolarEssence = 100}, CostGrowth = 1,
 		EffectType = "OverloadWaveChance", EffectPerLevel = 0.15, -- 15% chance
 	},
 	{
@@ -231,7 +241,7 @@ local Upgrades = {
 		Id = "core_resilience", Name = "Core Resilience",
 		Description = "One-off: the orb's core never truly fails, always trickling out a slow shot even at 0 HP.",
 		Branch = "OrbCore", Tier = 3, Prerequisites = {"orb_regen_2"}, RebirthRequired = 3,
-		MaxLevel = 1, BaseCost = {EarthEssence = 50000}, CostGrowth = 1,
+		MaxLevel = 1, BaseCost = {EarthEssence = 50000, SolarEssence = 150}, CostGrowth = 1,
 		EffectType = "NeverFullyDepleted", EffectPerLevel = 1,
 	},
 
@@ -287,7 +297,7 @@ local Upgrades = {
 		Id = "essence_magnet_field", Name = "Essence Magnet Field",
 		Description = "One-off: essence within your collection radius is gathered automatically, no hover required.",
 		Branch = "Collection", Tier = 3, Prerequisites = {"magnetic_pull_2"}, RebirthRequired = 3,
-		MaxLevel = 1, BaseCost = {EarthEssence = 150000}, CostGrowth = 1,
+		MaxLevel = 1, BaseCost = {EarthEssence = 150000, SolarEssence = 500}, CostGrowth = 1,
 		EffectType = "AutoCollectInRadius", EffectPerLevel = 1,
 	},
 	{
@@ -338,7 +348,7 @@ local Upgrades = {
 		Id = "double_crit", Name = "Double Crit",
 		Description = "One-off: a critical hit has a chance to immediately trigger a second critical.",
 		Branch = "Critical", Tier = 3, Prerequisites = {"guaranteed_crit_streak"}, RebirthRequired = 3,
-		MaxLevel = 1, BaseCost = {EarthEssence = 150000}, CostGrowth = 1,
+		MaxLevel = 1, BaseCost = {EarthEssence = 150000, SolarEssence = 500}, CostGrowth = 1,
 		EffectType = "DoubleCritChance", EffectPerLevel = 0.25, -- 25% chance to double-proc
 	},
 	{
@@ -396,7 +406,7 @@ local Upgrades = {
 		Id = "manual_storm_summon", Name = "Manual Storm Summon",
 		Description = "One-off: unlocks a button to summon an essence storm on demand (its own cooldown).",
 		Branch = "Storm", Tier = 3, Prerequisites = {"storm_mastery"}, RebirthRequired = 2,
-		MaxLevel = 1, BaseCost = {EarthEssence = 125000}, CostGrowth = 1,
+		MaxLevel = 1, BaseCost = {EarthEssence = 125000, SolarEssence = 350}, CostGrowth = 1,
 		EffectType = "UnlockManualStorm", EffectPerLevel = 1,
 	},
 	{
@@ -438,9 +448,9 @@ local Upgrades = {
 	},
 	{
 		Id = "rebirth_echo", Name = "Rebirth Echo",
-		Description = "One-off: retain 15% of both Earth and Shadow Essence when you rebirth.",
+		Description = "One-off: retain 15% of Earth, Shadow, and Solar Essence when you rebirth.",
 		Branch = "Rebirth", Tier = 3, Prerequisites = {"rebirth_insight_2"}, RebirthRequired = 3,
-		MaxLevel = 1, BaseCost = {EarthEssence = 100000}, CostGrowth = 1,
+		MaxLevel = 1, BaseCost = {EarthEssence = 100000, ["Shadow Essence"] = 2500, SolarEssence = 250}, CostGrowth = 1,
 		EffectType = "RebirthRetainPercent", EffectPerLevel = 0.15, -- keep 15% of essence
 	},
 	{
@@ -484,7 +494,7 @@ local Upgrades = {
 		Id = "automation_core", Name = "Automation Core",
 		Description = "One-off: the orb periodically fires on its own, without needing a click.",
 		Branch = "Passive", Tier = 3, Prerequisites = {"offline_harvest_2","idle_drips_2"}, RebirthRequired = 2,
-		MaxLevel = 1, BaseCost = {EarthEssence = 75000}, CostGrowth = 1,
+		MaxLevel = 1, BaseCost = {EarthEssence = 75000, SolarEssence = 250}, CostGrowth = 1,
 		EffectType = "UnlockAutoClick", EffectPerLevel = 1,
 	},
 	{
@@ -509,21 +519,21 @@ local Upgrades = {
 		Branch = "Capstone", Tier = 4,
 		Prerequisites = {"twin_orb_manifestation","automation_core","orb_vitality_3", "double_crit", "storm_mastery", "rebirth_bonus_2","essence_magnet_field","orb_regen_2","overload_shots"},
 		RebirthRequired = 5,
-		MaxLevel = 1, BaseCost = {EarthEssence = 2500000}, CostGrowth = 1,
+		MaxLevel = 1, BaseCost = {EarthEssence = 2500000, ["Shadow Essence"] = 50000, SolarEssence = 5000}, CostGrowth = 1,
 		EffectType = "GlobalEssenceMultiplier", EffectPerLevel = 1.5, -- +150%
 	},
 	{
 		Id = "twin_orb_manifestation", Name = "Twin Orb Manifestation",
 		Description = "One-off: manifests a second Essence Orb alongside the first, doubling click yield sources.",
 		Branch = "Capstone", Tier = 4, Prerequisites = {"overload_shots","orb_vitality_3"}, RebirthRequired = 5,
-		MaxLevel = 1, BaseCost = {EarthEssence = 750000}, CostGrowth = 1,
+		MaxLevel = 1, BaseCost = {EarthEssence = 750000, ["Shadow Essence"] = 10000, SolarEssence = 1000}, CostGrowth = 1,
 		EffectType = "UnlockSecondOrb", EffectPerLevel = 1,
 	},
 	{
 		Id = "storm_caller_ascension", Name = "Storm Caller Ascension",
 		Description = "Passive essence storms begin summoning themselves automatically, no cooldown consumed.",
 		Branch = "Capstone", Tier = 4, Prerequisites = {"manual_storm_summon","storm_frequency_2"}, RebirthRequired = 4,
-		MaxLevel = 5, BaseCost = {EarthEssence = 250000}, CostGrowth = 1.61,
+		MaxLevel = 5, BaseCost = {EarthEssence = 250000, ["Shadow Essence"] = 5000, SolarEssence = 750}, CostGrowth = 1.61,
 		EffectType = "AutoStormChancePerMinute", EffectPerLevel = 0.15,
 	},
 }
@@ -609,10 +619,18 @@ function EssenceUpgrades.GetCostForNextLevel(id, currentLevel)
 	return cost
 end
 
+function EssenceUpgrades.GetCurrencyDisplayName(currencyKey)
+	return EssenceConfig.GetDisplayName(currencyKey)
+end
+
 function EssenceUpgrades.CanAfford(playerData, cost)
+	if type(cost) ~= "table" then
+		return false, "UnknownCurrency"
+	end
 	local currencies = playerData.Essences or {}
 	for currency, amount in pairs(cost) do
-		if (currencies[currency].Quantity or 0) < amount then
+		local balance = currencies[currency]
+		if not balance or (tonumber(balance.Quantity) or 0) < amount then
 			return false, currency
 		end
 	end
@@ -675,9 +693,18 @@ function EssenceUpgrades.PurchaseUpgrade(player, playerData, id)
 
 	-- Deduct cost
 	playerData.Essences = playerData.Essences or {}
+	local deductions = {}
 	for currency, amount in pairs(cost) do
-		local stat = player:FindFirstChild("leaderstats"):FindFirstChild(playerData.Essences[currency].DisplayName)
-		stat:SetAttribute("Quantity", stat:GetAttribute("Quantity") - amount)
+		local currencyData = playerData.Essences[currency]
+		local leaderstats = player:FindFirstChild("leaderstats")
+		local stat = currencyData and leaderstats and leaderstats:FindFirstChild(currencyData.DisplayName)
+		if not stat then
+			return false, "CannotAfford", currency
+		end
+		table.insert(deductions, { Stat = stat, Amount = amount })
+	end
+	for _, deduction in ipairs(deductions) do
+		deduction.Stat:SetAttribute("Quantity", deduction.Stat:GetAttribute("Quantity") - deduction.Amount)
 	end
 
 	-- Apply new level

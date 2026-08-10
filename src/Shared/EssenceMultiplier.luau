@@ -184,6 +184,16 @@ function EssenceMultiplier.CalculateMultiplier(plr, gold, crit, skipDoubleCritRo
 	-- a guard -- it would be a flat ~2x baseline inflation of every reward
 	-- in the game.
 	multiplier *= (shadowEssence + 1)^.2
+
+	-- Solar Radiance is deliberately bounded. Every mythic Solar find adds
+	-- permanent value, but a rare currency must not exponentiate the entire
+	-- economy the way an uncapped power curve could. Lifetime earnings make
+	-- spending Solar on capstones safe; logarithmic growth gives roughly
+	-- +5% per order of magnitude and caps at +50%.
+	local solarEssence = tonumber(plr:GetAttribute("SolarEssenceLifetime")
+		or plr:GetAttribute("SolarEssence")) or 0
+	local solarRadianceBonus = math.min(math.log10(math.max(solarEssence, 0) + 1) * 0.05, 0.5)
+	multiplier *= 1 + solarRadianceBonus
 	return multiplier
 end
 
