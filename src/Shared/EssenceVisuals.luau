@@ -1,10 +1,11 @@
 --[[
 	EssenceVisuals
 	===============================================================
-	Applies an essence's presentation to an ImageLabel/ImageButton. Earth
-	and Shadow use their uploaded art. Solar uses a detailed native-Roblox
-	orb assembled from UI shapes, matching assets/solar-essence-orb.svg,
-	until a PNG export is uploaded and EssenceConfig receives its asset id.
+	Applies an essence's presentation to an ImageLabel/ImageButton. Earth,
+	Shadow, and Solar use their uploaded art. Solar also keeps a detailed
+	native-Roblox fallback assembled from UI shapes and matching
+	assets/solar-essence-orb.svg; clearing its catalog asset id deliberately
+	reactivates that fallback without changing any caller.
 
 	The generated art is a CanvasGroup child, so callers can fade it through
 	SetTransparency exactly like an ordinary ImageTransparency tween.

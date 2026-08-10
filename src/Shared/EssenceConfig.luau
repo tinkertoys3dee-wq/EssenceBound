@@ -54,11 +54,9 @@ EssenceConfig.Ordered = {
 		DeepColor = Color3.fromRGB(193, 68, 24),
 		Glyph = "☀️",
 		-- The matching source art ships as assets/solar-essence-orb.svg.
-		-- Roblox image assets do not accept SVG directly. Export the source
-		-- artwork to PNG, upload that raster image, then place its rbxassetid
-		-- here. Until then, EssenceVisuals draws the matching orb from native
-		-- UI shapes everywhere in-game.
-		IconAssetId = nil,
+		-- Its transparent raster export is now uploaded to Roblox; every UI
+		-- surface derives the image URI from this one catalog entry.
+		IconAssetId = 97084886370150,
 		Description = "Mythic stellar essence carrying the heat and memory of a newborn sun.",
 		LifetimeField = "LifetimeSolarEssence",
 		LifetimeAttribute = "SolarEssenceLifetime",

@@ -110,9 +110,9 @@ ZonesConfig.Zones = {
 		RebirthRequired = 4,
 		BaseWeights = { ["Earth Essence"] = 15, ["Shadow Essence"] = 15, ["Solar Essence"] = 70 },
 		AmplifiedWeights = { ["Earth Essence"] = 6, ["Shadow Essence"] = 6, ["Solar Essence"] = 88 },
-		-- No uploaded Roblox image is required: ZoneAmbience and ZonePanel
-		-- render a native presentation matching the source SVG through
-		-- EssenceVisuals.
+		-- ZoneAmbience and ZonePanel both resolve the uploaded Solar art
+		-- through EssenceVisuals, which retains a native fallback if the
+		-- catalog asset id is ever intentionally cleared.
 	},
 }
 

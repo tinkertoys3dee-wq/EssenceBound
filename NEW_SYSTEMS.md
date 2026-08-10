@@ -1943,8 +1943,8 @@ and Ultra Luck, are wired up too now -- see section 40.)
   sibling behind `LargeOrb`, and it deliberately leaves `ImageColor3`
   alone because several existing effects already animate that property.
   The configured zone orb art itself does swap: Grove restores the captured
-  Studio image, Shadowfen uses the uploaded Shadow orb, and Sunforge builds
-  the native Solar presentation. It remains more understated than
+  Studio image, Shadowfen uses the uploaded Shadow orb, and Sunforge uses
+  the uploaded Solar presentation. It remains more understated than
   PrestigeAura's own aura and sits behind it (lower ZIndex), so the two
   never visually compete.
 
@@ -2495,12 +2495,11 @@ same molten-corona presentation through `EssenceVisuals.luau`.
 
 Source art ships at `assets/solar-essence-orb.svg`: transparent 1024×1024 SVG
 with corona blades, prominences, plasma orbits, granulation, molten bands, and
-a white-hot stellar heart. Roblox image assets accept raster formats rather
-than SVG, so export it to a transparent PNG before uploading. Until a raster
-asset id exists, `EssenceVisuals` draws the matching art from native Roblox UI
-shapes everywhere at runtime. After upload, place the numeric id in Solar's
-`IconAssetId` field in `EssenceConfig.luau`; every surface will switch to it
-automatically without another per-screen edit.
+a white-hot stellar heart. Its transparent raster export is uploaded as
+`rbxassetid://97084886370150`, configured once in Solar's `IconAssetId` field
+in `EssenceConfig.luau`. Every surface now resolves that uploaded artwork
+automatically. `EssenceVisuals` retains the matching native Roblox UI build as
+a fallback if the catalog id is deliberately cleared later.
 
 ## What to check when you open Studio
 
@@ -2830,7 +2829,7 @@ automatically without another per-screen edit.
     before; this pass changes cost only, not the tree's reset contract.
 32. **Solar end-to-end (section 50)** -- on a clean account confirm the HUD
     shows a padded Solar row, the Index counts 3 total entries, and Grove odds
-    show a 1% Solar trace. Force or wait for a Solar roll: the molten native
+    show a 1% Solar trace. Force or wait for a Solar roll: the molten Solar
     orb, MYTHIC SOLAR collection burst, discovery card, leaderstat, Index slot,
     unique count, rarest essence, lifetime attribute, and Radiance multiplier
     should update together. At Rebirth 4, buy Sunforge with both currencies and
