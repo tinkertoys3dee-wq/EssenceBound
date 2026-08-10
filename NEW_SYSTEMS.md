@@ -1689,6 +1689,29 @@ ring. The math always spins FORWARD from wherever the ring currently
 is (never snaps backward) and adds several extra full turns before
 landing exactly on the segment the server has already decided.
 
+**The presentation is now a full astral arcade cabinet, matching the
+quality bar set by the Prophecy Crystal.** The larger, deliberately
+padded modal has a layered wheel face, radial dividers, 24 pulsing
+cabinet bulbs, counter-rotating energy rings, orbiting runes, an
+illuminated hub and jewel reward pedestals that remain upright while
+their positions spin. A fixed pointer visibly ticks across candidates
+as the wheel accelerates and decelerates, while the prize ledger keeps
+all eight rewards and their exact percentage chances readable beside
+the action. The landing replaces that ledger with a dedicated result
+chamber showing the player's actual rebirth-scaled grant, not merely
+the segment's base value. Common, Uncommon, Rare, Epic and Jackpot
+presentation tiers progressively add stronger color, rings, particles,
+flash and shake; the 1% Jackpot receives the complete celebration.
+These tiers are visual escalation only and do not alter a single weight
+or reward.
+
+The bottom-right DAILY shortcut now reads its initial state through a
+`GetWheelState` RemoteFunction as well as continuing to receive live
+`WheelSync` pushes. That closes the startup race where the old client
+could miss the one delayed event and remain visually stuck loading,
+while the server's own clock remains authoritative for the free-spin
+countdown.
+
 **Server-authoritative, same as every purchase flow in this
 codebase.** `WheelService.server.luau` rolls the segment
 (`WheelConfig.RollSegmentIndex`, weighted, server-side only) and grants
@@ -2345,12 +2368,19 @@ and benefit identical to the effect gameplay actually receives.
     should continue instead of resetting, the toast should read "🛡️
     Streak Saved", and the daily panel's status line should show one
     fewer freeze banked.
-17. **Fortune Wheel (section 35)**: click the 🎡 button, bottom-right
-    corner. A fresh account should have its free spin available
-    immediately (confirm the wheel actually spins several full turns
-    and lands cleanly on a segment, not a partial/jittery stop). Click
-    SPIN again right after -- it should now say "No spins available
-    yet" and stay disabled (0 tickets, free spin just used). To see a
+17. **Fortune Wheel (section 35)**: click the illuminated 🎡 DAILY
+    button in the bottom-right corner. Confirm the padded astral cabinet
+    opens without overlapping its title, ticket strip, wheel, prize
+    ledger, status or spin control at both desktop and narrow/mobile
+    viewport sizes. A fresh account should have its free spin available
+    immediately. Confirm the reward pedestals orbit but remain upright,
+    the fixed pointer ticks through candidates, all eight odds remain
+    visible, and the wheel makes several full turns before landing
+    cleanly on the server-selected segment (not a partial/jittery stop).
+    The right-side ledger should then become a result chamber whose
+    displayed Essence matches the amount actually credited. Click SPIN
+    again right after -- it should remain disabled with the countdown
+    visible (0 tickets, free spin just used). To see a
     ticket get earned without collecting 60 real orbs, run
     `require(game.Players.YourName.PlayerData).Wheel.CollectionsSinceLastTicket = 59`
     in the command bar, then collect one orb -- a ticket should appear
@@ -2358,7 +2388,9 @@ and benefit identical to the effect gameplay actually receives.
     bigger celebration (extra burst, screen flash) without relying on
     its real 1% odds, temporarily swap `WheelConfig.Segments[8]`'s
     `Weight` to something large (or `WheelConfig.RollSegmentIndex`'s
-    return to `return 8` directly) -- revert either before shipping.
+    return to `return 8` directly). Confirm the Jackpot adds the third
+    ring, full particle burst, flash and cabinet shake, then revert the
+    temporary test change before shipping.
 18. **Biggest Gain (section 36)** needs a session with at least two
     collections of noticeably different sizes to see fire -- the very
     first gain of the session never celebrates (nothing to beat yet),
