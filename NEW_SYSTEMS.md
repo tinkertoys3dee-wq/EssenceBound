@@ -2251,6 +2251,76 @@ landing Rare+ at any point resets that meter. `ProphecyConfig.luau` is the
 single catalog read by server and client, keeping every displayed duration
 and benefit identical to the effect gameplay actually receives.
 
+## 45. Astral visual language -- the premium treatment now reaches the whole game
+
+The Prophecy Crystal and rebuilt Fortune Wheel established a much stronger
+visual standard than the older interfaces: luminous layered surfaces,
+animated trim, readable inset hierarchy, restrained ambient particles,
+reward-specific color, and controls that respond when the player touches
+them. `AstralVisuals.luau` now turns that language into one shared client
+toolkit instead of copying another several hundred lines of effects into
+every panel. It supplies modal shells, raised cards, animated edge gradients,
+soft sibling halos, top light rails, corner glyphs, star fields, reveal
+sweeps, progress-fill flow, heading shadows, button sheens/ripples and the
+upgrade-node constellation treatment from one palette and one animation
+loop.
+
+`GlobalVisualPolish.client.luau` applies that toolkit non-destructively at
+runtime. This is important because most of the original Upgrades, Inventory,
+Index, Rebirth, Settings, Shop and MainGui visual properties exist only in
+Studio -- the repository has their controller scripts, not a safe complete
+copy of their frames. The pass never changes a frame's Position, Size,
+AnchorPoint, visibility contract, price, remote or click handler. It keeps
+the authored layout and adds finish around it: each legacy popup receives a
+screen-specific shell, title treatment, close-control feedback, nested card
+hierarchy and flowing trim; the left HUD currencies/stats and right navigation
+receive matching raised surfaces; the manual summon control receives its own
+pink relic treatment.
+
+The same decorator understands all of the source-built systems too:
+Achievements, leaderboards, Prestige Shop, Sanctum, Zones, progression/daily/
+quest/code panels, Group Reward, What's New, offline harvest, tutorial,
+potion timers, friend/new-player badges, the Essence Market, discovery and
+personal-best banners, Essence Rush, zone travel and the Hollowed One's
+framed log. It watches `DescendantAdded`, so offers, quests, leaderboard rows,
+daily rewards, potion cards and other runtime clones get exactly the same
+finish even when they did not exist during join. Each family retains its own
+meaningful accent (green market actions, red rebirth, cyan zones, purple
+Sanctum, gold achievements, orange Rush, blood-red Hollowed One) instead of
+flattening the entire game into one color.
+
+Upgrades gets the deepest dedicated pass. The viewport now reads as an
+"Essence Constellation" with a fixed title, platform-aware drag/zoom/help
+instructions, a live zoom percentage and illuminated side rails. Every
+tagged node receives a softly breathing aura, a rotating branch-colored
+hex orbit and a compact state badge: locked paths dim and show an ×,
+available paths accelerate and show +, purchased tiers show their level,
+and completed nodes turn gold with a star. All of those react to the existing
+`Tier`, `Unlocked`, `Buyable` and category attributes, so the presentation
+updates immediately after a purchase or rebirth without inventing a second
+source of progression truth.
+
+The upgrade tooltip was also rebuilt where its old implementation could
+quietly degrade a long play session. Previously every single mouse-enter
+connected one more node attribute listener and one more player listener;
+repeated hovering therefore accumulated duplicate callbacks forever. Nodes
+now bind once, the current tooltip alone refreshes, removed nodes clean up
+naturally, and Rebirths uses one shared listener. The tooltip shows exact
+`TIER n / max`, a distinct mastered state, real multiline costs, trimmed lock
+requirements and a clear unavailable state instead of displaying the old
+fabricated fallback cost of 5. Touch players can tap a node to hold its details
+onscreen rather than losing the feature entirely without a mouse. Both copies
+of the Studio/cloneable tooltip script remain byte-for-byte identical.
+
+The effects are deliberately budgeted for a Roblox game, not a static mockup.
+All decoration is idempotent, removed instances fall out of the registries,
+hidden ScreenGuis and invisible panel hierarchies stop animating, and the one
+shared animation pass is throttled to 30 updates per second. Existing authored
+gradients are preserved rather than stacking a second modifier on top. The
+loading screen keeps its separate horror presentation, and Prophecy/Wheel are
+excluded from the global decorator because they already are the benchmark and
+double-applying the shared effects would only add noise.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
@@ -2518,6 +2588,23 @@ and benefit identical to the effect gameplay actually receives.
     and the result must be Rare, Epic or Mythic. Finally check the padded
     panel at both desktop and phone emulator widths; no title, benefit or
     close control should touch the frame edge.
+27. **Whole-game Astral pass (section 45)** -- do one visual circuit on both
+    desktop and a narrow phone emulator: open Upgrades, Inventory, Index,
+    Rebirth, Settings, Shop/Essence Market, Zones, Sanctum, Prestige Shop,
+    Ranks, Goals, Daily, Quests and Codes. Every real panel should retain its
+    existing size/position while gaining animated trim, a clear header, raised
+    content cards and tactile buttons; no text, icon or close control should
+    touch a border or disappear behind a star/sweep. In Upgrades, drag and zoom
+    the constellation, verify the live percentage changes, and inspect one
+    locked, available, leveled and maxed node. Hover the same node repeatedly
+    and rebirth once if possible: the tooltip should update once per change,
+    not flicker or multiply callbacks; then repeat with a tap in the mobile
+    emulator. Trigger or temporarily shorten a potion, Essence Rush and a
+    personal-best/discovery banner to confirm late-created cards receive the
+    treatment. Finally open/close the major panels repeatedly for several
+    minutes and watch Studio's client performance: hidden panels should not
+    keep visibly animating, button clicks should still invoke their original
+    actions exactly once, and Output should remain free of new UI errors.
 
 ## ⚠️ One thing to be careful about
 

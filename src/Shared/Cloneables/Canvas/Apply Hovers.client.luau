@@ -396,153 +396,61 @@ local function addStatRow(text)
 	rowTextConstraint.Parent = row
 end
 
--- Populate tooltip fields from a node's attributes + the TreeUpgrades data module
-local pop
+-- Populate is intentionally side-effect free: the old version connected a
+-- new node AttributeChanged listener and a new player AttributeChanged
+-- listener every single time the cursor entered a node. A long upgrade-tree
+-- session therefore accumulated duplicate callbacks indefinitely. Binding
+-- now happens once per node below; this function only paints current state.
 local function populateTooltip(node)
-	local category = node:GetAttribute("Category") or "Defense"
-	local theme = getTheme(category)
-	local deets = treeUpgrades.GetUpgrade(node.Name)
+	local ok, deets = pcall(treeUpgrades.GetUpgrade, node.Name)
+	if not ok or type(deets) ~= "table" then
+		return
+	end
 
+	local category = node:GetAttribute("Category") or deets.Branch or "Defense"
+	local theme = getTheme(category)
 	titleLabel.Text = deets.Name
-	categoryLabel.Text = deets.Branch
+	categoryLabel.Text = deets.Branch or theme.Label
 	categoryLabel.TextColor3 = theme.Color
 	glyphLabel.Text = theme.Glyph
 	glyphBadge.BackgroundColor3 = theme.Color
 	rootStroke.Color = theme.Color
 	rootGradient.Color = ColorSequence.new(theme.Color, theme.Color:Lerp(Color3.new(1, 1, 1), 0.35))
-
-	descLabel.Text = deets.Description
+	descLabel.Text = deets.Description or ""
 
 	clearStatRows()
 	local statsText = node:GetAttribute("Stats")
 	if statsText and statsText ~= "" then
-		for line in statsText:gmatch("[^\r\n]+") do
+		for line in tostring(statsText):gmatch("[^\r\n]+") do
 			addStatRow(line)
 		end
 	end
-	
-	local tier = node:GetAttribute("Tier")
+
+	local tier = math.max(0, math.floor(tonumber(node:GetAttribute("Tier")) or 0))
+	local maxLevel = math.max(1, math.floor(tonumber(deets.MaxLevel) or 1))
 	local cost = node:GetAttribute("Cost")
-	if deets.MaxLevel == tier then
-		tierLabel.Text = "Max Level"
-		costLabel.Text = "Maxed"
+	if tier >= maxLevel then
+		tierLabel.Text = "★ MAX LEVEL"
+		costLabel.Text = "MASTERED"
 	else
-		costLabel.Text = cost or "5"
-		tierLabel.Text = tier and ("Tier " .. tostring(tier)) or ""
+		local costText = cost ~= nil and tostring(cost) or ""
+		costLabel.Text = costText ~= "" and costText or "Cost unavailable"
+		tierLabel.Text = ("TIER %d / %d"):format(tier, maxLevel)
 	end
 
-	local unlocked = node:GetAttribute("Unlocked")
-
-	if  unlocked == false  then
+	local unlocked = node:GetAttribute("Unlocked") ~= false
+	if not unlocked then
 		local requires = node:GetAttribute("Requires")
-		lockedLabel.Text = requires and ("🔒 Requires: " .. requires) or "🔒 Locked"
+		local requiresText = requires ~= nil and tostring(requires):gsub("^%s*(.-)%s*$", "%1") or ""
+		lockedLabel.Text = requiresText ~= "" and ("🔒 REQUIRES: " .. requiresText) or "🔒 LOCKED PATH"
 		lockedLabel.Visible = true
-		background.BackgroundTransparency = 0.25
-		descLabel.TextTransparency = 0.35
+		background.BackgroundTransparency = 0.2
+		descLabel.TextTransparency = 0.32
 	else
 		lockedLabel.Visible = false
-		background.BackgroundTransparency = 0.05
+		background.BackgroundTransparency = 0.035
 		descLabel.TextTransparency = 0
 	end
-	node.AttributeChanged:Connect(function(attr)
-		if attr == "Tier" then
-			local category = node:GetAttribute("Category") or "Defense"
-			local theme = getTheme(category)
-			local deets = treeUpgrades.GetUpgrade(node.Name)
-
-			titleLabel.Text = deets.Name
-			categoryLabel.Text = deets.Branch
-			categoryLabel.TextColor3 = theme.Color
-			glyphLabel.Text = theme.Glyph
-			glyphBadge.BackgroundColor3 = theme.Color
-			rootStroke.Color = theme.Color
-			rootGradient.Color = ColorSequence.new(theme.Color, theme.Color:Lerp(Color3.new(1, 1, 1), 0.35))
-
-			descLabel.Text = deets.Description
-
-			clearStatRows()
-			local statsText = node:GetAttribute("Stats")
-			if statsText and statsText ~= "" then
-				for line in statsText:gmatch("[^\r\n]+") do
-					addStatRow(line)
-				end
-			end
-
-			local tier = node:GetAttribute("Tier")
-			local cost = node:GetAttribute("Cost")
-			if deets.MaxLevel == tier then
-				tierLabel.Text = "Max Level"
-				costLabel.Text = "Maxed"
-			else
-				costLabel.Text = cost
-				tierLabel.Text = tier and ("Tier " .. tostring(tier)) or ""
-			end
-
-			local unlocked = node:GetAttribute("Unlocked")
-
-			if  unlocked == false  then
-				local requires = node:GetAttribute("Requires")
-				lockedLabel.Text = requires and ("🔒 Requires: " .. requires) or "🔒 Locked"
-				lockedLabel.Visible = true
-				background.BackgroundTransparency = 0.25
-				descLabel.TextTransparency = 0.35
-			else
-				lockedLabel.Visible = false
-				background.BackgroundTransparency = 0.05
-				descLabel.TextTransparency = 0
-			end
-		end
-	end)
-	
-	player.AttributeChanged:Connect(function(attr)
-		if attr == "Rebirths" then
-			local category = node:GetAttribute("Category") or "Defense"
-			local theme = getTheme(category)
-			local deets = treeUpgrades.GetUpgrade(node.Name)
-
-			titleLabel.Text = deets.Name
-			categoryLabel.Text = deets.Branch
-			categoryLabel.TextColor3 = theme.Color
-			glyphLabel.Text = theme.Glyph
-			glyphBadge.BackgroundColor3 = theme.Color
-			rootStroke.Color = theme.Color
-			rootGradient.Color = ColorSequence.new(theme.Color, theme.Color:Lerp(Color3.new(1, 1, 1), 0.35))
-
-			descLabel.Text = deets.Description
-
-			clearStatRows()
-			local statsText = node:GetAttribute("Stats")
-			if statsText and statsText ~= "" then
-				for line in statsText:gmatch("[^\r\n]+") do
-					addStatRow(line)
-				end
-			end
-
-			local tier = node:GetAttribute("Tier")
-			local cost = node:GetAttribute("Cost")
-			if deets.MaxLevel == tier then
-				tierLabel.Text = "Max Level"
-				costLabel.Text = "Maxed"
-			else
-				costLabel.Text = cost
-				tierLabel.Text = tier and ("Tier " .. tostring(tier)) or ""
-			end
-
-			local unlocked = node:GetAttribute("Unlocked")
-
-			if  unlocked == false  then
-				local requires = node:GetAttribute("Requires")
-				lockedLabel.Text = requires and ("🔒 Requires: " .. requires) or "🔒 Locked"
-				lockedLabel.Visible = true
-				background.BackgroundTransparency = 0.25
-				descLabel.TextTransparency = 0.35
-			else
-				lockedLabel.Visible = false
-				background.BackgroundTransparency = 0.05
-				descLabel.TextTransparency = 0
-			end
-		end
-	end)
 end
 
 --============================================================
@@ -613,10 +521,24 @@ RunService.RenderStepped:Connect(updatePosition)
 -- HOOK UP EXISTING + FUTURE TAGGED NODES
 --============================================================
 
+local boundNodes = setmetatable({}, { __mode = "k" })
+local REFRESH_ATTRIBUTES = {
+	Tier = true,
+	Cost = true,
+	Stats = true,
+	Unlocked = true,
+	Requires = true,
+	Category = true,
+}
+
 local function bindNode(node)
-	if not node:IsA("GuiObject") then
+	if not node:IsA("GuiObject") or not node:IsDescendantOf(playerGui) then
 		return
 	end
+	if boundNodes[node] then
+		return
+	end
+	boundNodes[node] = true
 
 	node.MouseEnter:Connect(function()
 		showTooltip(node)
@@ -624,6 +546,25 @@ local function bindNode(node)
 
 	node.MouseLeave:Connect(function()
 		hideTooltip(node)
+	end)
+
+	-- Upgrade art commonly puts a full-size TextButton over the tagged
+	-- Frame. Listen on that actual hit target for touch so mobile details
+	-- don't depend on whether input propagation reaches the parent Frame.
+	local touchTarget = node:FindFirstChildWhichIsA("GuiButton", true) or node
+	touchTarget.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Touch then
+			showTooltip(node)
+			task.delay(2.8, function()
+				hideTooltip(node)
+			end)
+		end
+	end)
+
+	node.AttributeChanged:Connect(function(attribute)
+		if currentNode == node and REFRESH_ATTRIBUTES[attribute] then
+			populateTooltip(node)
+		end
 	end)
 
 	node.AncestryChanged:Connect(function(_, parent)
@@ -641,4 +582,10 @@ CollectionService:GetInstanceAddedSignal("UpgradeNode"):Connect(bindNode)
 
 CollectionService:GetInstanceRemovedSignal("UpgradeNode"):Connect(function(node)
 	hideTooltip(node)
+end)
+
+player:GetAttributeChangedSignal("Rebirths"):Connect(function()
+	if currentNode and currentNode.Parent then
+		populateTooltip(currentNode)
+	end
 end)
