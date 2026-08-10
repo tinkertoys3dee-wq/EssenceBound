@@ -32,10 +32,12 @@ local EssenceTypes = {
 	["Earth Essence"] = {
 		["Icon"] = IconIDS["EarthEssenceRegular"],
 		["Name"] = "Earth Essence",
+		["Color"] = Color3.fromRGB(112, 232, 156),
 	},
 	["Shadow Essence"] = {
 		["Icon"] = IconIDS["ShadowEssenceRegular"],
 		["Name"] = "Shadow Essence",
+		["Color"] = Color3.fromRGB(184, 108, 255),
 	},
 }
 local GetEssenceModule = require(ReplicatedStorage:WaitForChild("GetEssence"))
@@ -1295,6 +1297,7 @@ local function SpawnFallingOrb(EssenceType, isGolden)
 		baseSize.X.Scale * sizeVariance, baseSize.X.Offset * sizeVariance,
 		baseSize.Y.Scale * sizeVariance, baseSize.Y.Offset * sizeVariance
 	)
+	local stormColor = isGolden and Color3.fromRGB(255, 215, 70) or GetOrbFXColor(EssenceType)
 
 	-- starting point: random spot along the top band, just off-screen
 	local currentX = FALL_AREA_MIN_X + math.random() * (FALL_AREA_MAX_X - FALL_AREA_MIN_X)
@@ -1304,15 +1307,41 @@ local function SpawnFallingOrb(EssenceType, isGolden)
 	Orb.Size = UDim2.new(0, 0, 0, 0)
 	Orb.MainClickable.ImageTransparency = 1
 
-	-- === FX: crit tint + glow, so a crit is spottable mid-fall in a busy storm ===
-	local fxGlow
+	-- === FX: every storm orb gets a color-matched aura and comet tail. ===
+	-- Previously only critical drops had any silhouette treatment, so the
+	-- majority of the rain looked like ordinary UI icons drifting through
+	-- empty space. The trail is parented to the orb (automatic cleanup) and
+	-- counter-rotated below so it continues pointing against the fall even
+	-- while the collectible itself tumbles.
+	local fxGlow = CreateOrbGlow(isCrit and CRIT_COLOR or stormColor, finalSize)
+	fxGlow.Name = "FX_StormAura"
+	fxGlow.ZIndex = 0
+	fxGlow.Parent = Orb
+
+	local fallTrail = Instance.new("Frame")
+	fallTrail.Name = "FX_StormTrail"
+	fallTrail.AnchorPoint = Vector2.new(0.5, 1)
+	fallTrail.Position = UDim2.fromScale(0.5, 0.38)
+	fallTrail.Size = UDim2.fromScale(isGolden and 0.15 or 0.1, isGolden and 1.75 or 1.35)
+	fallTrail.BackgroundColor3 = isCrit and CRIT_COLOR or stormColor
+	fallTrail.BackgroundTransparency = isGolden and 0.16 or 0.28
+	fallTrail.BorderSizePixel = 0
+	fallTrail.ZIndex = math.max(Orb.MainClickable.ZIndex - 1, 1)
+	fallTrail.Parent = Orb
+	local trailCorner = Instance.new("UICorner")
+	trailCorner.CornerRadius = UDim.new(1, 0)
+	trailCorner.Parent = fallTrail
+	local trailGradient = Instance.new("UIGradient")
+	trailGradient.Rotation = 90
+	trailGradient.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(0.58, 0.48),
+		NumberSequenceKeypoint.new(1, 0.04),
+	})
+	trailGradient.Parent = fallTrail
+
 	if isCrit then
 		Orb.MainClickable.ImageColor3 = CRIT_COLOR
-		if ORB_FX.GlowEnabled then
-			fxGlow = CreateOrbGlow(CRIT_COLOR, finalSize)
-			fxGlow.ZIndex = 0
-			fxGlow.Parent = Orb
-		end
 	end
 
 	-- fall direction: mostly downward, drifting sideways at an angle
@@ -1322,6 +1351,20 @@ local function SpawnFallingOrb(EssenceType, isGolden)
 	local velocityX = math.sin(angleRad) * speed
 	local velocityY = math.cos(angleRad) * speed
 	local rotationSpeed = FALL_ROTATION_SPEED_MIN + math.random() * (FALL_ROTATION_SPEED_MAX - FALL_ROTATION_SPEED_MIN)
+	fallTrail.Rotation = -Orb.Rotation - angleDeg
+
+	-- Occasional ripples at the cloud line make each wave feel emitted by
+	-- the storm eye instead of simply instantiated off-screen. Kept sparse
+	-- and guarded by Juice's global particle cap.
+	if juiceLayer and currentX >= 0.02 and currentX <= 0.98 and math.random() < (isGolden and 0.32 or 0.18) then
+		Juice.Ring(juiceLayer, UDim2.fromScale(currentX, 0.025), {
+			Color = stormColor,
+			StartSize = 18,
+			EndSize = isGolden and 100 or 72,
+			Duration = 0.42,
+			Thickness = isGolden and 2.5 or 1.5,
+		})
+	end
 
 	-- pop in: scale + fade from nothing
 	TweenService:Create(Orb, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
@@ -1382,6 +1425,7 @@ local function SpawnFallingOrb(EssenceType, isGolden)
 		currentY = currentY + velocityY * deltaTime
 		Orb.Position = UDim2.new(currentX, 0, currentY, 0)
 		Orb.Rotation = Orb.Rotation + rotationSpeed * deltaTime
+		fallTrail.Rotation = -Orb.Rotation - angleDeg
 
 		-- === FX: crit glow pulse while falling ===
 		if fxGlow then
@@ -1475,8 +1519,9 @@ local waitingColor = ColorSequence.new({
 })
 
 local activeColor = ColorSequence.new({
-	ColorSequenceKeypoint.new(0, Color3.fromRGB(34, 139, 34)),
-	ColorSequenceKeypoint.new(1, Color3.fromRGB(50, 205, 50))
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(84, 211, 255)),
+	ColorSequenceKeypoint.new(0.52, Color3.fromRGB(100, 231, 160)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(188, 104, 255))
 })
 
 -- storm_mastery: a golden storm gets its own gradient so it visibly reads
@@ -1498,6 +1543,7 @@ end
 -- estimate against the unupgraded base. Mirror StormMaxCooldown as its own
 -- attribute from StormController if you want an exact fill percentage.
 local ESTIMATED_MAX_COOLDOWN = 300
+local currentStormDuration = 60
 local currentEventThread = nil
 
 local function refreshWaitingUI()
@@ -1510,10 +1556,13 @@ end
 local function refreshActiveUI()
 	local timeRemaining = player:GetAttribute("StormTimeRemaining") or 0
 	local isGolden = player:GetAttribute("StormIsGolden")
-	local scale = math.clamp(timeRemaining / ESTIMATED_MAX_COOLDOWN, 0, 1)
+	-- Storms used the 300-second COOLDOWN as their active bar denominator,
+	-- making a fresh 60-second storm begin only 20% full. The confirmed
+	-- duration from StormStart is the correct visual denominator.
+	local scale = math.clamp(timeRemaining / math.max(currentStormDuration, 1), 0, 1)
 	local label = isGolden
 		and ("\u{2728} GOLDEN ESSENCE STORM: " .. formatTime(timeRemaining))
-		or ("\u{26A0}\u{FE0F} EARTH STORM ACTIVE: " .. formatTime(timeRemaining))
+		or ("\u{26A1} ESSENCE STORM ACTIVE: " .. formatTime(timeRemaining))
 	updateUI(scale, isGolden and goldenColor or activeColor, label)
 end
 
@@ -1547,42 +1596,11 @@ EssenceStormEvent.OnClientEvent:Connect(function(action, payload)
 		local duration = payload.Duration or 60
 		local spawnInterval = payload.SpawnInterval or 0.4
 		local IsGolden = payload.IsGolden or false
+		currentStormDuration = math.max(duration, 1)
 		refreshActiveUI()
-
-		-- Storm arrival announcement: a real event happening rather than a
-		-- text label quietly updating in the corner. This is the game's
-		-- biggest recurring moment -- free bonus orbs raining from the sky
-		-- -- and landing with nothing but a status label was a big missed
-		-- beat. Purely cosmetic: the storm's actual duration/spawn
-		-- rate/golden roll are unchanged, this only reacts to what the
-		-- server already decided.
-		do
-			local stormColor = IsGolden and Color3.fromRGB(255, 215, 0) or Color3.fromRGB(120, 200, 255)
-
-			if juiceLayer then
-				Juice.Flash(juiceLayer, {
-					Color = stormColor,
-					Peak = IsGolden and 0.5 or 0.35,
-					Duration = 0.6,
-				})
-				Juice.FloatText(juiceLayer, UDim2.fromScale(0.5, 0.22),
-					IsGolden and "✨ GOLDEN STORM! ✨" or "⚡ ESSENCE STORM! ⚡",
-					{
-						Color = stormColor,
-						Duration = 1.6,
-						Rise = 50,
-						TextSize = IsGolden and 40 or 34,
-					}
-				)
-			end
-
-			local sound = Juice.FindSound("SFX/UI/UIPop")
-			if sound then
-				-- Golden storms ring higher than a normal one so the rarer
-				-- version is audibly distinct even before the label is read.
-				Juice.PlaySound(sound, { Pitch = IsGolden and 1.5 or 0.75, Volume = 0.6 })
-			end
-		end
+		-- StormVisuals.client.luau owns the cinematic arrival/atmosphere.
+		-- Keeping that long-running presentation out of this spawner means
+		-- canceling a visual can never cancel or delay collectible creation.
 
 		if currentEventThread then
 			task.cancel(currentEventThread)
@@ -2102,4 +2120,3 @@ TwinAscensionRemote.OnClientEvent:Connect(function()
 		Juice.PlaySound(sound, { Pitch = 1.3, Volume = 0.7 })
 	end
 end)
-

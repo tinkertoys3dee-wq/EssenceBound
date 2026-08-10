@@ -96,6 +96,20 @@
 		~34,883) land back inside their tier's normal spread instead of
 		outcosting nodes that are strictly more powerful.
 
+		Pass 9 (this one): audited every Tier 3 terminal and Tier 4 capstone
+		after the earlier growth-curve work. The prior passes mostly changed
+		CostGrowth, which cannot affect MaxLevel=1 upgrades at all. That left
+		branch-ending automation/auto-collection/double-proc abilities priced
+		at only 1,300-2,438 and the final +150% Essence Convergence at 8,125 --
+		far below both their prerequisite investment and their endgame power.
+		Tier 0-2 pacing is untouched. Tier 3 gateway ranks now begin in the
+		tens of thousands, terminal one-offs in the 35k-150k band based on
+		impact/effective rebirth gate, and cross-branch capstones at 750k-2.5m.
+		Storm Caller Ascension is a five-rank capstone rather than a one-off,
+		so its new 250k base still grows at the existing 1.61 curve to remain a
+		multi-million endgame sink. See section 49 of NEW_SYSTEMS.md for the
+		exact before/after audit.
+
 	PLAYER DATA SHAPE (you supply/store this however you like - DataStore, profile service, etc):
 
 		playerData = {
@@ -168,7 +182,7 @@ local Upgrades = {
 		Id = "orb_vitality_3", Name = "Orb Vitality III",
 		Description = "The orb's core becomes near-unbreakable, granting a massive max HP surge.",
 		Branch = "OrbCore", Tier = 3, Prerequisites = {"orb_vitality_2"}, RebirthRequired = 3,
-		MaxLevel = 10, BaseCost = {EarthEssence = 1880}, CostGrowth = 1.52,
+		MaxLevel = 10, BaseCost = {EarthEssence = 12500}, CostGrowth = 1.52,
 		EffectType = "OrbMaxHP", EffectPerLevel = 700,
 	},
 	{
@@ -203,7 +217,7 @@ local Upgrades = {
 		Id = "overload_shots", Name = "Overload Shots",
 		Description = "One-off: clicking has a chance to trigger a bonus overload wave of extra orbs.",
 		Branch = "OrbCore", Tier = 3, Prerequisites = {"shatter_force_2"}, RebirthRequired = 2,
-		MaxLevel = 1, BaseCost = {EarthEssence = 1625}, CostGrowth = 1,
+		MaxLevel = 1, BaseCost = {EarthEssence = 35000}, CostGrowth = 1,
 		EffectType = "OverloadWaveChance", EffectPerLevel = 0.15, -- 15% chance
 	},
 	{
@@ -217,7 +231,7 @@ local Upgrades = {
 		Id = "core_resilience", Name = "Core Resilience",
 		Description = "One-off: the orb's core never truly fails, always trickling out a slow shot even at 0 HP.",
 		Branch = "OrbCore", Tier = 3, Prerequisites = {"orb_regen_2"}, RebirthRequired = 3,
-		MaxLevel = 1, BaseCost = {EarthEssence = 1463}, CostGrowth = 1,
+		MaxLevel = 1, BaseCost = {EarthEssence = 50000}, CostGrowth = 1,
 		EffectType = "NeverFullyDepleted", EffectPerLevel = 1,
 	},
 
@@ -273,7 +287,7 @@ local Upgrades = {
 		Id = "essence_magnet_field", Name = "Essence Magnet Field",
 		Description = "One-off: essence within your collection radius is gathered automatically, no hover required.",
 		Branch = "Collection", Tier = 3, Prerequisites = {"magnetic_pull_2"}, RebirthRequired = 3,
-		MaxLevel = 1, BaseCost = {EarthEssence = 1788}, CostGrowth = 1,
+		MaxLevel = 1, BaseCost = {EarthEssence = 150000}, CostGrowth = 1,
 		EffectType = "AutoCollectInRadius", EffectPerLevel = 1,
 	},
 	{
@@ -303,7 +317,7 @@ local Upgrades = {
 		Id = "critical_chance_3", Name = "Critical Chance III",
 		Description = "Attunes you deeply to critical essence, making crits a frequent occurrence.",
 		Branch = "Critical", Tier = 3, Prerequisites = {"critical_chance_2"}, RebirthRequired = 3,
-		MaxLevel = 10, BaseCost = {EarthEssence = 3126}, CostGrowth = 1.55,
+		MaxLevel = 10, BaseCost = {EarthEssence = 20000}, CostGrowth = 1.55,
 		EffectType = "CritChance", EffectPerLevel = 0.03,
 	},
 	{
@@ -324,14 +338,14 @@ local Upgrades = {
 		Id = "double_crit", Name = "Double Crit",
 		Description = "One-off: a critical hit has a chance to immediately trigger a second critical.",
 		Branch = "Critical", Tier = 3, Prerequisites = {"guaranteed_crit_streak"}, RebirthRequired = 3,
-		MaxLevel = 1, BaseCost = {EarthEssence = 2438}, CostGrowth = 1,
+		MaxLevel = 1, BaseCost = {EarthEssence = 150000}, CostGrowth = 1,
 		EffectType = "DoubleCritChance", EffectPerLevel = 0.25, -- 25% chance to double-proc
 	},
 	{
 		Id = "guaranteed_crit_streak", Name = "Guaranteed Crit Streak",
 		Description = "Every so many clicks is guaranteed to critical, and the streak needed shrinks per level.",
 		Branch = "Critical", Tier = 3, Prerequisites = {"critical_chance_3"}, RebirthRequired = 4,
-		MaxLevel = 5, BaseCost = {EarthEssence = 5000}, CostGrowth = 1.7,
+		MaxLevel = 5, BaseCost = {EarthEssence = 50000}, CostGrowth = 1.7,
 		EffectType = "GuaranteedCritEveryNClicksReduction", EffectPerLevel = 3, -- reduces N by 3 per level
 	},
 
@@ -382,14 +396,14 @@ local Upgrades = {
 		Id = "manual_storm_summon", Name = "Manual Storm Summon",
 		Description = "One-off: unlocks a button to summon an essence storm on demand (its own cooldown).",
 		Branch = "Storm", Tier = 3, Prerequisites = {"storm_mastery"}, RebirthRequired = 2,
-		MaxLevel = 1, BaseCost = {EarthEssence = 1300}, CostGrowth = 1,
+		MaxLevel = 1, BaseCost = {EarthEssence = 125000}, CostGrowth = 1,
 		EffectType = "UnlockManualStorm", EffectPerLevel = 1,
 	},
 	{
 		Id = "storm_mastery", Name = "Storm Mastery",
 		Description = "Storms gain a chance to turn golden, showering down massively multiplied essence.",
 		Branch = "Storm", Tier = 3, Prerequisites = {"storm_intensity_2"}, RebirthRequired = 4,
-		MaxLevel = 8, BaseCost = {EarthEssence = 4376}, CostGrowth = 1.61,
+		MaxLevel = 8, BaseCost = {EarthEssence = 35000}, CostGrowth = 1.61,
 		EffectType = "GoldenStormChance", EffectPerLevel = 0.05,
 	},
 
@@ -424,16 +438,16 @@ local Upgrades = {
 	},
 	{
 		Id = "rebirth_echo", Name = "Rebirth Echo",
-		Description = "One-off: retain a portion of your essence when you rebirth instead of losing them.",
+		Description = "One-off: retain 15% of both Earth and Shadow Essence when you rebirth.",
 		Branch = "Rebirth", Tier = 3, Prerequisites = {"rebirth_insight_2"}, RebirthRequired = 3,
-		MaxLevel = 1, BaseCost = {EarthEssence = 2275}, CostGrowth = 1,
+		MaxLevel = 1, BaseCost = {EarthEssence = 100000}, CostGrowth = 1,
 		EffectType = "RebirthRetainPercent", EffectPerLevel = 0.15, -- keep 15% of essence
 	},
 	{
 		Id = "ascension_insight", Name = "Ascension Insight",
 		Description = "Each rebirth grants a bonus amount of Prestige Shards (the currency spent in the Prestige Shop) alongside the usual boost.",
 		Branch = "Rebirth", Tier = 3, Prerequisites = {"rebirth_bonus_2","rebirth_bonus_1"}, RebirthRequired = 5,
-		MaxLevel = 6, BaseCost = {EarthEssence = 5626}, CostGrowth = 1.61,
+		MaxLevel = 6, BaseCost = {EarthEssence = 75000}, CostGrowth = 1.61,
 		EffectType = "BonusRebirthCurrency", EffectPerLevel = 1,
 	},
 
@@ -470,7 +484,7 @@ local Upgrades = {
 		Id = "automation_core", Name = "Automation Core",
 		Description = "One-off: the orb periodically fires on its own, without needing a click.",
 		Branch = "Passive", Tier = 3, Prerequisites = {"offline_harvest_2","idle_drips_2"}, RebirthRequired = 2,
-		MaxLevel = 1, BaseCost = {EarthEssence = 1544}, CostGrowth = 1,
+		MaxLevel = 1, BaseCost = {EarthEssence = 75000}, CostGrowth = 1,
 		EffectType = "UnlockAutoClick", EffectPerLevel = 1,
 	},
 	{
@@ -495,21 +509,21 @@ local Upgrades = {
 		Branch = "Capstone", Tier = 4,
 		Prerequisites = {"twin_orb_manifestation","automation_core","orb_vitality_3", "double_crit", "storm_mastery", "rebirth_bonus_2","essence_magnet_field","orb_regen_2","overload_shots"},
 		RebirthRequired = 5,
-		MaxLevel = 1, BaseCost = {EarthEssence = 8125}, CostGrowth = 1,
+		MaxLevel = 1, BaseCost = {EarthEssence = 2500000}, CostGrowth = 1,
 		EffectType = "GlobalEssenceMultiplier", EffectPerLevel = 1.5, -- +150%
 	},
 	{
 		Id = "twin_orb_manifestation", Name = "Twin Orb Manifestation",
 		Description = "One-off: manifests a second Essence Orb alongside the first, doubling click yield sources.",
 		Branch = "Capstone", Tier = 4, Prerequisites = {"overload_shots","orb_vitality_3"}, RebirthRequired = 5,
-		MaxLevel = 1, BaseCost = {EarthEssence = 9750}, CostGrowth = 1,
+		MaxLevel = 1, BaseCost = {EarthEssence = 750000}, CostGrowth = 1,
 		EffectType = "UnlockSecondOrb", EffectPerLevel = 1,
 	},
 	{
 		Id = "storm_caller_ascension", Name = "Storm Caller Ascension",
 		Description = "Passive essence storms begin summoning themselves automatically, no cooldown consumed.",
 		Branch = "Capstone", Tier = 4, Prerequisites = {"manual_storm_summon","storm_frequency_2"}, RebirthRequired = 4,
-		MaxLevel = 5, BaseCost = {EarthEssence = 4875}, CostGrowth = 1.61,
+		MaxLevel = 5, BaseCost = {EarthEssence = 250000}, CostGrowth = 1.61,
 		EffectType = "AutoStormChancePerMinute", EffectPerLevel = 0.15,
 	},
 }

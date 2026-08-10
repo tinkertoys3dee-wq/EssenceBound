@@ -85,6 +85,7 @@ local EXCLUDED_SCREENS = {
 	LoadingScreen = true,
 	WheelPanel = true,
 	ProphecyPanel = true,
+	EssenceStormVisuals = true,
 }
 
 local SKIP_WORDS = {
@@ -132,6 +133,10 @@ local function screenFor(instance)
 end
 
 local function accentFor(instance, fallback)
+	local explicitAccent = instance:GetAttribute("AstralAccentColor")
+	if typeof(explicitAccent) == "Color3" then
+		return explicitAccent
+	end
 	local screenGui = screenFor(instance)
 	local screenAccent = screenGui and SCREEN_ACCENTS[screenGui.Name]
 	return AstralVisuals.GetAccent(instance.Name, screenAccent or fallback or T.Gold)

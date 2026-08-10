@@ -47,6 +47,17 @@ local ZonesConfig = {}
 
 ZonesConfig.DedicatedEssenceGamepassId = 1907077899
 
+-- The actual collectible-orb art used by OrbClicker.client.luau. Zone cards
+-- and the travel reveal read this mapping so the preview a player sees is
+-- the same essence orb that falls after arrival, not a lookalike emoji.
+-- Earthen Grove still leaves LargeOrb.Image itself Studio-authored (see its
+-- zone entry below); this table is specifically the explicit menu/transition
+-- preview for each zone's specialty essence.
+ZonesConfig.EssenceOrbImages = {
+	["Earth Essence"] = "rbxassetid://79479049281587",
+	["Shadow Essence"] = "rbxassetid://106130917603943",
+}
+
 -- The one essence type LuckGamepassConfig's multiplier applies to -- see
 -- that module's own header for why "rarer essences" means this one
 -- specifically rather than a generic highest-Rarity lookup.
@@ -62,6 +73,8 @@ ZonesConfig.Zones = {
 		Icon = "🌍",
 		Description = "The grove you started in. Leans Earth Essence, but Shadow still turns up.",
 		Color = Color3.fromRGB(120, 200, 110),
+		SpecialtyEssence = "Earth Essence",
+		EssenceOrbImage = ZonesConfig.EssenceOrbImages["Earth Essence"],
 		UnlockCost = 0, -- always unlocked
 		BaseWeights = { ["Earth Essence"] = 82, ["Shadow Essence"] = 18 },
 		AmplifiedWeights = { ["Earth Essence"] = 92, ["Shadow Essence"] = 8 }, -- w/ Dedicated Essence
@@ -76,12 +89,14 @@ ZonesConfig.Zones = {
 		Icon = "🌑",
 		Description = "A fog-choked hollow. Leans Shadow Essence, but Earth still turns up.",
 		Color = Color3.fromRGB(150, 90, 220),
+		SpecialtyEssence = "Shadow Essence",
+		EssenceOrbImage = ZonesConfig.EssenceOrbImages["Shadow Essence"],
 		UnlockCost = 300,
 		BaseWeights = { ["Earth Essence"] = 18, ["Shadow Essence"] = 82 },
 		AmplifiedWeights = { ["Earth Essence"] = 8, ["Shadow Essence"] = 92 },
 		-- ZoneAmbience applies this to the giant center orb on every switch
 		-- (including initial spawn into an already-selected Shadow zone).
-		OrbImage = "rbxassetid://106130917603943",
+		OrbImage = ZonesConfig.EssenceOrbImages["Shadow Essence"],
 	},
 }
 

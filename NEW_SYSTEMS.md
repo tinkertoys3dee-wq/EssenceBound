@@ -374,12 +374,13 @@ rather than a number that never mattered.
 The automatic Essence Storm (every 5 minutes minimum, even at zero
 upgrades — so most sessions that clear the first few minutes will see
 one) used to land as nothing but a text label quietly updating in the
-corner. It's the game's biggest recurring free-bonus moment and was
-landing completely flat. Now gets a screen flash, a big "⚡ ESSENCE
-STORM! ⚡" (or "✨ GOLDEN STORM! ✨") callout, and a distinct sound —
-golden storms ring at a higher pitch so the rarer version is audibly
-distinct before the label is even read. Purely cosmetic; the storm's
-actual duration, spawn rate and golden roll are untouched.
+corner. Its first flash/callout pass fixed the silence; section 47 now
+supersedes that small treatment with a complete storm-eye arrival,
+persistent weather layer, lightning, energy rain, real Earth/Shadow orb
+previews, comet-tailed collectibles and a distinct exit. Golden storms
+receive their own stronger palette and sound. This remains purely
+cosmetic; duration, spawn rate, collection validation, payouts and the
+server's golden roll are untouched.
 
 All rewards scale with rebirth count, so they stay meaningful for a
 returning player without breaking a new one. Everything pays out in
@@ -2321,6 +2322,121 @@ loading screen keeps its separate horror presentation, and Prophecy/Wheel are
 excluded from the global decorator because they already are the benchmark and
 double-applying the shared effects would only add noise.
 
+## 46. Zone travel is now a real attunement sequence, with exact orb previews
+
+The Zones picker now shows the actual collectible-orb artwork beside every
+zone instead of using only a generic colored emoji circle. `ZonesConfig`
+owns the shared mapping (`79479049281587` for Earth Essence and
+`106130917603943` for Shadow Essence), and each zone declares its specialty
+and preview image. The same value feeds its card and full-screen reveal, so
+the menu cannot drift away from what the player collects after arriving.
+Earthen Grove's central great-orb image remains Studio-authored and is still
+restored from the value captured at load; the explicit Earth asset is used
+only where a deterministic menu/transition preview is required.
+
+Each card now has a zone-colored pedestal, soft aura, illuminated orbit,
+specialty pill and exact orb image. The current zone receives a stronger
+resonance state, while opening the picker gives both orbs one finite,
+staggered materialization and ring turn. `AstralAccentColor` lets the shared
+visual pass honor each card's green/purple identity instead of repainting
+both with the panel's generic cyan accent.
+
+Confirmed travel now closes two destination-colored energy gates over the
+old scene, blocks click-through, resolves the new orb inside counter-rotating
+portal rings, drives an attunement meter through three readable states, and
+releases through streaks, rings, motes, flashes and a clean arrival beat.
+All delayed work is guarded by a transition token, all movement is finite
+TweenService work, and the cinematic still starts only after the server has
+accepted the unlock/switch. A rejected or unaffordable request never plays a
+fake success transition.
+
+## 47. Essence Storms now feel like the sky has actually opened
+
+`StormVisuals.client.luau` is a new presentation-only director listening to
+the existing authoritative `StormStart` / `StormEnd` remote. A storm now
+opens a dual-essence eye at the top of the screen, orbiting the real Earth and
+Shadow orb art inside counter-rotating runes. A responsive arrival chamber
+announces normal or golden weather, then clears so it never hides the drops.
+The persistent layer adds a restrained screen grade, charged cloud ceiling,
+edge haze, pooled colored energy rain, occasional self-cleaning lightning,
+portal pulses and a dedicated subsiding sequence. Buying/forcing more storm
+time while one is active gets a separate surge beat instead of replaying the
+whole entrance.
+
+Normal storms use a cyan/green/purple dual-essence palette; golden storms
+change the entire eye, rain, lightning, flash intensity, particles and audio
+to gold/amber/white. The atmosphere root is inactive and cannot consume
+input. Twenty-four rain streaks are created once and recycled, lightning is
+Debris-cleaned, only three inexpensive rotation tweens persist while the
+event is active, and a storm token immediately invalidates stale callbacks
+on end. `EssenceStormVisuals` is excluded from the global decorator because
+it already owns a complete custom visual language.
+
+The drops were upgraded too: every falling orb now carries a type-colored
+aura and counter-rotated comet tail, with sparse cloud-line emission ripples;
+crit and golden variants remain visually stronger. The existing active timer
+was also using the 300-second cooldown as its denominator, so a fresh
+60-second storm incorrectly appeared only 20% full. It now uses the confirmed
+duration in the server payload and correctly labels the mixed event
+"ESSENCE STORM" rather than "EARTH STORM." Reward math, spawn interval,
+orb cap, server collection checks and golden multipliers were not changed.
+
+## 48. Rebirth now resets Shadow Essence too
+
+`RebirthHandler.PerformRebirth` now resets both spendable essence balances in
+one server-authoritative transaction. Shadow Essence previously survived in
+full while Earth Essence and the Earth upgrade tree reset, creating a prestige
+loophole. Rebirth Echo's retention percentage now applies consistently to
+both balances: without Echo both become zero; with its 15% level, both retain
+15% (floored). Both leaderstat quantities, mirrored player attributes,
+PlayerData quantities and saved-EPM baselines are updated together.
+
+`LifetimeShadowEssence` deliberately does not reset—it is a permanent earned
+total used by the Sanctum multiplier—and purchased Sanctum/Prestige upgrades
+still survive. The fix removes hoarded spendable currency without erasing the
+permanent progression Shadow Essence already bought.
+
+## 49. End-branch upgrades are priced like endgame upgrades now
+
+The late-tree audit found why the most powerful nodes stayed cheap through
+eight previous balance passes: most of those passes raised `CostGrowth`, but
+growth never runs on a `MaxLevel = 1` purchase. Auto Collection therefore
+cost only 1,788, Automation Core 1,544, Manual Storm 1,300, Double Crit 2,438,
+and the ultimate +150% Essence Convergence only 8,125. Their prices were
+closer to another rebirth than to permanent-feeling branch conclusions.
+
+Tier 0–2 was left completely unchanged so first purchases and midgame routing
+keep the pacing already tuned in passes 1–8. Tier 3 gateway ranks received a
+smaller tens-of-thousands floor; terminal automation/double-proc/retention
+abilities received a 35k–150k floor according to power and effective rebirth
+gate; cross-branch capstones now start at 750k. Convergence is the final node
+with nine prerequisites and now costs 2.5m. Storm Caller retains its existing
+1.61 growth across five ranks, so its 250k opener becomes a 4,023,591 total
+endgame sink rather than a 78,460 branch that could be casually cleared.
+
+| Upgrade | Old first price | New first price | New cost to max |
+|---|---:|---:|---:|
+| Orb Vitality III | 1,880 | 12,500 | 1,558,457 |
+| Overload Shots | 1,625 | 35,000 | 35,000 |
+| Core Resilience | 1,463 | 50,000 | 50,000 |
+| Essence Magnet Field (auto-collect) | 1,788 | 150,000 | 150,000 |
+| Critical Chance III | 3,126 | 20,000 | 2,874,249 |
+| Double Crit | 2,438 | 150,000 | 150,000 |
+| Guaranteed Crit Streak | 5,000 | 50,000 | 942,755 |
+| Storm Mastery | 4,376 | 35,000 | 2,532,895 |
+| Manual Storm Summon | 1,300 | 125,000 | 125,000 |
+| Rebirth Echo | 2,275 | 100,000 | 100,000 |
+| Ascension Insight | 5,626 | 75,000 | 2,018,395 |
+| Automation Core | 1,544 | 75,000 | 75,000 |
+| Twin Orb Manifestation | 9,750 | 750,000 | 750,000 |
+| Storm Caller Ascension | 4,875 | 250,000 | 4,023,591 |
+| Essence Convergence | 8,125 | 2,500,000 | 2,500,000 |
+
+No effect, maximum level, prerequisite, rebirth gate or early/midgame price
+changed. `TreeUpgrades` remains the one source read by both the tooltip and
+the server purchase path, so the newly displayed costs are exactly what gets
+deducted.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
@@ -2605,6 +2721,46 @@ double-applying the shared effects would only add noise.
     minutes and watch Studio's client performance: hidden panels should not
     keep visibly animating, button clicks should still invoke their original
     actions exactly once, and Output should remain free of new UI errors.
+28. **Zone orb cards + attunement travel (section 46)** -- open Zones on both
+    desktop and a narrow phone emulator. Earthen Grove must show the green
+    Earth collectible and Shadowfen the purple Shadow collectible, each with
+    its own pedestal/orbit/specialty pill and without touching the card edge,
+    description or action button. Travel both directions. Confirm the gates
+    fully cover every corner, input is blocked only during the cinematic, the
+    portal uses the destination's matching orb/color, all three status beats
+    and the meter are readable, and controls work again immediately after the
+    reveal. Rapidly reopen/close the picker afterward and confirm no stale
+    callback hides the HUD or replays an old destination.
+29. **Essence Storm spectacle (section 47)** -- use Manual Storm Summon or a
+    server-side forced storm. The active bar should start full, say ESSENCE
+    STORM, and drain against the real duration. Confirm the storm eye contains
+    both exact orb images, its banner clears quickly, rain/lightning/tint do
+    not block any HUD or falling-orb click, and Earth/Shadow drops have the
+    matching aura/tail. End the storm and verify every persistent visual fades
+    away. Force another storm while one is already active to check the shorter
+    SURGE treatment. For golden QA, temporarily force `isGolden = true` in
+    `StormController:_startStorm`, confirm the complete gold palette and
+    stronger entrance, then revert that temporary test edit. Let one full
+    storm run with the mobile performance graph open: pooled streak count must
+    stay flat and Output must remain clean.
+30. **Shadow Essence rebirth reset (section 48)** -- seed a test account with
+    enough Earth Essence to rebirth and a visible Shadow balance. With no
+    Rebirth Echo, perform a real rebirth and confirm both leaderstats and both
+    `EarthEssence`/`ShadowEssence` player attributes become 0. Repeat with
+    `rebirth_echo` level 1 and confirm both retain exactly 15% (floored).
+    Before/after each attempt, compare `LifetimeShadowEssence` and a purchased
+    Sanctum level: neither permanent value may decrease, while both spendable
+    `PlayerData.Essences[*].Quantity` values must match their displayed
+    leaderstats after the transaction and after a rejoin.
+31. **Endgame price audit (section 49)** -- inspect every Tier 3/4 node in
+    the upgrade tooltip and compare it to the table above. Essence Magnet
+    Field must show 150K, Twin Orb 750K and final Convergence 2.5M; buying a
+    test node must deduct that exact displayed amount once. Check one Tier 1
+    and Tier 2 route as a regression guard—their prices must be unchanged.
+    For a leveled late node such as Storm Caller, buy successive ranks and
+    confirm the existing growth still advances the price rather than leaving
+    every rank at its new base. Finally rebirth and verify the nodes reset as
+    before; this pass changes cost only, not the tree's reset contract.
 
 ## ⚠️ One thing to be careful about
 
