@@ -28,6 +28,22 @@ local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local requestPurchase
+local analyticsRemote
+local queuedAnalyticsEvents = {}
+
+local function trackStoreAction(action, offerId, source)
+	if analyticsRemote then
+		analyticsRemote:FireServer(action, offerId, source)
+		return
+	end
+
+	-- The store is intentionally available before its remotes finish
+	-- replicating. Preserve the first few funnel events during that window
+	-- rather than making slow clients invisible in conversion analytics.
+	if #queuedAnalyticsEvents < 12 then
+		table.insert(queuedAnalyticsEvents, { action, offerId, source })
+	end
+end
 
 -- Store presentation must not disappear just because the server-side remote
 -- is a few replication frames late. Resolve it independently; BUY gives a
@@ -39,6 +55,17 @@ task.spawn(function()
 		or remotes:WaitForChild("RequestPurchase", 20))
 	if not requestPurchase then
 		warn("MonetizationStore: RequestPurchase remote unavailable -- market remains visible but checkout is disabled.")
+	end
+
+	analyticsRemote = remotes and (remotes:FindFirstChild("MonetizationAnalytics")
+		or remotes:WaitForChild("MonetizationAnalytics", 20))
+	if analyticsRemote then
+		for _, event in ipairs(queuedAnalyticsEvents) do
+			analyticsRemote:FireServer(event[1], event[2], event[3])
+		end
+		table.clear(queuedAnalyticsEvents)
+	else
+		warn("MonetizationStore: analytics remote unavailable -- checkout remains enabled.")
 	end
 end)
 
@@ -301,6 +328,31 @@ local trustText = new("TextLabel", {
 }, trustPill)
 constrainText(trustText, 7, 11)
 
+local supporterPill = new("Frame", {
+	Name = "SupporterBlessing",
+	Position = UDim2.fromScale(0.55, 0.73),
+	Size = UDim2.fromScale(0.35, 0.18),
+	BackgroundColor3 = Color3.fromRGB(92, 60, 27),
+	ZIndex = 205,
+}, header)
+corner(supporterPill, UDim.new(1, 0))
+local supporterStroke = stroke(supporterPill, THEME.AccentLight, 1, 0.2)
+new("UIPadding", {
+	PaddingLeft = UDim.new(0, 7),
+	PaddingRight = UDim.new(0, 7),
+}, supporterPill)
+local supporterText = new("TextLabel", {
+	Size = UDim2.fromScale(1, 1),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	Text = "",
+	TextColor3 = THEME.AccentLight,
+	TextScaled = true,
+	TextWrapped = true,
+	ZIndex = 206,
+}, supporterPill)
+constrainText(supporterText, 5, 10)
+
 local closeButton = new("TextButton", {
 	Name = "CloseButton",
 	AnchorPoint = Vector2.new(1, 0),
@@ -398,10 +450,102 @@ local currentCategory = "Featured"
 local cardsById = {}
 local productInfoById = {}
 local locallyOwnedPasses = {}
+local personalizedRankById = {}
+local bestValueById = {}
 local pendingOfferId = nil
 local storeOpen = false
 local storeOpenedThisSession = false
 local selectedOfferId = nil
+local currentOpenSource = "Unknown"
+local viewedOfferIds = {}
+local firstPurchaseClaimed = player:GetAttribute("FirstPurchaseBonusClaimed") == true
+local storeBadgeLabels = {}
+
+local function featuredDisplayOrder(offer)
+	local rank = personalizedRankById[offer.Id]
+	if rank then
+		return rank
+	end
+	return 1000 + (offer.FeaturedOrder or 999)
+end
+
+local function recalculateBestValues()
+	table.clear(bestValueById)
+	local bestByGroup = {}
+	for _, offer in ipairs(MonetizationConfig.Offers) do
+		local info = productInfoById[offer.Id]
+		local price = info and tonumber(info.PriceInRobux)
+		local amount = tonumber(offer.ValueAmount)
+		if offer.ValueGroup and price and price > 0 and amount and amount > 0 then
+			local score = amount / price
+			local previous = bestByGroup[offer.ValueGroup]
+			if not previous or score > previous.Score then
+				bestByGroup[offer.ValueGroup] = { Id = offer.Id, Score = score }
+			end
+		end
+	end
+	for _, result in pairs(bestByGroup) do
+		bestValueById[result.Id] = true
+	end
+end
+
+local function updateMerchandisingBadge(offer)
+	local refs = cardsById[offer.Id]
+	if not refs or not refs.ValueBadge then
+		return
+	end
+
+	local text
+	local color
+	if not firstPurchaseClaimed then
+		text = "FIRST BONUS"
+		color = THEME.Accent
+	elseif bestValueById[offer.Id] then
+		text = "BEST VALUE"
+		color = THEME.Green
+	elseif personalizedRankById[offer.Id] and personalizedRankById[offer.Id] <= 3 then
+		text = "FOR YOU"
+		color = Color3.fromRGB(184, 114, 255)
+	end
+
+	refs.ValueBadge.Visible = text ~= nil
+	if text then
+		refs.ValueBadge.BackgroundColor3 = color
+		refs.ValueBadgeText.Text = text
+		refs.ValueBadgeText.TextColor3 = color
+		refs.ValueBadgeStroke.Color = color
+	end
+end
+
+local function updateSupporterBonusUI()
+	if firstPurchaseClaimed then
+		supporterPill.BackgroundColor3 = Color3.fromRGB(29, 84, 61)
+		supporterStroke.Color = THEME.Green
+		supporterText.TextColor3 = THEME.Green
+		supporterText.Text = "✓ " .. MonetizationConfig.FirstPurchaseBonus.ClaimedText
+	else
+		supporterPill.BackgroundColor3 = Color3.fromRGB(92, 60, 27)
+		supporterStroke.Color = THEME.AccentLight
+		supporterText.TextColor3 = THEME.AccentLight
+		supporterText.Text = "1ST BUY  •  " .. MonetizationConfig.FirstPurchaseBonus.OfferText
+	end
+	for _, offer in ipairs(MonetizationConfig.Offers) do
+		updateMerchandisingBadge(offer)
+	end
+	for _, label in ipairs(storeBadgeLabels) do
+		if label.Parent then
+			label.Text = firstPurchaseClaimed and "R$" or "+10%"
+		end
+	end
+end
+
+local function trackOfferView(offer)
+	if not storeOpen or viewedOfferIds[offer.Id] then
+		return
+	end
+	viewedOfferIds[offer.Id] = true
+	trackStoreAction("OfferViewed", offer.Id, currentOpenSource)
+end
 
 local function isOwned(offer)
 	return locallyOwnedPasses[offer.Id] == true or MonetizationConfig.IsOwned(player, offer)
@@ -470,6 +614,7 @@ local function updateCard(offer)
 		refs.Buy.Text = priceText(info) .. "   •   BUY"
 		refs.Buy.TextColor3 = THEME.Void
 	end
+	updateMerchandisingBadge(offer)
 end
 
 local function requestOfferPurchase(offer)
@@ -480,18 +625,26 @@ local function requestOfferPurchase(offer)
 		showFooterMessage("Store connection is still loading • Please try again in a moment", THEME.Danger, 3)
 		return
 	end
+	trackOfferView(offer)
 	pendingOfferId = offer.Id
-	requestPurchase:FireServer(offer.Kind == "GamePass" and "gamepass" or "product", offer.Id)
+	if not analyticsRemote then
+		-- LogPrompt on the server will create the authoritative session. Do
+		-- not replay an older queued StoreOpened after checkout has started.
+		table.clear(queuedAnalyticsEvents)
+	end
+	requestPurchase:FireServer(
+		offer.Kind == "GamePass" and "gamepass" or "product",
+		offer.Id,
+		currentOpenSource
+	)
 end
 
-local function createOfferCard(offer)
+local function createOfferCard(offer, displayOrder)
 	local card = new("Frame", {
 		Name = "Offer_" .. tostring(offer.Id),
 		BackgroundColor3 = THEME.Panel,
 		BorderSizePixel = 0,
-		LayoutOrder = currentCategory == "Featured"
-			and (offer.FeaturedOrder or 999)
-			or offer.SortOrder,
+		LayoutOrder = displayOrder,
 		ZIndex = 205,
 	}, catalog)
 	corner(card, UDim.new(0, 15))
@@ -531,6 +684,32 @@ local function createOfferCard(offer)
 		ZIndex = 207,
 	}, tag)
 	constrainText(tagText, 7, 11)
+
+	local valueBadge = new("Frame", {
+		Name = "ValueBadge",
+		Position = UDim2.fromScale(0.69, 0.04),
+		Size = UDim2.fromScale(0.265, 0.095),
+		BackgroundColor3 = THEME.Accent,
+		BackgroundTransparency = 0.83,
+		Visible = false,
+		ZIndex = 206,
+	}, card)
+	corner(valueBadge, UDim.new(1, 0))
+	local valueBadgeStroke = stroke(valueBadge, THEME.Accent, 1, 0.25)
+	new("UIPadding", {
+		PaddingLeft = UDim.new(0, 5),
+		PaddingRight = UDim.new(0, 5),
+	}, valueBadge)
+	local valueBadgeText = new("TextLabel", {
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBlack,
+		Text = "",
+		TextColor3 = THEME.Accent,
+		TextScaled = true,
+		ZIndex = 207,
+	}, valueBadge)
+	constrainText(valueBadgeText, 6, 10)
 
 	local iconHolder = new("Frame", {
 		Name = "IconHolder",
@@ -654,6 +833,7 @@ local function createOfferCard(offer)
 		requestOfferPurchase(offer)
 	end)
 	card.MouseEnter:Connect(function()
+		trackOfferView(offer)
 		tween(cardStroke, TweenInfo.new(0.14), { Transparency = 0.08 }):Play()
 	end)
 	card.MouseLeave:Connect(function()
@@ -666,8 +846,12 @@ local function createOfferCard(offer)
 		Buy = buy,
 		IconImage = iconImage,
 		Symbol = symbol,
+		ValueBadge = valueBadge,
+		ValueBadgeText = valueBadgeText,
+		ValueBadgeStroke = valueBadgeStroke,
 	}
 	updateCard(offer)
+	updateMerchandisingBadge(offer)
 end
 
 local function clearCatalog()
@@ -692,7 +876,8 @@ local function renderCategory(category)
 	selectedOfferId = nil
 	clearCatalog()
 	for _, offer in ipairs(MonetizationConfig.GetOffers(category)) do
-		createOfferCard(offer)
+		local displayOrder = category == "Featured" and featuredDisplayOrder(offer) or offer.SortOrder
+		createOfferCard(offer, displayOrder)
 	end
 	catalog.CanvasPosition = Vector2.new(0, 0)
 	refreshTabs()
@@ -723,6 +908,20 @@ for order, category in ipairs({ "Featured", "Passes", "Boosts" }) do
 end
 
 renderCategory("Featured")
+updateSupporterBonusUI()
+
+player:GetAttributeChangedSignal("FirstPurchaseBonusClaimed"):Connect(function()
+	local claimed = player:GetAttribute("FirstPurchaseBonusClaimed") == true
+	local newlyClaimed = claimed and not firstPurchaseClaimed
+	firstPurchaseClaimed = claimed
+	updateSupporterBonusUI()
+
+	if newlyClaimed then
+		showFooterMessage("✓ Supporter Blessing unlocked • Permanent +10% essence is active", THEME.Green, 5)
+		Juice.Punch(Juice.GetScale(supporterPill), 0.2, 0.45)
+		Juice.PulseColor(supporterPill, THEME.Green, 0.8)
+	end
+end)
 
 -- Join-time ownership checks finish asynchronously on the server. Keep any
 -- card that is already on-screen honest when one of those attributes arrives,
@@ -730,7 +929,7 @@ renderCategory("Featured")
 for _, offer in ipairs(MonetizationConfig.Offers) do
 	if offer.Kind == "GamePass" then
 		local watchedOffer = offer
-		player:GetAttributeChangedSignal(watchedOffer.Id):Connect(function()
+		player:GetAttributeChangedSignal(MonetizationConfig.GetOwnershipAttribute(watchedOffer)):Connect(function()
 			updateCard(watchedOffer)
 		end)
 	end
@@ -767,6 +966,10 @@ local function focusOffer(offerId)
 	if not refs then
 		return
 	end
+	local offer = MonetizationConfig.GetOffer(offerId)
+	if offer then
+		trackOfferView(offer)
+	end
 
 	local maxScroll = math.max(0, catalog.AbsoluteCanvasSize.Y - catalog.AbsoluteWindowSize.Y)
 	local relativeY = refs.Card.AbsolutePosition.Y - catalog.AbsolutePosition.Y
@@ -784,11 +987,29 @@ local function focusOffer(offerId)
 	end)
 end
 
-local function openStore(offerId)
+local function leadingOfferId(category)
+	local leadingId
+	local leadingOrder = math.huge
+	for _, offer in ipairs(MonetizationConfig.GetOffers(category)) do
+		local order = category == "Featured" and featuredDisplayOrder(offer) or offer.SortOrder
+		if order < leadingOrder then
+			leadingOrder = order
+			leadingId = offer.Id
+		end
+	end
+	return leadingId
+end
+
+local function openStore(offerId, source)
 	storeOpenedThisSession = true
 	local activeSpotlight = screenGui:FindFirstChild("OfferSpotlight")
 	if activeSpotlight and activeSpotlight:IsA("GuiObject") then
 		activeSpotlight.Visible = false
+	end
+	local wasOpen = storeOpen
+	if not wasOpen then
+		currentOpenSource = tostring(source or (offerId and "Featured" or "Unknown"))
+		viewedOfferIds = {}
 	end
 	selectedOfferId = tonumber(offerId)
 	local offer = selectedOfferId and MonetizationConfig.GetOffer(selectedOfferId) or nil
@@ -798,6 +1019,18 @@ local function openStore(offerId)
 		renderCategory(category)
 	elseif currentCategory ~= "Featured" then
 		renderCategory("Featured")
+	end
+	-- renderCategory clears stale focus state for tab clicks; restore the
+	-- explicit deep-link target after that rebuild.
+	selectedOfferId = offer and offer.Id or nil
+
+	if not wasOpen then
+		local visibleOfferId = selectedOfferId or leadingOfferId(currentCategory)
+		trackStoreAction("StoreOpened", visibleOfferId, currentOpenSource)
+		if visibleOfferId then
+			-- BeginStoreSession records the first visible offer as step two.
+			viewedOfferIds[visibleOfferId] = true
+		end
 	end
 
 	if storeOpen then
@@ -870,9 +1103,60 @@ local function fetchProductInfo(offer)
 
 	if ok and type(info) == "table" then
 		productInfoById[offer.Id] = info
+		recalculateBestValues()
 		updateCard(offer)
+		for _, catalogOffer in ipairs(MonetizationConfig.Offers) do
+			updateMerchandisingBadge(catalogOffer)
+		end
 	end
 end
+
+local function refreshPersonalizedCatalog()
+	for _, offer in ipairs(MonetizationConfig.Offers) do
+		local refs = cardsById[offer.Id]
+		if refs then
+			if currentCategory == "Featured" then
+				refs.Card.LayoutOrder = featuredDisplayOrder(offer)
+			end
+			updateCard(offer)
+		end
+	end
+end
+
+-- Roblox ranks this exact catalog for the current player. If the service is
+-- unavailable (including older Studio builds), the authored FeaturedOrder
+-- remains intact and checkout behaves exactly as before.
+task.spawn(function()
+	local identifiers = {}
+	for _, offer in ipairs(MonetizationConfig.Offers) do
+		table.insert(identifiers, {
+			InfoType = MonetizationConfig.GetInfoType(offer),
+			Id = offer.Id,
+		})
+	end
+
+	local ok, rankedItems = pcall(function()
+		return MarketplaceService:RankProductsAsync(identifiers)
+	end)
+	if not ok or type(rankedItems) ~= "table" then
+		return
+	end
+
+	local nextRanks = {}
+	for rank, rankedItem in ipairs(rankedItems) do
+		local identifier = rankedItem.ProductIdentifier
+		local id = identifier and tonumber(identifier.Id)
+		if id and MonetizationConfig.GetOffer(id) then
+			nextRanks[id] = rank
+			if type(rankedItem.ProductInfo) == "table" then
+				productInfoById[id] = rankedItem.ProductInfo
+			end
+		end
+	end
+	personalizedRankById = nextRanks
+	recalculateBestValues()
+	refreshPersonalizedCatalog()
+end)
 
 -- Three workers avoid firing thirteen yield-heavy marketplace requests on
 -- one frame while still filling the catalog quickly.
@@ -979,12 +1263,13 @@ local function addStoreBadge(parent)
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamBlack,
-		Text = "R$",
+		Text = firstPurchaseClaimed and "R$" or "+10%",
 		TextColor3 = THEME.Void,
 		TextScaled = true,
 		ZIndex = badge.ZIndex + 1,
 	}, badge)
 	constrainText(label, 6, 10)
+	table.insert(storeBadgeLabels, label)
 end
 
 local function createFallbackStoreButton()
@@ -1016,7 +1301,7 @@ local function createFallbackStoreButton()
 	constrainText(button, 9, 15)
 	addButtonFeel(button, 1.05)
 	button.Activated:Connect(function()
-		openStore()
+		openStore(nil, "FallbackButton")
 	end)
 	addStoreBadge(holder)
 end
@@ -1038,7 +1323,7 @@ task.spawn(function()
 		if not trigger:GetAttribute("EssenceMarketBound") then
 			trigger:SetAttribute("EssenceMarketBound", true)
 			trigger.Activated:Connect(function()
-				openStore()
+				openStore(nil, "ShopButton")
 			end)
 		end
 		addStoreBadge(visualParent or trigger)
@@ -1187,10 +1472,19 @@ local function showSpotlight(offer)
 	spotlightOffer = offer
 	spotlightAnimationId += 1
 	local thisAnimation = spotlightAnimationId
+	spotlightEyebrow.Text = firstPurchaseClaimed
+		and "OPTIONAL POWER-UP"
+		or "FIRST PURCHASE BONUS INCLUDED"
 	spotlightAccent.BackgroundColor3 = offer.Accent
 	spotlightStroke.Color = offer.Accent
 	spotlightTitle.Text = offer.Headline
-	spotlightBenefit.Text = offer.Benefit
+	if firstPurchaseClaimed then
+		spotlightBenefit.Text = offer.Benefit
+	else
+		local bonus = MonetizationConfig.FirstPurchaseBonus
+		spotlightBenefit.Text = ("%s  Plus +%d%% essence forever and a %dm 1.5× boost.")
+			:format(offer.Benefit, bonus.PermanentPercent, math.floor(bonus.BoostSeconds / 60))
+	end
 	spotlightView.BackgroundColor3 = offer.Accent
 	spotlightPrice.TextColor3 = offer.Accent
 	spotlightPrice.Text = priceText(productInfoById[offer.Id])
@@ -1203,6 +1497,7 @@ local function showSpotlight(offer)
 	tween(spotlightScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
 		Scale = 1,
 	}):Play()
+	trackStoreAction("SpotlightShown", offer.Id, "Spotlight")
 
 	task.delay(MonetizationConfig.Spotlights.VisibleSeconds, function()
 		if spotlightAnimationId == thisAnimation and spotlight.Visible then
@@ -1216,7 +1511,8 @@ spotlightView.Activated:Connect(function()
 	local offer = spotlightOffer
 	hideSpotlight()
 	if offer then
-		openStore(offer.Id)
+		trackStoreAction("SpotlightClicked", offer.Id, "Spotlight")
+		openStore(offer.Id, "Spotlight")
 	end
 end)
 
@@ -1257,6 +1553,14 @@ local function chooseSpotlight(promptNumber)
 			if promptNumber > 1 or offer.FirstPurchaseFriendly then
 				local weight = tonumber(offer.SpotlightWeight) or 1
 				local price = info and tonumber(info.PriceInRobux)
+				local rank = personalizedRankById[offer.Id]
+				if rank then
+					local catalogSize = math.max(1, #MonetizationConfig.Offers)
+					weight *= 1 + math.max(0, catalogSize - rank + 1) / catalogSize
+				end
+				if not firstPurchaseClaimed and offer.FirstPurchaseFriendly then
+					weight *= 1.35
+				end
 				-- The first interest card leans toward approachable live prices,
 				-- but still uses weighted randomness so one item isn't repeated.
 				if promptNumber == 1 and price and price > 0 then

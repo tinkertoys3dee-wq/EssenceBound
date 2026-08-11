@@ -41,6 +41,9 @@
 	shared helper, so the displayed percentages remain the actual odds.
 ]]
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local MonetizationConfig = require(ReplicatedStorage:WaitForChild("MonetizationConfig"))
+
 local LuckGamepassConfig = {}
 
 LuckGamepassConfig.LuckyFinderGamepassId = 1907239833
@@ -54,10 +57,10 @@ LuckGamepassConfig.UltraLuckMultiplier = 2.0    -- combines with Lucky Finder's 
 -- STACKING with another, not two separate bonuses summing into one pool.
 function LuckGamepassConfig.GetRareEssenceMultiplier(player: Instance): number
 	local multiplier = 1
-	if player:GetAttribute(LuckGamepassConfig.LuckyFinderGamepassId) then
+	if player:GetAttribute(MonetizationConfig.GetOwnershipAttribute(LuckGamepassConfig.LuckyFinderGamepassId)) then
 		multiplier *= LuckGamepassConfig.LuckyFinderMultiplier
 	end
-	if player:GetAttribute(LuckGamepassConfig.UltraLuckGamepassId) then
+	if player:GetAttribute(MonetizationConfig.GetOwnershipAttribute(LuckGamepassConfig.UltraLuckGamepassId)) then
 		multiplier *= LuckGamepassConfig.UltraLuckMultiplier
 	end
 

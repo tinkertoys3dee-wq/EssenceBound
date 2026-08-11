@@ -31,6 +31,7 @@ local function formatNumber(value: number): string
 end
 
 local essenceMulti = require(game:GetService("ReplicatedStorage"):WaitForChild("EssenceMultiplier"))
+local MonetizationConfig = require(game:GetService("ReplicatedStorage"):WaitForChild("MonetizationConfig"))
 
 -- ============================================================
 -- CONFIG
@@ -447,8 +448,22 @@ local function loadPlayerData(player)
 		player:SetAttribute(string.gsub(name, "%s", ""), value)
 	end
 
-	for id, owned in pairs(data.Gamepasses) do
-		player:SetAttribute(tonumber(id), owned.Owned)
+	-- DataStore round-trips can stringify numeric dictionary keys. Collapse
+	-- both legacy forms into one string-keyed ownership table so a stale
+	-- default `false` entry can never overwrite a saved `true` attribute.
+	local normalizedGamepasses = {}
+	local savedGamepasses = type(data.Gamepasses) == "table" and data.Gamepasses or {}
+	for id, owned in pairs(savedGamepasses) do
+		local attribute = MonetizationConfig.GetOwnershipAttribute(id)
+		local wasOwned = type(owned) == "table" and owned.Owned == true
+		local existing = normalizedGamepasses[attribute]
+		normalizedGamepasses[attribute] = {
+			Owned = wasOwned or (existing and existing.Owned == true) or false,
+		}
+	end
+	data.Gamepasses = normalizedGamepasses
+	for attribute, owned in pairs(normalizedGamepasses) do
+		player:SetAttribute(attribute, owned.Owned)
 	end
 	
 	-- CriticalsController and NewPlayerLuckIndicator.client.luau both read
@@ -483,6 +498,11 @@ local function loadPlayerData(player)
 	player:SetAttribute("SeenFirstCrit", data.SeenFirstCrit)
 	player:SetAttribute("SeenFavoritePrompt", data.SeenFavoritePrompt)
 	player:SetAttribute("SeenWhatsNewVersion", tonumber(data.SeenWhatsNewVersion) or 0)
+	-- Live mirrors for the storefront and HUD. ProductPurchaseHandler owns
+	-- writes after a receipt succeeds; clients can only read these values.
+	player:SetAttribute("RobuxSpent", math.max(0, tonumber(data.RobuxSpent) or 0))
+	player:SetAttribute("PurchaseCount", math.max(0, math.floor(tonumber(data.PurchaseCount) or 0)))
+	player:SetAttribute("FirstPurchaseBonusClaimed", data.FirstPurchaseBonusClaimed == true)
 	
 	for name, level in pairs(data.Upgrades) do
 		player:SetAttribute(name, level)

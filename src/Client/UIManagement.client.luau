@@ -71,6 +71,16 @@ local Bar = essenceGui:WaitForChild("Frame")
 local Progress = Bar:WaitForChild("TextLabel")
 local PBar =  Bar:WaitForChild("Frame"):WaitForChild("Frame")
 
+local function UpdateRobuxSpent()
+	-- The server mirrors this attribute immediately after a successful
+	-- receipt. Fall back to the periodic data snapshot for older servers.
+	local liveAmount = player:GetAttribute("RobuxSpent")
+	if liveAmount == nil then
+		liveAmount = data.RobuxSpent
+	end
+	RobuxSpentText.Text = "Robux Spent : " .. tostring(math.max(0, tonumber(liveAmount) or 0))
+end
+
 local function UpdateStats()
 	local discovered = 0
 	local total = 0
@@ -78,7 +88,7 @@ local function UpdateStats()
 	RarestEssenceText.Text = "Rarest Essence : "..data.RarestEssence
 	RebirthsText.Text = "Rebirths : "..data.Rebirths
 	EssenceGatheredText.Text = "Essence Gathered : "..formatNumber(data.TotalEssenceGathered)
-	RobuxSpentText.Text = "Robux Spent : "..data.RobuxSpent
+	UpdateRobuxSpent()
 	CriticalEssenceText.Text = "Critical Essence : "..formatNumber(data.CriticalEssence)
 	UniqueEssencesText.Text = "Unique Essences : "..data.UniqueEssences
 	
@@ -353,6 +363,7 @@ UpdateTimer.Visible = false
 local updateValue = 60
 
 UpdateStats()
+player:GetAttributeChangedSignal("RobuxSpent"):Connect(UpdateRobuxSpent)
 
 -- =========================================================================
 -- GLOBAL BUTTON FEEL + SOUND

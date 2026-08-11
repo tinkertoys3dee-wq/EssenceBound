@@ -6,6 +6,7 @@ local IdleUpgrades = require(ReplicatedStorage:WaitForChild("IdleUpgrades"))
 local Criticals = require(ReplicatedStorage:WaitForChild("CriticalsController"))
 local GroupRewardConfig = require(ReplicatedStorage:WaitForChild("GroupRewardConfig"))
 local FriendBonusConfig = require(ReplicatedStorage:WaitForChild("FriendBonusConfig"))
+local MonetizationConfig = require(ReplicatedStorage:WaitForChild("MonetizationConfig"))
 -- Timed lookup with a graceful fallback, NOT a bare WaitForChild.
 --
 -- Every essence reward in the game flows through CalculateMultiplier. If
@@ -83,11 +84,18 @@ function EssenceMultiplier.CalculateMultiplier(plr, gold, crit, skipDoubleCritRo
 	if plr:GetAttribute("EssenceMultiplier") then
 		multiplier *= plr:GetAttribute("EssenceMultiplier")
 	end
-	if plr:GetAttribute(1907605899) then
+	if plr:GetAttribute(MonetizationConfig.GetOwnershipAttribute(1907605899)) then
 		multiplier *= 2
 	end
-	if plr:GetAttribute(1909291891) then
+	if plr:GetAttribute(MonetizationConfig.GetOwnershipAttribute(1909291891)) then
 		multiplier *= 1.5
+	end
+	-- One small permanent thank-you on the account's first successful
+	-- purchase. ProductPurchaseHandler owns this server-written attribute;
+	-- keeping the multiplier in shared config makes the storefront promise
+	-- and the actual economy effect impossible to drift apart.
+	if plr:GetAttribute("FirstPurchaseBonusClaimed") then
+		multiplier *= MonetizationConfig.FirstPurchaseBonus.PermanentMultiplier
 	end
 	if plr:GetAttribute("Rebirths") then
 		multiplier *= rebirthModule.CalculateTotalMultiplier(plr:GetAttribute("Rebirths"))

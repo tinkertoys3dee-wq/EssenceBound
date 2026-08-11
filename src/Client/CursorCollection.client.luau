@@ -14,6 +14,7 @@ local RP = game:GetService("ReplicatedStorage")
 local Remotes = RP:WaitForChild("Remotes")
 local CollectionUpgrades = require(RP:WaitForChild("CollectionUpgrades"))
 local EssenceConfig = require(RP:WaitForChild("EssenceConfig"))
+local MonetizationConfig = require(RP:WaitForChild("MonetizationConfig"))
 
 -- ============================================================
 -- CONFIG
@@ -536,7 +537,7 @@ local function CollectEffect(orb)
 	end)
 end
 local function watch(obj)
-	if player:GetAttribute(1907677938) then
+	if player:GetAttribute(MonetizationConfig.GetOwnershipAttribute(1907677938)) then
 		task.wait(.3)
 		CollectEffect(obj)
 	else

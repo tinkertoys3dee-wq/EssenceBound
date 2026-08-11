@@ -13,16 +13,30 @@
 local MonetizationConfig = {}
 
 MonetizationConfig.StoreTitle = "ESSENCE MARKET"
-MonetizationConfig.StoreSubtitle = "Permanent power and instant boosts"
+MonetizationConfig.StoreSubtitle = "Permanent power, instant boosts, and a supporter reward"
+
+-- Every account receives this exactly once, on its first successfully
+-- granted Robux purchase of any size. It makes the approachable first item
+-- meaningfully exciting without inventing a new product id or fake sale:
+-- the permanent bonus remains forever and the timed boost starts at grant.
+MonetizationConfig.FirstPurchaseBonus = {
+	Title = "SUPPORTER BLESSING",
+	PermanentMultiplier = 1.10,
+	PermanentPercent = 10,
+	BoostEffect = "EssenceX15",
+	BoostSeconds = 15 * 60,
+	OfferText = "+10% ESSENCE FOREVER  •  +15M 1.5× BOOST",
+	ClaimedText = "SUPPORTER BLESSING ACTIVE  •  PERMANENT +10% ESSENCE",
+}
 
 -- Interest cards never open Roblox's checkout by themselves. They offer a
 -- route into the store after the player has had time to understand the game.
 MonetizationConfig.Spotlights = {
 	MaximumPerSession = 2,
-	FirstDelayMin = 150,
-	FirstDelayMax = 240,
-	RepeatDelayMin = 330,
-	RepeatDelayMax = 480,
+	FirstDelayMin = 90,
+	FirstDelayMax = 150,
+	RepeatDelayMin = 360,
+	RepeatDelayMax = 540,
 	VisibleSeconds = 14,
 }
 
@@ -165,7 +179,9 @@ MonetizationConfig.Offers = {
 		Featured = true,
 		FeaturedOrder = 1,
 		FirstPurchaseFriendly = true,
-		SpotlightWeight = 8,
+		SpotlightWeight = 10,
+		ValueGroup = "PotionMinutes",
+		ValueAmount = 3,
 	},
 	{
 		Id = 3609555456,
@@ -182,6 +198,8 @@ MonetizationConfig.Offers = {
 		Featured = false,
 		FirstPurchaseFriendly = true,
 		SpotlightWeight = 6,
+		ValueGroup = "PotionMinutes",
+		ValueAmount = 15,
 	},
 	{
 		Id = 3609555497,
@@ -199,6 +217,8 @@ MonetizationConfig.Offers = {
 		FeaturedOrder = 8,
 		FirstPurchaseFriendly = false,
 		SpotlightWeight = 4,
+		ValueGroup = "PotionMinutes",
+		ValueAmount = 90,
 	},
 	{
 		Id = 3609555580,
@@ -233,6 +253,8 @@ MonetizationConfig.Offers = {
 		FeaturedOrder = 5,
 		FirstPurchaseFriendly = true,
 		SpotlightWeight = 7,
+		ValueGroup = "TimeWarpMinutes",
+		ValueAmount = 5,
 	},
 	{
 		Id = 3609555653,
@@ -249,6 +271,8 @@ MonetizationConfig.Offers = {
 		Featured = false,
 		FirstPurchaseFriendly = false,
 		SpotlightWeight = 4,
+		ValueGroup = "TimeWarpMinutes",
+		ValueAmount = 30,
 	},
 }
 
@@ -265,8 +289,17 @@ function MonetizationConfig.GetInfoType(offer)
 	return offer.Kind == "GamePass" and Enum.InfoType.GamePass or Enum.InfoType.Product
 end
 
+-- Roblox attribute APIs require a string key. Saved Gamepasses tables may
+-- contain numeric keys in fresh data and string keys after DataStore JSON
+-- round-trips, so every runtime reader/writer normalizes through this helper.
+function MonetizationConfig.GetOwnershipAttribute(offerOrId)
+	local id = type(offerOrId) == "table" and offerOrId.Id or offerOrId
+	return tostring(id)
+end
+
 function MonetizationConfig.IsOwned(player, offer)
-	return offer.Kind == "GamePass" and player:GetAttribute(offer.Id) == true
+	return offer.Kind == "GamePass"
+		and player:GetAttribute(MonetizationConfig.GetOwnershipAttribute(offer)) == true
 end
 
 function MonetizationConfig.GetOffers(category)

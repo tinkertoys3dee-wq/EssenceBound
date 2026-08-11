@@ -38,6 +38,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LuckGamepassConfig = require(ReplicatedStorage:WaitForChild("LuckGamepassConfig"))
 local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
+local MonetizationConfig = require(ReplicatedStorage:WaitForChild("MonetizationConfig"))
 
 local ZonesConfig = {}
 
@@ -188,7 +189,8 @@ end
 function ZonesConfig.GetEssenceWeightsForZone(zoneOrId, player)
 	local zone = type(zoneOrId) == "table" and zoneOrId or ZonesConfig.GetZoneById(zoneOrId)
 	zone = zone or ZonesConfig.Zones[1]
-	local owned = player and player:GetAttribute(ZonesConfig.DedicatedEssenceGamepassId) == true
+	local owned = player
+		and player:GetAttribute(MonetizationConfig.GetOwnershipAttribute(ZonesConfig.DedicatedEssenceGamepassId)) == true
 	local weights = (owned and zone.AmplifiedWeights) or zone.BaseWeights
 
 	-- Copied rather than returned directly -- callers are free to treat

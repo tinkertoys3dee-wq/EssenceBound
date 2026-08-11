@@ -1,8 +1,11 @@
 
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+
+local MonetizationConfig = require(ReplicatedStorage:WaitForChild("MonetizationConfig"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -392,12 +395,12 @@ local defaultNameStrokeColor = nameStroke.Color
 local defaultIconStrokeColor = iconStroke.Color
 
 local function refreshVipTreatment()
-	local ownsVip = player:GetAttribute(VIP_PASS_ID) == true
+	local ownsVip = player:GetAttribute(MonetizationConfig.GetOwnershipAttribute(VIP_PASS_ID)) == true
 	nameStroke.Color = ownsVip and Color3.fromRGB(255, 215, 0) or defaultNameStrokeColor
 	iconStroke.Color = ownsVip and Color3.fromRGB(255, 215, 0) or defaultIconStrokeColor
 end
 
-player:GetAttributeChangedSignal(VIP_PASS_ID):Connect(refreshVipTreatment)
+player:GetAttributeChangedSignal(MonetizationConfig.GetOwnershipAttribute(VIP_PASS_ID)):Connect(refreshVipTreatment)
 refreshVipTreatment()
 Icon.Image = game:GetService("Players"):GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420)
 name.Text = player.DisplayName

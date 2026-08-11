@@ -28,6 +28,13 @@ local DefaultPlayerData = {
 	WeeklyBaselineWeekNumber = 0,
 	WeeklyBaselineValue = 0,
 	RobuxSpent = 0,
+	PurchaseCount = 0,
+	-- Any successfully granted Robux purchase unlocks the Supporter Blessing
+	-- exactly once: permanent +10% essence plus a 15-minute 1.5x boost. The
+	-- pending flag lets ProductPurchaseHandler retry the timed portion if its
+	-- potion state was not ready at the exact instant a receipt arrived.
+	FirstPurchaseBonusClaimed = false,
+	FirstPurchaseBonusPending = false,
 	UniqueEssences = 0,
 	LastLeaveTime = 0,
 	ManualStormsSummoned = 0,
@@ -80,31 +87,31 @@ local DefaultPlayerData = {
 	},
 	Gamepasses = {
 		--Dedicated Essence
-		[1907077899] = {
+		["1907077899"] = {
 			Owned = false,
 		},
 		--Material Alchemist (Offline Collection)
-		[1907863864] = {
+		["1907863864"] = {
 			Owned = false,
 		},
 		--Auto Absorbtion
-		[1907677938] = {
+		["1907677938"] = {
 			Owned = false,
 		},
 		--Ultra Luck (+300%)
-		[1906063939] = {
+		["1906063939"] = {
 			Owned = false,
 		},
 		--Lucky Finder (+50% Luck)
-		[1907239833] = {
+		["1907239833"] = {
 			Owned = false,
 		},
 		--VIP Rank
-		[1909291891] = {
+		["1909291891"] = {
 			Owned = false,
 		},
 		--2x Essence Multiplier
-		[1907605899] = {
+		["1907605899"] = {
 			Owned = false,
 		},
 	},
