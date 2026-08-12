@@ -2501,6 +2501,71 @@ in `EssenceConfig.luau`. Every surface now resolves that uploaded artwork
 automatically. `EssenceVisuals` retains the matching native Roblox UI build as
 a fallback if the catalog id is deliberately cleared later.
 
+## 51. Essence Awakening -- the first eight minutes are now a designed journey
+
+New saves no longer fall out of the tutorial into an undirected grind. A
+persistent six-beat **Essence Awakening** begins alongside the tutorial,
+credits actions the player is already learning, then carries them through a
+minute-five power spike and an eight-minute finale:
+
+| Beat | Verified goal | Automatic reward |
+|---|---|---|
+| First Spark | Collect 3 orbs | 75 Earth |
+| Resonant Rhythm | Strike the great orb 20 times | 150 Earth |
+| Shape Your Power | Buy any upgrade | 300 Earth |
+| Touch the Veil | Find Shadow or reach 25 total collections | 250 Earth + 20 Shadow |
+| Read the Current | Roll a prophecy or reach 45 total collections | 500 Earth + 25 Shadow |
+| Awakening Rush | Collect 25 orbs after minute 5 | 1,000 Earth + 50 Shadow |
+
+At five active minutes the service turns on a personal 2× essence multiplier.
+It uses `FirstJourneyEssenceMultiplier`, independent from potions, Prophecy,
+Forge and global Rush effects, so overlapping timers multiply correctly and
+cannot erase one another. At eight active minutes, after the route is complete,
+the player receives 2,500 Earth, 100 Shadow, 5 Solar and a ten-minute 1.5×
+handoff boost. If someone learns slowly, the clock caps at 8:00 and the 2×
+rush stays active until their remaining objective is finished; the design
+rewards persistence instead of turning the deadline into a punishment.
+
+The clock counts online play only and persists across rejoins. The service
+observes the same gameplay remotes and server-written attributes as the real
+systems, rate-limits client-fired actions, applies OrbClickManager's collection
+validation boundary, advances stages on the server and grants every reward
+automatically. The template defaults `Eligible` to false; only
+`PlayerDataHandler`'s proven brand-new-save branch flips it true, so veterans
+whose older saves receive the merged fields never get misclassified or handed
+new-player currency.
+
+`FirstJourneyHud.client.luau` is code-built and intentionally occupies the
+lower-center gap above the relic timers rather than adding another right-rail
+button or covering the great orb. It waits until the tutorial is completed or
+skipped, has real inner padding, a collapsible compass, six milestone pips,
+live objective/reward copy, a locally smoothed server clock, stage-specific
+colors and sequenced reward effects. Minute five transforms the panel into a
+Solar rush state. The finale converges the real Earth/Shadow/Solar icon assets
+inside rotating rune rings, reveals the full cache, and hands the player back
+to normal play through **Begin Your Ascent**. Fast consecutive completions are
+queued, and the finale takes priority, so effects never pile into unreadable
+screen noise.
+
+The existing Robux interest-card loop and one-time favorite prompt now respect
+this arc too. Eligible newcomers do not receive either during minutes 1–8;
+the personalized interest card waits for both journey completion and a clear
+modal moment, while the favorite prompt leaves an additional 45-second
+breathing gap. Returning players keep their existing timing. This removes two
+competing calls-to-action from the most fragile part of the first session
+without deleting either conversion path.
+
+The tutorial Skip button also now persists `SeenTutorial = true`. Previously
+Skip only hid the current dialogue; the entire tutorial returned after every
+rejoin and any follow-up system waiting for tutorial completion remained
+blocked.
+
+Creator Hub receives a one-time start event, each stage reach, each retained
+minute from 1 through 8, the Rush, completion, and session-exit active time.
+Those calls are wrapped and observational only: analytics failure cannot block
+the clock, multiplier, save or reward. This makes the next retention pass
+answerable from real minute-by-minute drop-off instead of another guess.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole
@@ -2837,6 +2902,22 @@ a fallback if the catalog id is deliberately cleared later.
     Solar Wheel rewards, checking fixed 100 / 20-or-40 / 250 payouts rather
     than rebirth-scaled amounts. Finally rejoin after offline time: Solar may
     pay only after discovery and its saved EPM must remain inside 1–6/min.
+
+33. **Essence Awakening (section 51)** -- use a genuinely fresh DataStore key
+    (an old save is intentionally ineligible). Confirm the padded journey card
+    stays hidden during the tutorial, appears above the bottom relic bar after
+    finishing or skipping, and never covers the great orb or right navigation
+    at desktop and phone emulator widths. Complete each goal and verify its
+    exact reward lands once; rejoin midway and confirm the same stage, counters
+    and active-time clock resume rather than reset or advance offline. At 5:00,
+    collect before/after the transition and verify only the latter gain is 2×,
+    while an existing potion/prophecy still stacks. At 8:00, confirm the
+    Earth/Shadow/Solar convergence finale, exact 2,500/100/5 cache, and
+    ten-minute 1.5× potion. Finally, deliberately leave the last objective
+    unfinished at 8:00: the clock should hold, the Rush should remain, and the
+    finale should fire once the objective is completed. Rejoin after completion
+    and confirm neither the HUD nor any reward returns. Also skip the tutorial,
+    rejoin, and confirm the tutorial itself no longer comes back.
 
 ## ⚠️ One thing to be careful about
 

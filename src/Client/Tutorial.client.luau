@@ -1300,6 +1300,11 @@ skipButton.MouseButton1Click:Connect(function()
 		dialogueFrame.Visible = false
 	end)
 	currentStepIndex = #TUTORIAL_STEPS + 1
+	-- Skipping is a completed onboarding decision too. Previously only the
+	-- final Next button persisted SeenTutorial, so pressing Skip made the
+	-- whole tutorial return on every rejoin and also left follow-up newcomer
+	-- systems waiting forever for a completion flag that never arrived.
+	UpdData:FireServer(true, "=", "SeenTutorial")
 end)
 
 advanceSignal.Event:Connect(advanceTutorial)

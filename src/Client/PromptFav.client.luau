@@ -37,6 +37,23 @@ if player:GetAttribute("SeenFavoritePrompt") then
 	return
 end
 
+-- Minute five is now the new player's 2x Awakening Rush, followed by the
+-- eight-minute convergence finale. A platform prompt on top of either beat
+-- would interrupt the exact session arc this prompt is meant to help retain.
+-- Existing/returning players keep the original five-minute timing; only an
+-- eligible, unfinished newcomer waits for the journey handoff plus a short
+-- breathing gap (also separates this from the post-finale shop spotlight).
+local waitedForJourney = false
+while player:GetAttribute("FirstJourneyEligible") == true
+	and player:GetAttribute("FirstJourneyCompleted") ~= true
+do
+	waitedForJourney = true
+	task.wait(5)
+end
+if waitedForJourney then
+	task.wait(45)
+end
+
 pcall(function()
 	AvatarEditorService:PromptSetFavorite(game.PlaceId, Enum.AvatarItemType.Asset, true)
 end)

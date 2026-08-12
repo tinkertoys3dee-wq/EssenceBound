@@ -1539,6 +1539,33 @@ spotlightView.Activated:Connect(function()
 end)
 
 local shownSpotlights = {}
+local journeyCompletedAtClock = nil
+
+local function noteJourneyCompletion()
+	if player:GetAttribute("FirstJourneyEligible") == true
+		and player:GetAttribute("FirstJourneyCompleted") == true
+		and not journeyCompletedAtClock
+	then
+		journeyCompletedAtClock = os.clock()
+	end
+end
+
+player:GetAttributeChangedSignal("FirstJourneyEligible"):Connect(noteJourneyCompletion)
+player:GetAttributeChangedSignal("FirstJourneyCompleted"):Connect(noteJourneyCompletion)
+noteJourneyCompletion()
+
+local function newcomerJourneyIsActive()
+	if player:GetAttribute("FirstJourneyEligible") ~= true then
+		return false
+	end
+	if player:GetAttribute("FirstJourneyCompleted") ~= true then
+		return true
+	end
+	-- The attribute flips just before the finale RemoteEvent arrives. This
+	-- grace closes the tiny race where a ten-second polling check could pass
+	-- in that gap and show a spotlight milliseconds before the modal exists.
+	return journeyCompletedAtClock ~= nil and os.clock() - journeyCompletedAtClock < 12
+end
 
 local function modalIsBusy()
 	if storeOpen or spotlight.Visible then
@@ -1549,6 +1576,15 @@ local function modalIsBusy()
 		menuOpen = GuiService.MenuIsOpen
 	end)
 	if menuOpen then
+		return true
+	end
+
+	-- Essence Awakening's eight-minute convergence is intentionally modal
+	-- but is not named "Backdrop" like the regular panels below. Treat it
+	-- explicitly as busy so a Robux interest card can never slide over the
+	-- most important new-player payoff in the session.
+	local journeyGui = playerGui:FindFirstChild("FirstJourneyHud")
+	if journeyGui and journeyGui:FindFirstChild("AwakeningFinale", true) then
 		return true
 	end
 
@@ -1607,11 +1643,18 @@ local function chooseSpotlight(promptNumber)
 end
 
 local function waitForClearMoment()
-	for _ = 1, 18 do
+	-- The first attempt begins around minute 2. Give an eligible newcomer
+	-- enough runway to finish the eight-minute journey, then show the same
+	-- personalized card once they understand what its benefit means. Returning
+	-- players are unaffected and usually pass on the first iteration.
+	for _ = 1, 72 do
 		if storeOpenedThisSession then
 			return false
 		end
-		if player:GetAttribute("SeenTutorial") == true and not modalIsBusy() then
+		if player:GetAttribute("SeenTutorial") == true
+			and not newcomerJourneyIsActive()
+			and not modalIsBusy()
+		then
 			return true
 		end
 		task.wait(10)

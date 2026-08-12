@@ -132,6 +132,18 @@ function EssenceMultiplier.CalculateMultiplier(plr, gold, crit, skipDoubleCritRo
 	)
 	multiplier *= forgeMultiplier
 
+	-- Minutes 5-8 of a genuinely new player's Essence Awakening journey
+	-- become a personal 2x rush. This lives on its own attribute so it can
+	-- overlap with potions, prophecies, the Forge and global Rush events
+	-- without one timer erasing another. FirstJourneyService is the only
+	-- writer; this clamp is the final economy guard.
+	local firstJourneyMultiplier = math.clamp(
+		tonumber(plr:GetAttribute("FirstJourneyEssenceMultiplier")) or 1,
+		1,
+		2
+	)
+	multiplier *= firstJourneyMultiplier
+
 	-- Friend bonus. FriendsInServer is maintained by FriendBonusService,
 	-- recomputed on every join/leave -- tonumber-guarded the same way as
 	-- MomentumStacks/umbralFocus below, since a nil/missing attribute must

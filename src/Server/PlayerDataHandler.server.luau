@@ -138,6 +138,11 @@ local function loadPlayerData(player)
 	-- this shipped.
 	if isBrandNewPlayer then
 		data.FirstJoinAt = os.time()
+		-- FirstJourney.Eligible cannot default to true: returning saves that
+		-- predate the journey receive template defaults during the merge and
+		-- would otherwise be incorrectly put through new-player onboarding.
+		data.FirstJourney = type(data.FirstJourney) == "table" and data.FirstJourney or {}
+		data.FirstJourney.Eligible = true
 	end
 
 	-- OFFLINE HARVEST LOGIC REMOVED HERE --
@@ -503,6 +508,9 @@ local function loadPlayerData(player)
 	player:SetAttribute("RobuxSpent", math.max(0, tonumber(data.RobuxSpent) or 0))
 	player:SetAttribute("PurchaseCount", math.max(0, math.floor(tonumber(data.PurchaseCount) or 0)))
 	player:SetAttribute("FirstPurchaseBonusClaimed", data.FirstPurchaseBonusClaimed == true)
+	local firstJourney = type(data.FirstJourney) == "table" and data.FirstJourney or {}
+	player:SetAttribute("FirstJourneyEligible", firstJourney.Eligible == true)
+	player:SetAttribute("FirstJourneyCompleted", firstJourney.Completed == true)
 	
 	for name, level in pairs(data.Upgrades) do
 		player:SetAttribute(name, level)
@@ -537,6 +545,12 @@ local function loadPlayerData(player)
 		SavedEPM = savedEPM
 	}
 	sessionStartTime[player.UserId] = os.clock()
+
+	-- PlayerData is parented before GetAsync finishes, so merely waiting for
+	-- the ModuleScript is not a reliable readiness signal. New services can
+	-- wait on this attribute and know the saved merge, leaderstats and live
+	-- mirrors above are all complete.
+	player:SetAttribute("PlayerDataLoaded", true)
 end
 
 -- ============================================================

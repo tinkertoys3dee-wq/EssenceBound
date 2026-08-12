@@ -47,6 +47,30 @@ local DefaultPlayerData = {
 	-- boost and nothing else.
 	FirstJoinAt = 0,
 	SeenTutorial = false,
+	-- A persistent, server-owned first-session journey. Eligibility is
+	-- deliberately false in the template and is flipped only when
+	-- PlayerDataHandler proves this is a genuinely new save; otherwise every
+	-- veteran whose save predates this feature would be mistaken for a new
+	-- player when the merge supplies these defaults.
+	--
+	-- ActiveSeconds advances only while the player is actually in a server.
+	-- The rest of the fields are cumulative facts, so leaving/rejoining can
+	-- never erase an objective or pay a stage twice.
+	FirstJourney = {
+		Eligible = false,
+		Completed = false,
+		ActiveSeconds = 0,
+		StageIndex = 1,
+		TotalCollections = 0,
+		TotalClicks = 0,
+		TotalUpgrades = 0,
+		RushCollections = 0,
+		ShadowDiscovered = false,
+		ProphecyRead = false,
+		RushAnnounced = false,
+		StartedLogged = false,
+		LastMinuteLogged = 0,
+	},
 	-- Forces the very first orb a player ever spawns to land as a
 	-- guaranteed critical (see OrbClicker.client.luau). A new player's
 	-- first click otherwise had a real chance of landing on the single
