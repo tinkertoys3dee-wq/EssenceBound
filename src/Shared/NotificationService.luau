@@ -37,6 +37,12 @@ local DEFAULT_ICONS = {
 	Warning = "!",
 	Error = "×",
 }
+local DEFAULT_PRIORITIES = {
+	Info = 1,
+	Success = 2,
+	Warning = 3,
+	Error = 4,
+}
 
 local localEvent = RunService:IsClient() and Instance.new("BindableEvent") or nil
 local serverLastSent = setmetatable({}, { __mode = "k" })
@@ -94,6 +100,7 @@ local function normalize(messageOrPayload, options)
 	local icon = truncate(payload.Icon or DEFAULT_ICONS[kind], 8)
 	local duration = math.clamp(tonumber(payload.Duration) or (kind == "Error" and 4.5 or 3.6), 1.5, 8)
 	local key = truncate(payload.Key or (kind .. ":" .. title .. ":" .. message), 120)
+	local priority = math.clamp(math.floor(tonumber(payload.Priority) or DEFAULT_PRIORITIES[kind]), 1, 5)
 
 	return {
 		Kind = kind,
@@ -102,6 +109,7 @@ local function normalize(messageOrPayload, options)
 		Icon = icon,
 		Duration = duration,
 		Key = key,
+		Priority = priority,
 	}
 end
 

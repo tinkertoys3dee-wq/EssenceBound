@@ -62,7 +62,10 @@ local function updateMembership(player)
 		player:SetAttribute("GroupMember", isMember)
 	end
 
-	return ok and isMember == true
+	if not ok then
+		return false, "Unavailable"
+	end
+	return isMember == true, isMember and "Member" or "NotMember"
 end
 
 local function onPlayerAdded(player)
@@ -72,7 +75,7 @@ end
 checkMembership.OnServerInvoke = function(player)
 	local now = os.clock()
 	if now - (lastCheckAt[player] or -math.huge) < RECHECK_COOLDOWN then
-		return player:GetAttribute("GroupMember") == true
+		return player:GetAttribute("GroupMember") == true, "Cooldown"
 	end
 
 	lastCheckAt[player] = now

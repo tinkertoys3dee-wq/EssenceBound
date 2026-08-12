@@ -24,6 +24,7 @@ local UserInputService = game:GetService("UserInputService")
 local AchievementsConfig = require(ReplicatedStorage:WaitForChild("AchievementsConfig"))
 local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
 local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
+local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -136,6 +137,7 @@ local state = {
 	BadgesById = {},
 	MilestonesById = {},
 }
+local hasMilestoneSync = false
 
 local isOpen = false
 
@@ -518,7 +520,7 @@ for i, def in ipairs(AchievementsConfig.Milestones) do
 		Text = formatReward(def.Reward),
 		TextColor3 = THEME.Grey,
 		TextScaled = true,
-		Active = false,
+		Active = true,
 		ZIndex = 133,
 	}, row)
 	corner(claimButton, UDim.new(0.2, 0))
@@ -527,9 +529,33 @@ for i, def in ipairs(AchievementsConfig.Milestones) do
 
 	claimButton.MouseButton1Click:Connect(function()
 		local entry = state.MilestonesById[def.Id]
-		if entry and entry.Complete and not entry.Claimed then
-			ClaimRemote:FireServer(def.Id)
+		if not entry then
+			NotificationService.Info("Your milestone progress is still loading.", {
+				Title = "Milestones Still Loading",
+				Key = "milestone-loading",
+			})
+			return
 		end
+		if entry.Claimed then
+			NotificationService.Info(def.Name .. " has already been claimed.", {
+				Title = "Reward Already Claimed",
+				Icon = "✓",
+				Key = "milestone-claimed:" .. def.Id,
+			})
+			return
+		end
+		if not entry.Complete then
+			NotificationService.Info(("%d%% complete — %s"):format(
+				math.floor(math.clamp(entry.Progress or 0, 0, 1) * 100 + 0.5),
+				def.Description
+			), {
+				Title = def.Name .. " In Progress",
+				Icon = def.Icon,
+				Key = "milestone-incomplete:" .. def.Id,
+			})
+			return
+		end
+		ClaimRemote:FireServer(def.Id)
 	end)
 
 	milestoneRows[def.Id] = {
@@ -575,7 +601,9 @@ local function renderMilestone(def)
 	refs.Stroke.Enabled = claimable
 	refs.Row.BackgroundColor3 = claimable and THEME.RowReady or THEME.Row
 
-	refs.ClaimButton.Active = claimable
+	-- Locked-looking milestone rewards remain clickable so their exact
+	-- progress/claimed state can be explained instead of silently ignored.
+	refs.ClaimButton.Active = true
 	if entry.Claimed then
 		refs.ClaimButton.Text = "✓ Claimed"
 		refs.ClaimButton.BackgroundColor3 = THEME.Locked
@@ -692,10 +720,44 @@ SyncRemote.OnClientEvent:Connect(function(payload)
 
 	if type(payload.Milestones) == "table" then
 		local byId = {}
+		local newlyClaimable = {}
+		local readyCount = 0
 		for _, entry in ipairs(payload.Milestones) do
 			byId[entry.Id] = entry
+			if entry.Complete and not entry.Claimed then
+				readyCount += 1
+				local previous = state.MilestonesById[entry.Id]
+				if hasMilestoneSync and (not previous or not previous.Complete or previous.Claimed) then
+					table.insert(newlyClaimable, entry.Id)
+				end
+			end
 		end
 		state.MilestonesById = byId
+
+		if not hasMilestoneSync and readyCount > 0 then
+			NotificationService.Info(("You have %d milestone reward%s ready to claim."):format(
+				readyCount,
+				readyCount == 1 and "" or "s"
+			), {
+				Title = "Milestone Rewards Waiting",
+				Icon = "★",
+				Duration = 4.5,
+				Key = "milestones-ready",
+			})
+		else
+			for _, milestoneId in ipairs(newlyClaimable) do
+				local def = AchievementsConfig.GetMilestone(milestoneId)
+				if def then
+					NotificationService.Success(def.Name .. " is complete — open Achievements to claim your reward.", {
+						Title = "Milestone Complete",
+						Icon = def.Icon,
+						Duration = 4.5,
+						Key = "milestone-ready:" .. milestoneId,
+					})
+				end
+			end
+		end
+		hasMilestoneSync = true
 	end
 
 	render()

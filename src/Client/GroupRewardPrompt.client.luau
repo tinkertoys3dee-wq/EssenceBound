@@ -17,6 +17,7 @@ local GuiService = game:GetService("GuiService")
 local UserInputService = game:GetService("UserInputService")
 
 local GroupRewardConfig = require(ReplicatedStorage:WaitForChild("GroupRewardConfig"))
+local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
 
 if not GroupRewardConfig.IsEnabled() then
 	return
@@ -772,8 +773,17 @@ joinButton.Activated:Connect(function()
 
 	if ok then
 		setStatus("GROUP OPENED  •  RETURN HERE AND PRESS VERIFY", THEME.AccentLight)
+		NotificationService.Info("Join the group, return to EssenceBound, then press Verify.", {
+			Title = "Group Page Opened",
+			Icon = "◆",
+			Key = "group-page-opened",
+		})
 	else
 		setStatus("COULDN'T OPEN THE GROUP ON THIS DEVICE", THEME.Danger)
+		NotificationService.Error("Roblox could not open the group page on this device.", {
+			Title = "Group Page Unavailable",
+			Key = "group-page-error",
+		})
 	end
 end)
 
@@ -786,7 +796,7 @@ verifyButton.Activated:Connect(function()
 	verifyButton.Text = "CHECKING MEMBERSHIP..."
 	setStatus("ASKING ROBLOX TO CONFIRM YOUR MEMBERSHIP", THEME.AccentLight)
 
-	local ok, isMember = pcall(function()
+	local ok, isMember, reason = pcall(function()
 		return checkMembership:InvokeServer()
 	end)
 
@@ -797,6 +807,16 @@ verifyButton.Activated:Connect(function()
 		verifyButton.Text = "✓  VERIFIED — BONUSES ACTIVE"
 		verifyButton.BackgroundColor3 = Color3.fromRGB(31, 105, 72)
 		setStatus("WELCOME IN  •  EVERY MEMBER BENEFIT IS NOW LIVE", THEME.Essence)
+		NotificationService.Success(("Your group bonuses are live: +%d%% essence, +%d%% critical chance, and +%d%% offline earnings."):format(
+			ESSENCE_PERCENT,
+			CRIT_PERCENT,
+			OFFLINE_PERCENT
+		), {
+			Title = "Community Bonuses Activated",
+			Icon = "✓",
+			Duration = 5,
+			Key = "group-verified",
+		})
 
 		task.delay(1.6, function()
 			celebratingSuccess = false
@@ -804,8 +824,30 @@ verifyButton.Activated:Connect(function()
 		end)
 	else
 		isVerifying = false
-		verifyButton.Text = "NOT FOUND — TRY AGAIN"
-		setStatus("JOIN FIRST, THEN GIVE ROBLOX A MOMENT TO UPDATE", THEME.Danger)
+		if ok and reason == "Cooldown" then
+			verifyButton.Text = "WAIT A MOMENT"
+			setStatus("VERIFICATION IS COOLING DOWN", THEME.AccentLight)
+			NotificationService.Info("Please wait a few seconds before checking membership again.", {
+				Title = "Verification Cooling Down",
+				Icon = "⌛",
+				Key = "group-check-cooldown",
+			})
+		elseif ok and reason ~= "Unavailable" then
+			verifyButton.Text = "NOT FOUND — TRY AGAIN"
+			setStatus("JOIN FIRST, THEN GIVE ROBLOX A MOMENT TO UPDATE", THEME.Danger)
+			NotificationService.Warning("Membership was not found yet. Join the group, wait a moment, then verify again.", {
+				Title = "Membership Not Found",
+				Icon = "⌛",
+				Key = "group-not-found",
+			})
+		else
+			verifyButton.Text = "CHECK FAILED — TRY AGAIN"
+			setStatus("ROBLOX COULD NOT VERIFY MEMBERSHIP", THEME.Danger)
+			NotificationService.Error("The membership check could not reach Roblox. Try again in a moment.", {
+				Title = "Verification Interrupted",
+				Key = "group-check-error",
+			})
+		end
 		task.delay(2.4, function()
 			if verifyButton.Parent and player:GetAttribute("GroupMember") ~= true then
 				verifyButton.Text = "✓  I'VE JOINED — VERIFY"

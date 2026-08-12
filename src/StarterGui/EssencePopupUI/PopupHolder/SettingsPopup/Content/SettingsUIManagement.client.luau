@@ -1,6 +1,9 @@
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -115,10 +118,10 @@ local presets = {
 	}
 }
 
-local deb = false
+local busyButtons = setmetatable({}, { __mode = "k" })
 
 
-local UpdateSetting = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("UpdateData")
+local UpdateSetting = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("UpdateData")
 
 for _, button in script.Parent:GetDescendants() do
 	if button:IsA("TextButton") then
@@ -152,39 +155,42 @@ for _, button in script.Parent:GetDescendants() do
 		end
 
 		button.MouseButton1Click:Connect(function()
-			if not deb then
-				deb = true
-
-				-- Was looked up separately (identically) in each branch
-				-- below with no nil-check -- unlike the hover-feel UIScale
-				-- issue above, a missing TextLabel HERE would break the
-				-- toggle's actual on/off logic on every click, not just
-				-- its animation.
-				local textLabel = button.Parent:FindFirstChild("TextLabel")
-				if not textLabel then
-					deb = false
-					return
-				end
-				local Text = textLabel.Text
-
-				if button:GetAttribute("On") then
-					button:SetAttribute("On", false)
-					button.BackgroundColor3 = presets.Off.BG
-					button.Frame.Position = presets.Off.DotPos
-
-					UpdateSetting:FireServer(false, "=", "Settings", Text)
-					task.wait(2)
-					deb = false
-				else
-					button:SetAttribute("On", true)
-					button.BackgroundColor3 = presets.On.BG
-					button.Frame.Position = presets.On.DotPos
-
-					UpdateSetting:FireServer(true, "=", "Settings", Text)
-					task.wait(2)
-					deb = false
-				end
+			if busyButtons[button] then
+				return
 			end
+			busyButtons[button] = true
+
+			-- Was looked up separately (identically) in each branch
+			-- below with no nil-check -- unlike the hover-feel UIScale
+			-- issue above, a missing TextLabel HERE would break the
+			-- toggle's actual on/off logic on every click, not just
+			-- its animation.
+			local textLabel = button.Parent:FindFirstChild("TextLabel")
+			if not textLabel then
+				busyButtons[button] = nil
+				NotificationService.Error("This setting is missing its label and could not be saved.", {
+					Title = "Setting Unavailable",
+					Key = "setting-missing-label",
+				})
+				return
+			end
+			local text = textLabel.Text
+			local enabled = not button:GetAttribute("On")
+
+			button:SetAttribute("On", enabled)
+			button.BackgroundColor3 = enabled and presets.On.BG or presets.Off.BG
+			button.Frame.Position = enabled and presets.On.DotPos or presets.Off.DotPos
+			UpdateSetting:FireServer(enabled, "=", "Settings", text)
+
+			NotificationService.Info(("%s turned %s."):format(text, enabled and "on" or "off"), {
+				Title = "Setting Updated",
+				Icon = enabled and "✓" or "×",
+				Duration = 2.2,
+				Key = "setting:" .. string.lower(text):gsub("%s+", "-"),
+			})
+			task.delay(0.2, function()
+				busyButtons[button] = nil
+			end)
 			
 			-- cosmetic "purchase" feedback only, no real transaction
 			local ring = stroke(button.Parent, THEME.White, 3, 0)
@@ -195,4 +201,3 @@ for _, button in script.Parent:GetDescendants() do
 		end)
 	end
 end
-

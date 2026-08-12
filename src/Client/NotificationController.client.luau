@@ -95,6 +95,7 @@ new("UIListLayout", {
 local activeByKey = {}
 local activeCount = 0
 local sequence = 0
+local queueSequence = 0
 local pending = {}
 local showNext
 
@@ -133,13 +134,15 @@ local function dismiss(entry)
 	end)
 end
 
-local function restartTimer(entry, duration)
+local function restartTimer(entry, duration, preserveProgress)
 	entry.ExpiryToken += 1
 	local token = entry.ExpiryToken
 	if entry.ProgressTween then
 		entry.ProgressTween:Cancel()
 	end
-	entry.Progress.Size = UDim2.fromScale(1, 1)
+	if not preserveProgress then
+		entry.Progress.Size = UDim2.fromScale(1, 1)
+	end
 	entry.ProgressTween = tween(entry.Progress, TweenInfo.new(duration, Enum.EasingStyle.Linear), {
 		Size = UDim2.fromScale(0, 1),
 	})
@@ -171,7 +174,7 @@ local function createCard(payload)
 		BackgroundColor3 = Color3.fromRGB(20, 13, 36),
 		BackgroundTransparency = 0.03,
 		GroupTransparency = 1,
-		ClipsDescendants = false,
+		ClipsDescendants = true,
 		ZIndex = 422,
 	}, slot)
 	corner(group, UDim.new(0, 15))
@@ -190,6 +193,26 @@ local function createCard(payload)
 	}, group)
 	local scale = new("UIScale", { Scale = 0.78 }, group)
 	scale:SetAttribute("JuiceBaseScale", 1)
+
+	-- A quick spectral sheen makes each arrival feel authored rather than
+	-- like a plain rectangle fading in. It is clipped to the rounded card.
+	local glint = new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(-0.18, 0.5),
+		Size = UDim2.fromScale(0.12, 1.6),
+		Rotation = 14,
+		BackgroundColor3 = palette.Icon,
+		BackgroundTransparency = 0.78,
+		BorderSizePixel = 0,
+		ZIndex = 426,
+	}, group)
+	new("UIGradient", {
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(0.5, 0.08),
+			NumberSequenceKeypoint.new(1, 1),
+		}),
+	}, glint)
 
 	local shadow = new("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -322,6 +345,9 @@ local function createCard(payload)
 		CountBadge = countBadge,
 		Progress = progress,
 		Count = 1,
+		Priority = payload.Priority or 1,
+		Duration = payload.Duration,
+		Sequence = sequence,
 		ExpiryToken = 0,
 		Closing = false,
 	}
@@ -336,11 +362,42 @@ local function createCard(payload)
 	closeButton.MouseLeave:Connect(function()
 		tween(closeButton, TweenInfo.new(0.12), { BackgroundTransparency = 0.9, TextColor3 = Color3.fromRGB(211, 202, 225) })
 	end)
+	group.MouseEnter:Connect(function()
+		if entry.Closing or entry.Hovering then
+			return
+		end
+		entry.Hovering = true
+		entry.ExpiryToken += 1
+		if entry.ProgressTween then
+			entry.ProgressTween:Cancel()
+		end
+	end)
+	group.MouseLeave:Connect(function()
+		if entry.Closing or not entry.Hovering then
+			return
+		end
+		entry.Hovering = false
+		local remainingFraction = math.clamp(entry.Progress.Size.X.Scale, 0.05, 1)
+		restartTimer(entry, math.max(0.5, entry.Duration * remainingFraction), true)
+	end)
 
 	playTone(payload.Kind)
 	tween(group, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { GroupTransparency = 0 })
 	tween(scale, TweenInfo.new(0.34, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 })
 	tween(shadow, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = 0.93 })
+	task.delay(0.08, function()
+		if glint.Parent then
+			local sheen = tween(glint, TweenInfo.new(0.58, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+				Position = UDim2.fromScale(1.18, 0.5),
+				BackgroundTransparency = 0.94,
+			})
+			sheen.Completed:Connect(function()
+				if glint.Parent then
+					glint:Destroy()
+				end
+			end)
+		end
+	end)
 	restartTimer(entry, payload.Duration)
 
 	if payload.Kind == "Error" then
@@ -371,6 +428,8 @@ local function enqueue(payload)
 	local duplicate = activeByKey[payload.Key]
 	if duplicate and not duplicate.Closing then
 		duplicate.Count += 1
+		duplicate.Duration = payload.Duration
+		duplicate.Priority = math.max(duplicate.Priority, payload.Priority or 1)
 		duplicate.Message.Text = payload.Message
 		duplicate.CountBadge.Text = "×" .. tostring(duplicate.Count)
 		duplicate.CountBadge.Visible = true
@@ -378,20 +437,45 @@ local function enqueue(payload)
 		if payload.Kind == "Error" or payload.Kind == "Warning" then
 			Juice.Shake(duplicate.Group, 3, 0.18)
 		end
-		restartTimer(duplicate, payload.Duration)
+		if duplicate.Hovering then
+			duplicate.ExpiryToken += 1
+			if duplicate.ProgressTween then
+				duplicate.ProgressTween:Cancel()
+			end
+			duplicate.Progress.Size = UDim2.fromScale(1, 1)
+		else
+			restartTimer(duplicate, payload.Duration)
+		end
 		return
 	end
 
 	if activeCount >= 3 then
 		for index, queued in ipairs(pending) do
 			if queued.Key == payload.Key then
+				payload.QueueOrder = queued.QueueOrder
 				pending[index] = payload
+				table.sort(pending, function(a, b)
+					if a.Priority == b.Priority then
+						return a.QueueOrder < b.QueueOrder
+					end
+					return a.Priority > b.Priority
+				end)
 				return
 			end
 		end
+		queueSequence += 1
+		payload.QueueOrder = queueSequence
 		table.insert(pending, payload)
+		table.sort(pending, function(a, b)
+			if a.Priority == b.Priority then
+				return a.QueueOrder < b.QueueOrder
+			end
+			return a.Priority > b.Priority
+		end)
 		if #pending > 9 then
-			table.remove(pending, 1)
+			-- The queue is sorted highest priority first; discard the oldest
+			-- lowest-priority tail, never the error that just jumped the line.
+			table.remove(pending, #pending)
 		end
 		return
 	end

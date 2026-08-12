@@ -38,6 +38,7 @@ local LocalPlayer = Players.LocalPlayer
 local PlayerGui    = LocalPlayer:WaitForChild("PlayerGui")
 local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
 local EssenceVisuals = require(ReplicatedStorage:WaitForChild("EssenceVisuals"))
+local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
 
 --// REMOTE EVENT
 local OfflineEssenceRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("OfflineEssenceReward")
@@ -604,7 +605,7 @@ local function populateRewards(rewardTable)
 	-- Update the total summary row
 	totalAmountLabel.Text = "+" .. formatAmount(runningTotal)
 
-	return rows
+	return rows, runningTotal
 end
 
 --=========================================================================
@@ -612,6 +613,7 @@ end
 --=========================================================================
 local isOpen = false
 local glowTween
+local currentRewardTotal = 0
 
 local function startGlowPulse()
 	if glowTween then
@@ -651,7 +653,8 @@ local function openPopup(rewardTable)
 	isOpen = true
 
 	screenGui.Enabled = true
-	local rows = populateRewards(rewardTable)
+	local rows, runningTotal = populateRewards(rewardTable)
+	currentRewardTotal = runningTotal
 
 	-- Reset animated properties
 	backdrop.BackgroundTransparency = 1
@@ -709,7 +712,20 @@ end
 -- BUTTON HOOKUPS
 --=========================================================================
 closeButton.MouseButton1Click:Connect(closePopup)
-claimButton.MouseButton1Click:Connect(closePopup)
+claimButton.MouseButton1Click:Connect(function()
+	if not isOpen then
+		return
+	end
+	NotificationService.Success(("%s offline essence has been added to your balances."):format(
+		formatAmount(currentRewardTotal)
+	), {
+		Title = "Offline Rewards Claimed",
+		Icon = "⌛",
+		Duration = 3.8,
+		Key = "offline-rewards-claimed",
+	})
+	closePopup()
+end)
 
 -- Hover / press feedback for the claim button
 claimButton.MouseEnter:Connect(function()

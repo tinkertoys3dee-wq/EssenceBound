@@ -20,6 +20,7 @@
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
 
 -- Comfortably covers root_awakening (15 essence, the tree's always-
 -- available root) with room to explore a second cheap option too.
@@ -60,23 +61,50 @@ end
 RequestGiftRemote.OnServerEvent:Connect(function(player)
 	local data = getData(player)
 	if not data then
+		NotificationService.Send(player, {
+			Kind = "Error",
+			Title = "Starter Gift Still Loading",
+			Message = "Your tutorial reward is still loading. Try the upgrade step again in a moment.",
+			Key = "tutorial-gift-loading",
+		})
 		return
 	end
 
 	-- Re-derived from server-owned data, never trusted from the client:
 	-- a forged repeat request just hits this same check and gets nothing.
 	if data.SeenTutorialStarterGift == true then
+		NotificationService.Send(player, {
+			Kind = "Info",
+			Title = "Starter Gift Already Delivered",
+			Message = "Your one-time 50 Earth Essence starter gift was already added.",
+			Icon = "✓",
+			Key = "tutorial-gift-already-delivered",
+		})
 		return
 	end
-	data.SeenTutorialStarterGift = true
 
 	local leaderstats = player:FindFirstChild("leaderstats")
 	local stat = leaderstats and leaderstats:FindFirstChild("Earth Essence")
 	if not stat then
+		NotificationService.Send(player, {
+			Kind = "Error",
+			Title = "Starter Gift Delayed",
+			Message = "Your Earth Essence balance is still loading. Try the upgrade step again in a moment.",
+			Key = "tutorial-gift-balance-loading",
+		})
 		return
 	end
 
+	data.SeenTutorialStarterGift = true
 	local current = tonumber(stat:GetAttribute("Quantity")) or 0
 	stat:SetAttribute("Quantity", current + STARTER_GIFT_AMOUNT)
 	data.TotalEssenceGathered = (tonumber(data.TotalEssenceGathered) or 0) + STARTER_GIFT_AMOUNT
+	NotificationService.Send(player, {
+		Kind = "Success",
+		Title = "Starter Gift Delivered",
+		Message = "+50 Earth Essence — enough to buy your first upgrade now.",
+		Icon = "◆",
+		Duration = 4.5,
+		Key = "tutorial-gift-success",
+	}, { Cooldown = 0 })
 end)
