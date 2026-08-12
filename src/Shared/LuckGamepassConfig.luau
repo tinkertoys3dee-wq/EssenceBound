@@ -72,6 +72,15 @@ function LuckGamepassConfig.GetRareEssenceMultiplier(player: Instance): number
 		1,
 		2
 	)
+
+	-- Astral Forge luck is a separately timed, chosen infusion. Multiplying
+	-- it here makes the real roll and every zone preview inherit the exact
+	-- same effect while still stacking with paid luck and a lucky Prophecy.
+	multiplier *= math.clamp(
+		tonumber(player:GetAttribute("ForgeRareWeightMultiplier")) or 1,
+		1,
+		2.25
+	)
 	return multiplier
 end
 

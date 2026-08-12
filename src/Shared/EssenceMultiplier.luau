@@ -121,6 +121,17 @@ function EssenceMultiplier.CalculateMultiplier(plr, gold, crit, skipDoubleCritRo
 	)
 	multiplier *= prophecyMultiplier
 
+	-- Chosen Astral Forge infusion. This is deliberately its own attribute
+	-- rather than reusing EssenceMultiplier: potion timers and Forge timers
+	-- may overlap, and letting either one write the other's value would make
+	-- the first effect to expire erase the still-active second effect.
+	local forgeMultiplier = math.clamp(
+		tonumber(plr:GetAttribute("ForgeEssenceMultiplier")) or 1,
+		1,
+		1.65
+	)
+	multiplier *= forgeMultiplier
+
 	-- Friend bonus. FriendsInServer is maintained by FriendBonusService,
 	-- recomputed on every join/leave -- tonumber-guarded the same way as
 	-- MomentumStacks/umbralFocus below, since a nil/missing attribute must

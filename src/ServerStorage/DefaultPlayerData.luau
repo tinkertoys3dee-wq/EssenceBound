@@ -241,6 +241,18 @@ local DefaultPlayerData = {
 		RollsSinceRare = 0,
 	},
 
+	-- Astral Forge state. Mastery is permanent account progression, while
+	-- the active infusion uses an absolute timestamp so logging out cannot
+	-- pause or extend it. Rebirth deliberately leaves this entire table
+	-- untouched: the Forge is a long-term sink for all three Essence types.
+	Forge = {
+		ActiveRecipeId = "",
+		ExpiresAt = 0,
+		ActiveDuration = 0,
+		TotalCrafts = 0,
+		RecipeCrafts = {},
+	},
+
 	-- Zones state, driven by ZoneService (see ZonesConfig for what a zone
 	-- actually changes -- the Earth/Shadow/Solar essence roll weighting).
 	-- earth_zone is the only zone ever unlocked by default --

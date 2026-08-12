@@ -84,13 +84,17 @@ local LAYOUT = {
 	-- Vertical button stack (Daily + Quests + Codes). Anchored to the right
 	-- edge, below the currency panel that occupies the top-left.
 	--
-	-- Y=0.63 rather than the original 0.2: this 3-button stack (rendered
-	-- via UIListLayout, ~0.09-0.32 tall when centered at 0.2) was overlapping
-	-- RebirthShopPanel's (0.213) and SanctumPanel's (0.295) buttons on the
-	-- same x column -- moved this stack below the whole RebirthShop/
-	-- Sanctum/Leaderboard/Achievements column (which bottoms out around
-	-- 0.49-0.51) with margin to spare, rather than renumbering four
-	-- already-placed buttons in four other files for one collision.
+	-- The stack now starts at y=0.59 (top-anchored) directly beneath the
+	-- Astral Forge's fifth rail slot. A compact fixed band and small gap keep
+	-- all three square buttons above the bottom-corner Wheel at every common
+	-- landscape resolution.
+	--
+	-- This replaces the old center-at-0.63 layout, whose large proportional
+	-- list padding actually overflowed into GroupReward even before Forge was
+	-- added. GroupReward now sits beside this lower rail, not on top of it.
+	--
+	-- Originally this stack lived near y=0.2 and overlapped the Prestige and
+	-- Sanctum shortcuts on the same x column.
 	--
 	-- x=0.952 (was 0.895, then briefly 0.92): a real screenshot showed
 	-- the whole RebirthShop/Sanctum/Leaderboard/Achievements/GroupReward
@@ -98,9 +102,10 @@ local LAYOUT = {
 	-- live nav bar (Upgrades/Zones/Rebirth/Index/Shop/Settings). 0.952
 	-- is the shared shortcut rail every code-created button on the right
 	-- edge now uses -- keeps them all clear of the Studio-authored rows.
-	ButtonsPosition = UDim2.fromScale(0.952, 0.63),
-	ButtonsAnchor = Vector2.new(0, 0.5),
+	ButtonsPosition = UDim2.fromScale(0.952, 0.59),
+	ButtonsAnchor = Vector2.new(0, 0),
 	ButtonSize = UDim2.fromScale(0.044, 0.062),
+	ButtonsHeight = 0.27,
 
 	-- The old y=0.12 placement covered MainGui.Right.ManualSummonButton
 	-- (the CLAIM First Find bar). Put the pill immediately beneath it and
@@ -383,17 +388,46 @@ local buttonHolder = new("Frame", {
 	Name = "ProgressionButtons",
 	AnchorPoint = LAYOUT.ButtonsAnchor,
 	Position = LAYOUT.ButtonsPosition,
-	Size = UDim2.fromScale(LAYOUT.ButtonSize.X.Scale, LAYOUT.ButtonSize.Y.Scale * 3.5),
+	Size = UDim2.fromScale(LAYOUT.ButtonSize.X.Scale, LAYOUT.ButtonsHeight),
 	BackgroundTransparency = 1,
 	ZIndex = 50,
 }, screenGui)
 
-new("UIListLayout", {
+local buttonListLayout = new("UIListLayout", {
 	FillDirection = Enum.FillDirection.Vertical,
 	SortOrder = Enum.SortOrder.LayoutOrder,
-	Padding = UDim.new(0.12, 0),
+	Padding = UDim.new(0.02, 0),
 	HorizontalAlignment = Enum.HorizontalAlignment.Center,
 }, buttonHolder)
+
+-- Very short landscape phones have less vertical space above the Wheel's
+-- enforced 64px minimum. Narrow this one lower band only; the four primary
+-- rail shortcuts and the Forge stay full-sized, while Daily/Quests/Codes
+-- remain separate, visible buttons instead of overlapping the Wheel.
+local cameraViewportConnection = nil
+local function updateProgressionButtonBand()
+	local camera = workspace.CurrentCamera
+	local compact = camera ~= nil and camera.ViewportSize.Y < 500
+	buttonHolder.Size = compact
+		and UDim2.fromScale(0.03, 0.215)
+		or UDim2.fromScale(LAYOUT.ButtonSize.X.Scale, LAYOUT.ButtonsHeight)
+	buttonListLayout.Padding = compact and UDim.new(0.015, 0) or UDim.new(0.02, 0)
+end
+
+local function bindProgressionViewport()
+	if cameraViewportConnection then
+		cameraViewportConnection:Disconnect()
+		cameraViewportConnection = nil
+	end
+	local camera = workspace.CurrentCamera
+	if camera then
+		cameraViewportConnection = camera:GetPropertyChangedSignal("ViewportSize"):Connect(updateProgressionButtonBand)
+	end
+	updateProgressionButtonBand()
+end
+
+workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(bindProgressionViewport)
+bindProgressionViewport()
 
 -- Builds one round icon button with an unread "!" badge.
 local function createSideButton(icon, labelText, order)

@@ -49,8 +49,10 @@ local THEME = {
 }
 
 local LAYOUT = {
-	-- Sits below the progression shortcuts and outside MainGui.Right.Holder.
-	ButtonPosition = UDim2.fromScale(0.952, 0.8),
+	-- Sits beside the lower progression rail, below MainGui's authored nav.
+	-- This keeps it clear of both the third progression shortcut and the
+	-- larger bottom-corner Wheel button.
+	ButtonPosition = UDim2.fromScale(0.82, 0.87),
 	ButtonAnchor = Vector2.new(0, 0.5),
 	ButtonSize = UDim2.fromScale(0.044, 0.062),
 	CardSize = UDim2.fromScale(0.54, 0.72),

@@ -147,6 +147,11 @@ function CriticalsController.GetCritChance(player)
 		0,
 		0.2
 	)
+	local forgeBonus = math.clamp(
+		tonumber(player:GetAttribute("ForgeCritChanceBonus")) or 0,
+		0,
+		0.12
+	)
 
 	-- Mundane Studios members get the same small, additive treatment as
 	-- New Player Luck. The server owns GroupMember and the existing global
@@ -156,6 +161,7 @@ function CriticalsController.GetCritChance(player)
 		+ luckBonus
 		+ groupBonus
 		+ prophecyBonus
+		+ forgeBonus
 	return math.min(MAX_CRIT_CHANCE, total)
 end
 

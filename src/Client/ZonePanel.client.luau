@@ -1367,6 +1367,7 @@ player:GetAttributeChangedSignal(MonetizationConfig.GetOwnershipAttribute(ZonesC
 player:GetAttributeChangedSignal(MonetizationConfig.GetOwnershipAttribute(LuckGamepassConfig.LuckyFinderGamepassId)):Connect(refresh)
 player:GetAttributeChangedSignal(MonetizationConfig.GetOwnershipAttribute(LuckGamepassConfig.UltraLuckGamepassId)):Connect(refresh)
 player:GetAttributeChangedSignal("ProphecyRareWeightMultiplier"):Connect(refresh)
+player:GetAttributeChangedSignal("ForgeRareWeightMultiplier"):Connect(refresh)
 for _, zone in ipairs(ZonesConfig.Zones) do
 	if next(zone.UnlockCosts or {}) then
 		player:GetAttributeChangedSignal(ZonesConfig.UnlockedAttributeName(zone.Id)):Connect(refresh)
