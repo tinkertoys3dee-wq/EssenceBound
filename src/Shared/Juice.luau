@@ -513,10 +513,20 @@ end
 -- Flashes a label to a highlight colour and back. Used to draw the eye to
 -- a number that just changed.
 
-function Juice.PulseColor(label: TextLabel?, highlight: Color3, duration: number?)
-	if not isAlive(label) then
+function Juice.PulseColor(target: GuiObject?, highlight: Color3, duration: number?)
+	if not isAlive(target) then
 		return
 	end
+
+	-- Cosmetic effects must never break the caller. Older UI code may pass a
+	-- Frame here when it intends to pulse the container; route those objects
+	-- through the matching background effect instead of reading TextColor3.
+	if not (target:IsA("TextLabel") or target:IsA("TextButton") or target:IsA("TextBox")) then
+		Juice.PulseBackground(target, highlight, duration)
+		return
+	end
+
+	local label = target :: TextLabel
 
 	duration = duration or 0.35
 
