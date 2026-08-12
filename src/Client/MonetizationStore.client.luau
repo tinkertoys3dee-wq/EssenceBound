@@ -929,7 +929,7 @@ player:GetAttributeChangedSignal("FirstPurchaseBonusClaimed"):Connect(function()
 	if newlyClaimed then
 		showFooterMessage("✓ Supporter Blessing unlocked • Permanent +10% essence is active", THEME.Green, 5)
 		Juice.Punch(Juice.GetScale(supporterPill), 0.2, 0.45)
-		Juice.PulseColor(supporterPill, THEME.Green, 0.8)
+		Juice.PulseBackground(supporterPill, THEME.Green, 0.8)
 	end
 end)
 
