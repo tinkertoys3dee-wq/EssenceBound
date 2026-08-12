@@ -239,7 +239,13 @@ local GENERATED_TARGETS = {
 
 local managedTargets = setmetatable({}, { __mode = "k" })
 local desiredVisibility = setmetatable({}, { __mode = "k" })
-local applyingVisibility = setmetatable({}, { __mode = "k" })
+-- Roblox experiences can use deferred signal delivery. A plain boolean that is
+-- cleared immediately after assigning Visible is therefore not a safe
+-- re-entrancy guard: GetPropertyChangedSignal may run on the next scheduler
+-- turn, see the guard already cleared, and record our temporary hidden state as
+-- the system's real desired state. Keep the controller's last expected value
+-- instead, so both immediate and arbitrarily deferred signals can identify it.
+local controllerVisibility = setmetatable({}, { __mode = "k" })
 local hookedButtons = setmetatable({}, { __mode = "k" })
 local drawerOpen = false
 local setDrawerOpen
@@ -253,9 +259,9 @@ local function applyTargetVisibility(target: GuiObject)
 	if target.Visible == shouldShow then
 		return
 	end
-	applyingVisibility[target] = true
+
+	controllerVisibility[target] = shouldShow
 	target.Visible = shouldShow
-	applyingVisibility[target] = nil
 end
 
 local function hookButton(button: Instance)
@@ -288,7 +294,7 @@ local function manageTarget(target: Instance?)
 	target.DescendantAdded:Connect(hookButton)
 
 	target:GetPropertyChangedSignal("Visible"):Connect(function()
-		if applyingVisibility[target] then
+		if controllerVisibility[target] == target.Visible then
 			return
 		end
 		desiredVisibility[target] = target.Visible
