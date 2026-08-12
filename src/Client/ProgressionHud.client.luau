@@ -27,8 +27,8 @@
 	---------------------------
 	This script never grants anything. It draws whatever state the server
 	sends and fires "I'd like to claim" requests; ProgressionService
-	re-validates every one of them. Buttons disable themselves purely as
-	a courtesy so the player isn't clicking something that will bounce.
+	re-validates every one of them. Locked-looking buttons remain responsive
+	so NotificationService can explain what is missing or when to return.
 
 	LAYOUT
 	-------
@@ -46,6 +46,7 @@ local SoundService = game:GetService("SoundService")
 
 local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
 local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
+local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -999,14 +1000,30 @@ function refreshDaily()
 	else
 		dailyClaimButton.Text = "CLAIMED TODAY"
 		dailyClaimButton.BackgroundColor3 = THEME.Locked
-		dailyClaimButton.Active = false
+		-- Keep completed rewards responsive: clicking explains when the next
+		-- one arrives instead of making the interface feel broken.
+		dailyClaimButton.Active = true
 		dailyStatusLabel.Text = ("Streak: %d day(s)  •  Next reward in %s%s")
 			:format(daily.Streak or 0, ProgressionConfig.FormatDuration(daily.SecondsUntilReset or 0), freezeSuffix)
 	end
 end
 
 dailyClaimButton.MouseButton1Click:Connect(function()
-	if not state.Daily or not state.Daily.CanClaim then
+	if not state.Daily then
+		NotificationService.Info("Your daily streak is still loading.", {
+			Title = "Rewards Still Loading",
+			Key = "daily-loading",
+		})
+		return
+	end
+	if not state.Daily.CanClaim then
+		NotificationService.Info(("You already claimed today. The next reward arrives in %s."):format(
+			ProgressionConfig.FormatDuration(state.Daily.SecondsUntilReset or 0)
+		), {
+			Title = "Daily Reward Claimed",
+			Icon = "✓",
+			Key = "daily-already-claimed",
+		})
 		return
 	end
 	ClaimDailyRemote:FireServer()
@@ -1153,10 +1170,31 @@ for slot = 1, ProgressionConfig.QuestsPerDay do
 
 	claimButton.MouseButton1Click:Connect(function()
 		local questState = state.Quests and state.Quests[slot]
-		if not questState or questState.Claimed then
+		if not questState then
+			NotificationService.Info("Your daily quests are still loading.", {
+				Title = "Quests Still Loading",
+				Key = "quest-loading",
+			})
+			return
+		end
+		if questState.Claimed then
+			NotificationService.Info((questState.Title or "This quest") .. " has already been claimed.", {
+				Title = "Quest Complete",
+				Icon = "✓",
+				Key = "quest-claimed:" .. slot,
+			})
 			return
 		end
 		if (questState.Progress or 0) < (questState.Target or math.huge) then
+			local remaining = math.max(0, (questState.Target or 0) - (questState.Progress or 0))
+			NotificationService.Info(("%s needs %s more progress before it can be claimed."):format(
+				questState.Title or "This quest",
+				ProgressionConfig.FormatNumber(remaining)
+			), {
+				Title = "Quest In Progress",
+				Icon = questState.Icon or "◆",
+				Key = "quest-incomplete:" .. slot,
+			})
 			return
 		end
 		ClaimQuestRemote:FireServer(slot)
@@ -1220,7 +1258,7 @@ function refreshQuests()
 				row.ClaimButton.Text = "DONE ✓"
 				row.ClaimButton.BackgroundColor3 = THEME.Locked
 				row.ClaimButton.TextColor3 = THEME.Green
-				row.ClaimButton.Active = false
+				row.ClaimButton.Active = true
 				row.Stroke.Color = THEME.Green
 				row.BarFill.BackgroundColor3 = THEME.Green
 			elseif complete then
@@ -1234,7 +1272,7 @@ function refreshQuests()
 				row.ClaimButton.Text = "CLAIM"
 				row.ClaimButton.BackgroundColor3 = THEME.Locked
 				row.ClaimButton.TextColor3 = THEME.Grey
-				row.ClaimButton.Active = false
+				row.ClaimButton.Active = true
 				row.Stroke.Color = THEME.Locked
 				row.BarFill.BackgroundColor3 = THEME.Accent
 			end
@@ -1313,6 +1351,11 @@ local function submitCode()
 	if entered:gsub("%s", "") == "" then
 		codeStatus.Text = "Enter a code first."
 		codeStatus.TextColor3 = THEME.Grey
+		NotificationService.Info("Type a code before pressing redeem.", {
+			Title = "Enter a Code",
+			Icon = "#",
+			Key = "code-empty",
+		})
 		return
 	end
 
@@ -1334,6 +1377,10 @@ local function submitCode()
 		if not ok then
 			codeStatus.Text = "Something went wrong -- try again."
 			codeStatus.TextColor3 = THEME.Red
+			NotificationService.Error(codeStatus.Text, {
+				Title = "Code Connection Failed",
+				Key = "code-connection",
+			})
 			return
 		end
 
@@ -1342,6 +1389,17 @@ local function submitCode()
 
 		if success then
 			codeBox.Text = ""
+			NotificationService.Success(tostring(message or "Your reward was delivered."), {
+				Title = "Code Redeemed",
+				Icon = "#",
+				Key = "code-success",
+			})
+		else
+			NotificationService.Warning(tostring(message or "That code could not be redeemed."), {
+				Title = "Code Not Redeemed",
+				Icon = "#",
+				Key = "code-failed:" .. string.lower(entered),
+			})
 		end
 	end)
 end
@@ -1416,18 +1474,30 @@ local function refreshChest()
 		chestStroke.Color = THEME.Locked
 		chestStroke.Thickness = 2
 		chestFill.BackgroundColor3 = THEME.Accent
-		chestPill.Active = false
+		chestPill.Active = true
 	end
 end
 
 chestPill.MouseButton1Click:Connect(function()
 	local chest = state.Chest
 	if not chest then
+		NotificationService.Info("Your playtime chest is still loading.", {
+			Title = "Chest Still Loading",
+			Key = "chest-loading",
+		})
 		return
 	end
 
 	local elapsed = (chest.Elapsed or 0) + (os.clock() - chestSyncedAt)
 	if elapsed < (chest.NextAt or math.huge) then
+		NotificationService.Info(("%s unlocks in %s."):format(
+			chest.NextTitle or "Your next chest",
+			ProgressionConfig.FormatDuration((chest.NextAt or elapsed) - elapsed)
+		), {
+			Title = "Playtime Chest Charging",
+			Icon = chest.NextIcon or "🎁",
+			Key = "chest-not-ready",
+		})
 		return
 	end
 

@@ -20,6 +20,7 @@ local UserInputService = game:GetService("UserInputService")
 local WheelConfig = require(ReplicatedStorage:WaitForChild("WheelConfig"))
 local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
 local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
+local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -1240,7 +1241,7 @@ local function refreshStatus()
 	if not dataLoaded then
 		freeStatus.Text = "READING THE STARS..."
 		freeStatus.TextColor3 = THEME.Muted
-		spinButton.Active = false
+		spinButton.Active = true
 		spinButton.BackgroundColor3 = THEME.Locked
 		spinButton.Text = "LOADING FORTUNE..."
 		statusLabel.Text = "Loading your spins..."
@@ -1264,7 +1265,8 @@ local function refreshStatus()
 		return
 	end
 
-	spinButton.Active = hasSpin
+	-- Resting stays clickable so it can explain when the next chance arrives.
+	spinButton.Active = true
 	spinButton.BackgroundColor3 = hasSpin and THEME.Green or THEME.Locked
 	if ready then
 		spinButton.Text = "SPIN THE WHEEL — FREE"
@@ -1611,7 +1613,26 @@ end
 
 local function requestSpin()
 	local ready = serverNow() >= wheelState.FreeSpinReadyAt
-	if not dataLoaded or spinning or not (ready or wheelState.Tickets > 0) then
+	if spinning then
+		return
+	end
+	if not dataLoaded then
+		NotificationService.Info("Your Daily Wheel chances are still loading.", {
+			Title = "Reading Your Fortune",
+			Icon = "✦",
+			Key = "wheel-loading",
+		})
+		return
+	end
+	if not (ready or wheelState.Tickets > 0) then
+		NotificationService.Warning(("Your next free spin arrives in %s. Collect %d more orbs to earn a ticket."):format(
+			formatDuration(wheelState.FreeSpinReadyAt - serverNow()),
+			math.max(0, WheelConfig.CollectionsPerTicket - wheelState.CollectionsSinceLastTicket)
+		), {
+			Title = "No Spin Available Yet",
+			Icon = "⌛",
+			Key = "wheel-resting",
+		})
 		return
 	end
 
@@ -1635,6 +1656,12 @@ local function requestSpin()
 	if not ok or not success then
 		spinning = false
 		transientStatus = ok and (message or "The wheel refused the spin. Try again.") or "The wheel lost its connection. Try again."
+		NotificationService.Push(transientStatus, {
+			Kind = ok and "Warning" or "Error",
+			Title = ok and "Spin Unavailable" or "Wheel Connection Lost",
+			Icon = ok and "⌛" or "×",
+			Key = "wheel-spin-failed",
+		})
 		Juice.Shake(spinButton, 4, 0.25)
 		refreshStatus()
 		return
@@ -1643,6 +1670,10 @@ local function requestSpin()
 	if type(result) ~= "table" or not WheelConfig.Segments[result.SegmentIndex] then
 		spinning = false
 		transientStatus = "The wheel returned an unreadable fortune."
+		NotificationService.Error(transientStatus, {
+			Title = "Fortune Unreadable",
+			Key = "wheel-invalid-result",
+		})
 		refreshStatus()
 		return
 	end

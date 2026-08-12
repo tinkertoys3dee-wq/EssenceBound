@@ -21,6 +21,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local ZonesConfig = require(ReplicatedStorage:WaitForChild("ZonesConfig"))
 local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
+local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
 
 -- =========================================================================
 -- REMOTES
@@ -142,7 +143,10 @@ UnlockZoneFunction.OnServerInvoke = function(player, zoneId)
 		end
 		local current = tonumber(stat:GetAttribute("Quantity")) or 0
 		if current < amount then
-			return false, ("Not enough %s."):format(definition.Name)
+			return false, ("You need %s more %s."):format(
+				ProgressionConfig.FormatNumber(amount - current),
+				definition.Name
+			)
 		end
 		table.insert(deductions, { Stat = stat, NewQuantity = current - amount })
 	end

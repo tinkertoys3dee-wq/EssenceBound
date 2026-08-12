@@ -44,6 +44,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
 local TreeUpgrades = require(ReplicatedStorage:WaitForChild("TreeUpgrades"))
 local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
+local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
 
 -- =========================================================================
 -- REMOTES
@@ -496,11 +497,26 @@ ClaimDailyRemote.OnServerEvent:Connect(function(player)
 
 	local progression = getProgression(player)
 	if not progression then
+		NotificationService.Send(player, {
+			Kind = "Error",
+			Title = "Rewards Still Loading",
+			Message = "Your daily streak is still loading. Try again in a moment.",
+			Key = "daily-loading",
+		})
 		return
 	end
 
 	local today = ProgressionConfig.GetDayNumber()
 	if progression.LastClaimDay == today then
+		NotificationService.Send(player, {
+			Kind = "Info",
+			Title = "Daily Reward Claimed",
+			Message = ("The next daily reward arrives in %s."):format(
+				ProgressionConfig.FormatDuration(ProgressionConfig.GetSecondsUntilNextDay())
+			),
+			Icon = "✓",
+			Key = "daily-already-claimed",
+		})
 		return -- already claimed today
 	end
 
@@ -578,6 +594,12 @@ ClaimQuestRemote.OnServerEvent:Connect(function(player, slot)
 
 	local progression = getProgression(player)
 	if not progression then
+		NotificationService.Send(player, {
+			Kind = "Error",
+			Title = "Quests Still Loading",
+			Message = "Your daily quests are still loading. Try again in a moment.",
+			Key = "quest-loading",
+		})
 		return
 	end
 
@@ -590,11 +612,28 @@ ClaimQuestRemote.OnServerEvent:Connect(function(player, slot)
 	end
 
 	if progression.QuestClaimed[slot] == true then
+		NotificationService.Send(player, {
+			Kind = "Info",
+			Title = "Quest Already Claimed",
+			Message = quest.Title .. " has already been claimed.",
+			Icon = "✓",
+			Key = "quest-claimed:" .. slot,
+		})
 		return
 	end
 
 	local progress = tonumber(progression.QuestProgress[slot]) or 0
 	if progress < quest.Target then
+		NotificationService.Send(player, {
+			Kind = "Info",
+			Title = "Quest In Progress",
+			Message = ("%s needs %s more progress."):format(
+				quest.Title,
+				ProgressionConfig.FormatNumber(quest.Target - progress)
+			),
+			Icon = quest.Icon,
+			Key = "quest-incomplete:" .. slot,
+		})
 		return -- not actually complete; client asked for something it can't have
 	end
 
@@ -613,6 +652,12 @@ ClaimChestRemote.OnServerEvent:Connect(function(player)
 	end
 
 	if not sessionStart[player] then
+		NotificationService.Send(player, {
+			Kind = "Error",
+			Title = "Chest Still Loading",
+			Message = "Your playtime chest is still loading. Try again in a moment.",
+			Key = "chest-loading",
+		})
 		return
 	end
 
@@ -621,6 +666,16 @@ ClaimChestRemote.OnServerEvent:Connect(function(player)
 	local elapsed = os.clock() - sessionStart[player]
 
 	if elapsed < chest.Seconds then
+		NotificationService.Send(player, {
+			Kind = "Info",
+			Title = "Playtime Chest Charging",
+			Message = ("%s unlocks in %s."):format(
+				chest.Title,
+				ProgressionConfig.FormatDuration(chest.Seconds - elapsed)
+			),
+			Icon = chest.Icon,
+			Key = "chest-not-ready",
+		})
 		return -- not earned yet
 	end
 

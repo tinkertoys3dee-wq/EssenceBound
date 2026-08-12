@@ -24,6 +24,7 @@ local GuiService = game:GetService("GuiService")
 
 local MonetizationConfig = require(ReplicatedStorage:WaitForChild("MonetizationConfig"))
 local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
+local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -619,10 +620,19 @@ end
 
 local function requestOfferPurchase(offer)
 	if isOwned(offer) then
+		NotificationService.Info("You already own this permanent perk.", {
+			Title = "Perk Already Owned",
+			Icon = "✓",
+			Key = "store-owned:" .. offer.Id,
+		})
 		return
 	end
 	if not requestPurchase then
 		showFooterMessage("Store connection is still loading • Please try again in a moment", THEME.Danger, 3)
+		NotificationService.Error("The store connection is still loading. Try again in a moment.", {
+			Title = "Store Not Ready",
+			Key = "store-connection",
+		})
 		return
 	end
 	trackOfferView(offer)
@@ -1189,12 +1199,24 @@ MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(purchasedPlay
 		updateCard(offer)
 	end
 	showFooterMessage("✓ Permanent perk unlocked • Thank you!", THEME.Green, 4)
+	NotificationService.Success("Your permanent perk is active now. Thank you for supporting EssenceBound!", {
+		Title = "Permanent Perk Unlocked",
+		Icon = "★",
+		Duration = 4,
+		Key = "store-gamepass-success:" .. gamePassId,
+	})
 	pendingOfferId = nil
 end)
 
 MarketplaceService.PromptProductPurchaseFinished:Connect(function(userId, productId, purchased)
 	if userId == player.UserId and purchased and pendingOfferId == productId then
 		showFooterMessage("✓ Purchase confirmed • Applying your reward", THEME.Green, 4)
+		NotificationService.Success("Purchase confirmed — your reward is being applied now.", {
+			Title = "Reward Incoming",
+			Icon = "◆",
+			Duration = 4,
+			Key = "store-product-success:" .. productId,
+		})
 		pendingOfferId = nil
 	elseif userId == player.UserId then
 		pendingOfferId = nil

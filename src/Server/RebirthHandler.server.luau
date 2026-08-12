@@ -2,6 +2,8 @@ local RP = game:GetService("ReplicatedStorage")
 local remotes = RP:WaitForChild("Remotes")
 local func = remotes:WaitForChild("Rebirth")
 local BS = game:GetService("BadgeService")
+local NotificationService = require(RP:WaitForChild("NotificationService"))
+local ProgressionConfig = require(RP:WaitForChild("ProgressionConfig"))
 
 -- Owned/created by RebirthShopService.server.luau -- waited on rather than
 -- created here so there's exactly one owner for the whole RebirthShop
@@ -12,7 +14,7 @@ local TwinAscensionRemote = rebirthShopRemotes and rebirthShopRemotes:WaitForChi
 local rebirthmodule = require(RP:WaitForChild("RebirthHandler"))
 func.OnServerEvent:Connect(function(plr)
 	local data = require(plr:WaitForChild("PlayerData"))
-	local response, wasTwinAscension = rebirthmodule.PerformRebirth(data,plr)
+	local response, wasTwinAscension, essenceNeeded = rebirthmodule.PerformRebirth(data,plr)
 	if response == true then
 
 		if not plr:GetAttribute("2522508290427820") then
@@ -32,5 +34,16 @@ func.OnServerEvent:Connect(function(plr)
 		if wasTwinAscension and TwinAscensionRemote then
 			TwinAscensionRemote:FireClient(plr)
 		end
+	else
+		local earthData = data.Essences and data.Essences["EarthEssence"]
+		local current = earthData and (tonumber(earthData.Quantity) or 0) or 0
+		local shortfall = math.max(0, (tonumber(essenceNeeded) or 0) - current)
+		NotificationService.Send(plr, {
+			Kind = "Warning",
+			Title = "Not Enough Earth Essence",
+			Message = ("You need %s more Earth Essence to rebirth."):format(ProgressionConfig.FormatNumber(shortfall)),
+			Icon = "↻",
+			Key = "rebirth-not-enough",
+		})
 	end
 end)

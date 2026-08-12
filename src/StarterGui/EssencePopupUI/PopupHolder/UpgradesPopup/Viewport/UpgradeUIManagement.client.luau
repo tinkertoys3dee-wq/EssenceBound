@@ -1,6 +1,7 @@
 local RP = game:GetService("ReplicatedStorage")
 local remotes = RP:WaitForChild("Remotes")
 local TreeUpgrades = require(RP:WaitForChild("TreeUpgrades"))
+local NotificationService = require(RP:WaitForChild("NotificationService"))
 
 local UserInputService = game:GetService("UserInputService")
 
@@ -181,9 +182,39 @@ for _, child in ipairs(frame:GetChildren()) do
 			end
 			
 			button.Activated:Connect(function()
-				if TreeUpgrades.GetUpgrade(child.Name).MaxLevel > child:GetAttribute("Tier") and TreeUpgrades.GetUpgrade(child.Name).RebirthRequired <= player:GetAttribute("Rebirths") and TreeUpgrades.GetCostForNextLevel(child.Name,child:GetAttribute("Tier")) then
-					BuyRemote:FireServer(child.Name)
+				local definition = TreeUpgrades.GetUpgrade(child.Name)
+				if not definition then
+					return
 				end
+
+				local tier = tonumber(child:GetAttribute("Tier")) or 0
+				local rebirths = tonumber(player:GetAttribute("Rebirths")) or 0
+				if tier >= definition.MaxLevel then
+					NotificationService.Info(definition.Name .. " is already at its final level.", {
+						Title = "Upgrade Maxed",
+						Icon = "★",
+						Key = "upgrade-maxed:" .. child.Name,
+					})
+					return
+				end
+				if rebirths < definition.RebirthRequired then
+					NotificationService.Warning(("Reach Rebirth %d to unlock %s."):format(definition.RebirthRequired, definition.Name), {
+						Title = "Rebirth Locked",
+						Icon = "↻",
+						Key = "upgrade-rebirth:" .. child.Name,
+					})
+					return
+				end
+				if child:GetAttribute("Buyable") == false then
+					NotificationService.Info("Complete the connected upgrade path first.", {
+						Title = "Path Still Locked",
+						Icon = "◇",
+						Key = "upgrade-path:" .. child.Name,
+					})
+					return
+				end
+
+				BuyRemote:FireServer(child.Name)
 			end)
 		end
 	end

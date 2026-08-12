@@ -21,6 +21,7 @@ local UserInputService = game:GetService("UserInputService")
 local SanctumUpgrades = require(ReplicatedStorage:WaitForChild("SanctumUpgrades"))
 local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
 local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
+local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -540,10 +541,30 @@ for index, def in ipairs(SanctumUpgrades.List) do
 
 	buyButton.MouseButton1Click:Connect(function()
 		local entry = state.Upgrades and state.Upgrades[index]
-		if not entry or not entry.Cost then
+		if not entry then
+			NotificationService.Info("Your Shadow Sanctum is still loading.", {
+				Title = "Sanctum Still Loading",
+				Key = "sanctum-loading",
+			})
+			return
+		end
+		if not entry.Cost then
+			NotificationService.Info(def.Name .. " is already fully awakened.", {
+				Title = "Relic Maxed",
+				Icon = "★",
+				Key = "sanctum-maxed:" .. def.Id,
+			})
 			return
 		end
 		if state.Balance < entry.Cost then
+			NotificationService.Warning(("You need %s more Shadow Essence for %s."):format(
+				formatNumber(entry.Cost - state.Balance),
+				def.Name
+			), {
+				Title = "Not Enough Shadow Essence",
+				Icon = "☾",
+				Key = "sanctum-currency",
+			})
 			return
 		end
 		PurchaseRemote:FireServer(def.Id)

@@ -25,6 +25,7 @@ local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionCon
 local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
 local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
 local EssenceVisuals = require(ReplicatedStorage:WaitForChild("EssenceVisuals"))
+local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
 local formatNumber = ProgressionConfig.FormatNumber
 
 local player = Players.LocalPlayer
@@ -1188,7 +1189,9 @@ local function refresh()
 		else
 			local requiredRebirth = tonumber(zone.RebirthRequired) or 0
 			if rebirths < requiredRebirth then
-				button.Active = false
+				-- Locked cards stay clickable so the player gets an explanation
+				-- instead of a button that appears to ignore them.
+				button.Active = true
 				button.BackgroundColor3 = THEME.Locked
 				button.Text = ("🔒 REBIRTH %d\nREQUIRED"):format(requiredRebirth)
 			else
@@ -1204,7 +1207,7 @@ local function refresh()
 						table.insert(costParts, ("%s %s"):format(formatNumber(amount), essence.ShortName))
 					end
 				end
-				button.Active = canAfford
+				button.Active = true
 				button.BackgroundColor3 = canAfford and THEME.Accent or THEME.Locked
 				button.Text = "🔒 UNLOCK\n" .. table.concat(costParts, " + ")
 			end
@@ -1236,13 +1239,32 @@ requestZoneAction = function(zone)
 	actionInFlight = false
 
 	if not ok or not success then
-		statusLabel.Text = (ok and message) or "Something went wrong -- try again."
+		local failureMessage = (ok and message) or "Something went wrong -- try again."
+		statusLabel.Text = failureMessage
+		local isGate = string.find(string.lower(tostring(failureMessage)), "need", 1, true)
+			or string.find(string.lower(tostring(failureMessage)), "rebirth", 1, true)
+			or string.find(string.lower(tostring(failureMessage)), "unlock", 1, true)
+		NotificationService.Push(failureMessage, {
+			Kind = isGate and "Warning" or "Error",
+			Title = isGate and "Zone Locked" or "Travel Interrupted",
+			Icon = isGate and "◇" or "×",
+			Key = "zone-failure:" .. zone.Id,
+		})
 		refresh()
 		return
 	end
 
 	statusLabel.Text = ""
 	refresh()
+	NotificationService.Success(
+		unlocked and ("Traveling to %s."):format(zone.Name) or ("%s unlocked — traveling now."):format(zone.Name),
+		{
+			Title = unlocked and "Zone Attuned" or "New Zone Unlocked",
+			Icon = zone.Icon,
+			Duration = 2.7,
+			Key = "zone-success:" .. zone.Id,
+		}
+	)
 	closePanel()
 	playZoneTransition(zone)
 end

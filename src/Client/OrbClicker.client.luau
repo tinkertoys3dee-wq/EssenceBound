@@ -20,6 +20,7 @@ local CollectionUpgrades = require(ReplicatedStorage:WaitForChild("CollectionUpg
 local Criticals = require(ReplicatedStorage:WaitForChild("CriticalsController"))
 local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
 local EssenceVisuals = require(ReplicatedStorage:WaitForChild("EssenceVisuals"))
+local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
 
 local cloneables = ReplicatedStorage:WaitForChild("Cloneables")
 local ClickOrbEvent = Events:WaitForChild("ClickOrb")
@@ -1137,6 +1138,12 @@ local function FlashDenied()
 	local now = os.clock()
 	if (now - lastDeniedMessageAt) > 1.6 then
 		lastDeniedMessageAt = now
+		NotificationService.Warning("Your Essence Core needs a moment to recharge before it can shatter again.", {
+			Title = "Essence Core Recharging",
+			Icon = "⚡",
+			Duration = 2.8,
+			Key = "orb-energy-recharging",
+		})
 
 		if clickSound then
 			-- Dropped well below the normal click pitch so a refusal is
@@ -1161,6 +1168,12 @@ LargeOrbButton.Activated:Connect(function()
 	local shotHPCost = player:GetAttribute("OrbShotHPCost") or 0
 
 	if not CanSpawnOrb() then
+		NotificationService.Info("Collect some active essence orbs before creating more.", {
+			Title = "Orb Field Full",
+			Icon = "◆",
+			Duration = 2.6,
+			Key = "orb-field-full",
+		})
 		return
 	end
 
@@ -1604,7 +1617,7 @@ local function refreshManualButton()
 	local unlocked = player:GetAttribute("ManualStormUnlocked")
 	local cooldownRemaining = player:GetAttribute("ManualStormCooldownRemaining") or 0
 	manualSummonButton.Visible = unlocked and true or false
-	manualSummonButton.Active = unlocked and cooldownRemaining <= 0
+	manualSummonButton.Active = unlocked and true or false
 
 end
 
@@ -1616,6 +1629,23 @@ player:GetAttributeChangedSignal("ManualStormCooldownRemaining"):Connect(refresh
 
 if manualSummonButton then
 	manualSummonButton.Activated:Connect(function()
+		if player:GetAttribute("StormActive") then
+			NotificationService.Info("Ride this storm before summoning another one.", {
+				Title = "Storm Already Active",
+				Icon = "⚡",
+				Key = "manual-storm-active",
+			})
+			return
+		end
+		local remaining = tonumber(player:GetAttribute("ManualStormCooldownRemaining")) or 0
+		if remaining > 0 then
+			NotificationService.Warning("Manual summoning is ready again in " .. formatTime(remaining) .. ".", {
+				Title = "Storm Focus Recharging",
+				Icon = "⚡",
+				Key = "manual-storm-cooldown",
+			})
+			return
+		end
 		Events:WaitForChild("ManualStormSummon"):FireServer()
 	end)
 end

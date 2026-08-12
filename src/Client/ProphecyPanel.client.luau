@@ -21,6 +21,7 @@ local UserInputService = game:GetService("UserInputService")
 local ProphecyConfig = require(ReplicatedStorage:WaitForChild("ProphecyConfig"))
 local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
 local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
+local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -1065,7 +1066,7 @@ local function refresh()
 	end
 
 	if not dataLoaded then
-		rollButton.Active = false
+		rollButton.Active = true
 		rollButton.BackgroundColor3 = THEME.Locked
 		rollButton.Text = "CONSULTING THE STARS..."
 		statusLabel.Text = "Your fate is still loading."
@@ -1080,7 +1081,8 @@ local function refresh()
 		return
 	end
 
-	rollButton.Active = ready
+	-- A sleeping crystal remains clickable so the cooldown is explained.
+	rollButton.Active = true
 	rollButton.BackgroundColor3 = ready and THEME.Violet or THEME.Locked
 	if ready then
 		rollButton.Text = "READ THE CRYSTAL — FREE"
@@ -1329,7 +1331,23 @@ local function animateReading(prophecy, pityTriggered: boolean)
 end
 
 local function requestReading()
-	if not dataLoaded or rolling or serverNow() < state.NextRollAt then
+	if rolling then
+		return
+	end
+	if not dataLoaded then
+		NotificationService.Info("Your prophecy history is still loading.", {
+			Title = "Consulting the Stars",
+			Icon = "✦",
+			Key = "prophecy-loading",
+		})
+		return
+	end
+	if serverNow() < state.NextRollAt then
+		NotificationService.Warning(("The crystal reawakens in %s."):format(formatTime(state.NextRollAt - serverNow())), {
+			Title = "Crystal Recharging",
+			Icon = "◈",
+			Key = "prophecy-cooldown",
+		})
 		return
 	end
 
@@ -1347,6 +1365,12 @@ local function requestReading()
 			applyPayload(result.State)
 		end
 		transientStatus = ok and (message or "The crystal went quiet. Try again.") or "The vision was interrupted. Try again."
+		NotificationService.Push(transientStatus, {
+			Kind = ok and "Warning" or "Error",
+			Title = ok and "Vision Unavailable" or "Vision Interrupted",
+			Icon = ok and "◈" or "×",
+			Key = "prophecy-roll-failed",
+		})
 		Juice.Shake(rollButton, 4, 0.25)
 		refresh()
 		return
@@ -1355,6 +1379,10 @@ local function requestReading()
 	if type(result) ~= "table" then
 		rolling = false
 		transientStatus = "The crystal returned an unreadable vision. Try again."
+		NotificationService.Error(transientStatus, {
+			Title = "Vision Unreadable",
+			Key = "prophecy-invalid-result",
+		})
 		refresh()
 		return
 	end
@@ -1366,6 +1394,10 @@ local function requestReading()
 	if not prophecy then
 		rolling = false
 		transientStatus = "The prophecy could not be deciphered."
+		NotificationService.Error(transientStatus, {
+			Title = "Prophecy Missing",
+			Key = "prophecy-missing-result",
+		})
 		refresh()
 		return
 	end

@@ -274,7 +274,7 @@ function RebirthModule.PerformRebirth(playerData, player)
 	local essenceNeeded = RebirthModule.CalculateEssenceNeeded(rebirthCount, requirementReduction)
 
 	if essence < essenceNeeded then
-		return false, false
+		return false, false, essenceNeeded
 	end
 
 	local newRebirthCount = rebirthCount + 1
@@ -336,7 +336,7 @@ function RebirthModule.PerformRebirth(playerData, player)
 	playerData.RebirthCurrency = (playerData.RebirthCurrency or 0) + grantedCurrency
 	player:SetAttribute("RebirthCurrency", playerData.RebirthCurrency)
 
-	return true, wasTwinAscension
+	return true, wasTwinAscension, essenceNeeded
 end
 
 return RebirthModule
