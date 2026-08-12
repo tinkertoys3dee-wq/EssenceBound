@@ -1,7 +1,7 @@
 --[[
 	Juice (ModuleScript -> ReplicatedStorage)
 	=========================================
-	Shared "game feel" toolkit. Every effect in here is PURELY COSMETIC --
+	Shared "game feel" toolkit. Every effect in here is PURELY COSMETIC -
 	nothing in this file changes a reward, a rate, or any gameplay value.
 	It exists so the same punch/ring/burst/count-up bhaviour can be reused
 	across the client scripts instead of each one hand-rolling its own
