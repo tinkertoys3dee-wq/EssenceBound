@@ -18,6 +18,7 @@ local UserInputService = game:GetService("UserInputService")
 
 local GroupRewardConfig = require(ReplicatedStorage:WaitForChild("GroupRewardConfig"))
 local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
+local PresentationCoordinator = require(ReplicatedStorage:WaitForChild("PresentationCoordinator"))
 
 if not GroupRewardConfig.IsEnabled() then
 	return
@@ -264,7 +265,7 @@ local outerHalo = new("Frame", {
 	BackgroundTransparency = 0.93,
 	ZIndex = 101,
 }, popupRoot)
-new("UISizeConstraint", { MinSize = Vector2.new(330, 480), MaxSize = Vector2.new(760, 675) }, outerHalo)
+new("UISizeConstraint", { MinSize = Vector2.new(280, 310), MaxSize = Vector2.new(760, 675) }, outerHalo)
 corner(outerHalo, UDim.new(0, 32))
 
 local cardShadow = new("Frame", {
@@ -276,7 +277,7 @@ local cardShadow = new("Frame", {
 	BackgroundTransparency = 0.34,
 	ZIndex = 102,
 }, popupRoot)
-new("UISizeConstraint", { MinSize = Vector2.new(310, 455), MaxSize = Vector2.new(700, 610) }, cardShadow)
+new("UISizeConstraint", { MinSize = Vector2.new(270, 300), MaxSize = Vector2.new(700, 610) }, cardShadow)
 corner(cardShadow, UDim.new(0, 26))
 local shadowScale = new("UIScale", { Scale = 0.82 }, cardShadow)
 
@@ -290,7 +291,7 @@ local card = new("Frame", {
 	ClipsDescendants = true,
 	ZIndex = 103,
 }, popupRoot)
-new("UISizeConstraint", { MinSize = Vector2.new(310, 455), MaxSize = Vector2.new(700, 610) }, card)
+new("UISizeConstraint", { MinSize = Vector2.new(270, 300), MaxSize = Vector2.new(700, 610) }, card)
 corner(card, UDim.new(0, 26))
 local cardStroke = stroke(card, THEME.Accent, 2.5, 0.05)
 local cardScale = new("UIScale", { Scale = 0.82 }, card)
@@ -717,7 +718,10 @@ local function setStatus(text, color)
 end
 
 local function showPopup()
-	if player:GetAttribute("GroupMember") == true then
+	if player:GetAttribute("GroupMember") == true or popupRoot.Visible then
+		return
+	end
+	if not PresentationCoordinator.CanOpenModal() then
 		return
 	end
 
@@ -875,10 +879,10 @@ holder.Visible = false
 task.spawn(function()
 	local isMember = waitForAttribute("GroupMember", 15) == true
 	holder.Visible = not isMember
-	if not isMember then
-		task.wait(5)
-		showPopup()
-	end
+	-- Keep the FREE shortcut discoverable, but never force this promotional
+	-- panel over a new player's first five seconds. It was one of the startup
+	-- popups competing with Tutorial/Offline/Daily; opening it is now an
+	-- explicit player choice and still uses the same server verification.
 end)
 
 player:GetAttributeChangedSignal("GroupMember"):Connect(function()

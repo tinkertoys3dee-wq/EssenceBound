@@ -6,6 +6,7 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 local MonetizationConfig = require(ReplicatedStorage:WaitForChild("MonetizationConfig"))
+local PresentationCoordinator = require(ReplicatedStorage:WaitForChild("PresentationCoordinator"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -153,6 +154,7 @@ local CLOSE_INFO = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirectio
 local openPopup, closePopup -- forward declared, bodies assigned further down
 
 local backdrop = GUI:WaitForChild("Backdrop")
+backdrop:SetAttribute("PresentationModal", true)
 -------------------------------------------------------------------
 -- OPEN / CLOSE IMPLEMENTATION
 -------------------------------------------------------------------
@@ -257,6 +259,16 @@ openPopup = function(name)
 	local popup = popups[name]
 	if not popup then return end
 	if currentOpen == name then return end
+	-- Switching between two authored popups already closes the old one in the
+	-- same transaction. A fresh popup, however, must not layer over a tutorial,
+	-- cinematic, code-built panel, or loading screen. Tutorial is allowed to
+	-- open only Upgrades, the interaction it is actively teaching.
+	if currentOpen == nil then
+		local allowedOwner = name == "UpgradesPopup" and "Tutorial" or nil
+		if not PresentationCoordinator.CanOpenModal(allowedOwner) then
+			return
+		end
+	end
 	if currentOpen then
 		closePopup(currentOpen)
 	end

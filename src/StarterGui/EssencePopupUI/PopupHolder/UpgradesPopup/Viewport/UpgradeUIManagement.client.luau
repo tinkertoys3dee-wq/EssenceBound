@@ -8,8 +8,6 @@ local UserInputService = game:GetService("UserInputService")
 local viewport = script.Parent
 local canvas = viewport:WaitForChild("Canvas")
 local revert = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("Revert")
-local loadingscreen = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("LoadingDone")
-loadingscreen.Event:Wait()
 -- === ZOOM SETTINGS ===
 local MIN_ZOOM = 0.5
 local MAX_ZOOM = 3.0

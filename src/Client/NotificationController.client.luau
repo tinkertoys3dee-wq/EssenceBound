@@ -2,7 +2,7 @@
 	NotificationController (LocalScript -> StarterPlayerScripts)
 	============================================================
 	Premium, code-built notification stack used by NotificationService.
-	Messages merge by key, queue at three visible cards, can be dismissed,
+	Messages merge by key, queue at two visible cards, can be dismissed,
 	and animate without blocking gameplay. No authored Studio GUI is needed.
 ]]
 
@@ -12,6 +12,7 @@ local TweenService = game:GetService("TweenService")
 
 local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
 local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
+local PresentationCoordinator = require(ReplicatedStorage:WaitForChild("PresentationCoordinator"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -414,14 +415,36 @@ local function createCard(payload)
 end
 
 showNext = function()
-	while activeCount < 3 and #pending > 0 do
+	-- Tutorial/cinematics own the player's attention. Notifications remain
+	-- queued and resume afterward instead of stacking three cards over the
+	-- very frame that is trying to teach or tell a story.
+	if PresentationCoordinator.HasPendingPresentation() then
+		return
+	end
+	while activeCount < 2 and #pending > 0 do
 		local payload = table.remove(pending, 1)
-		createCard(payload)
+		local age = os.clock() - (payload.QueuedAt or os.clock())
+		-- Old success/info messages are already reflected in the player's state;
+		-- replaying them after a long tutorial is clutter, not useful feedback.
+		-- Warnings and errors remain durable because they may require action.
+		if age <= 20 or payload.Kind == "Warning" or payload.Kind == "Error" then
+			createCard(payload)
+		end
 	end
 end
 
 local function enqueue(payload)
 	if type(payload) ~= "table" or type(payload.Message) ~= "string" then
+		return
+	end
+	-- Tutorial dialogue already announces its successful starter gift. Do not
+	-- replay the same informational card after the foreground lease ends; real
+	-- errors still queue so a player can recover from a failed grant.
+	local key = tostring(payload.Key or "")
+	if PresentationCoordinator.GetOwner() == "Tutorial"
+		and (payload.Kind == "Info" or payload.Kind == "Success")
+		and string.sub(key, 1, 9) == "tutorial-"
+	then
 		return
 	end
 
@@ -449,7 +472,8 @@ local function enqueue(payload)
 		return
 	end
 
-	if activeCount >= 3 then
+	if PresentationCoordinator.HasPendingPresentation() or activeCount >= 2 then
+		payload.QueuedAt = os.clock()
 		for index, queued in ipairs(pending) do
 			if queued.Key == payload.Key then
 				payload.QueueOrder = queued.QueueOrder
@@ -472,7 +496,7 @@ local function enqueue(payload)
 			end
 			return a.Priority > b.Priority
 		end)
-		if #pending > 9 then
+		if #pending > 6 then
 			-- The queue is sorted highest priority first; discard the oldest
 			-- lowest-priority tail, never the error that just jumped the line.
 			table.remove(pending, #pending)
@@ -481,6 +505,29 @@ local function enqueue(payload)
 	end
 	createCard(payload)
 end
+
+PresentationCoordinator.Changed:Connect(function()
+	-- Existing cards are temporarily hidden as soon as a focused presentation
+	-- starts. Their timers may expire in the background; importantly, they do
+	-- not reappear as a stale wall of messages when onboarding ends.
+	local focusReserved = PresentationCoordinator.HasPendingPresentation()
+	screenGui.Enabled = not focusReserved
+	if focusReserved then
+		-- Do not freeze a hovered card and resurrect it later. Active cosmetic
+		-- cards are disposable; queued warnings/errors remain durable above.
+		local activeEntries = {}
+		for _, entry in pairs(activeByKey) do
+			table.insert(activeEntries, entry)
+		end
+		for _, entry in ipairs(activeEntries) do
+			dismiss(entry)
+		end
+	else
+		showNext()
+	end
+end)
+
+screenGui.Enabled = not PresentationCoordinator.HasPendingPresentation()
 
 local localSignal = NotificationService.GetSignal()
 if localSignal then

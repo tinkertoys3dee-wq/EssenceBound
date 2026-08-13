@@ -34,6 +34,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
+local PresentationCoordinator = require(ReplicatedStorage:WaitForChild("PresentationCoordinator"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -86,7 +87,7 @@ local function findNewestCrossedTier(streak: number, lastAnnounced: number)
 end
 
 local function announce(tier)
-	if not juiceLayer then
+	if not juiceLayer or PresentationCoordinator.HasPendingPresentation() then
 		return
 	end
 

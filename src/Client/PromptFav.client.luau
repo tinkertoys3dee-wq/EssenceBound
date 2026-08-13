@@ -27,6 +27,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
 local UpdData = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("UpdateData")
+local PresentationCoordinator = require(ReplicatedStorage:WaitForChild("PresentationCoordinator"))
 
 -- Give them a real chance to play first -- asking in the first few seconds,
 -- before they know if they even like the game, is the fastest way to get
@@ -54,9 +55,49 @@ if waitedForJourney then
 	task.wait(45)
 end
 
-pcall(function()
+-- This is a Roblox-native prompt, so it cannot participate in the custom UI
+-- queue directly. At minimum, require a stable quiet window before invoking
+-- it; if the session stays busy, skip the optional prompt entirely.
+local clearSince = nil
+local clearDeadline = os.clock() + 120
+while os.clock() < clearDeadline do
+	if not PresentationCoordinator.HasPendingPresentation() and PresentationCoordinator.CanOpenModal() then
+		clearSince = clearSince or os.clock()
+		if os.clock() - clearSince >= 1.5 then
+			break
+		end
+	else
+		clearSince = nil
+	end
+	task.wait(0.1)
+end
+if not clearSince or os.clock() - clearSince < 1.5 then
+	-- A session busy for another two minutes has already supplied plenty of
+	-- engagement beats. Treat this optional nudge as consumed rather than
+	-- retrying it on a later join and surprising the player then.
+	UpdData:FireServer(true, "=", "SeenFavoritePrompt")
+	return
+end
+
+local promptLease = PresentationCoordinator.Acquire("FavoritePrompt", {
+	Priority = 18,
+	QuietAfter = 1,
+})
+if not promptLease then
+	return
+end
+
+local promptOpened = pcall(function()
 	AvatarEditorService:PromptSetFavorite(game.PlaceId, Enum.AvatarItemType.Asset, true)
 end)
+
+-- Roblox owns the native prompt and exposes no custom frame for this queue to
+-- observe. Reserve a short response window so the next automatic card cannot
+-- appear beneath it; manual game panels are blocked by the same lease.
+if promptOpened then
+	task.wait(8)
+end
+PresentationCoordinator.Release(promptLease, 1)
 
 -- Marked seen regardless of pcall success -- a broken/no-op call should
 -- fail (and stay failed) silently, not retry forever every 5 minutes.

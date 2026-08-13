@@ -814,6 +814,28 @@ local function SpawnOrb(EssenceType, isFragment)
 	local minX, maxX = -0.65, 1.65
 	local minY, maxY = -.15, 1.8
 	local exclusionRadius = 0.45
+	if Gui:GetAttribute("TutorialActive") == true then
+		-- The tutorial requires the player to collect this first real drop. Keep
+		-- it in the unobstructed center band instead of letting the normal wide
+		-- scatter roll place the only teaching target under its dialogue card or
+		-- beyond a screen edge. Normal spawning resumes as soon as onboarding ends.
+		minX, maxX = 0.2, 0.8
+		local camera = workspace.CurrentCamera
+		local compactLandscape = camera ~= nil and camera.ViewportSize.Y < 520
+		if compactLandscape then
+			-- Tutorial's compact card begins at 12% of the viewport and is
+			-- 104px tall. Derive the first safe landing row from that footprint
+			-- (plus room for the drop itself) so a 320x240 device cannot roll the
+			-- required collectible a few pixels underneath the instruction card.
+			local viewportHeight = math.max(1, camera.ViewportSize.Y)
+			local dialogueBottom = viewportHeight * 0.12 + 104
+			minY = math.clamp((dialogueBottom + 44) / viewportHeight, 0.52, 0.72)
+			maxY = 0.82
+		else
+			minY, maxY = 0.2, 0.58
+		end
+		exclusionRadius = 0.16
+	end
 
 	local targetX, targetY
 	repeat

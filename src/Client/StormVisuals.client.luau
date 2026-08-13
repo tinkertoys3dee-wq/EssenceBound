@@ -27,6 +27,7 @@ local TweenService = game:GetService("TweenService")
 local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
 local ZonesConfig = require(ReplicatedStorage:WaitForChild("ZonesConfig"))
 local EssenceVisuals = require(ReplicatedStorage:WaitForChild("EssenceVisuals"))
+local PresentationCoordinator = require(ReplicatedStorage:WaitForChild("PresentationCoordinator"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -555,6 +556,11 @@ local function applyPalette(palette)
 end
 
 local function showBanner(titleText, subtitleText, hintText, holdTime)
+	-- The weather remains active and collectible, but its announcement is
+	-- redundant while onboarding or a modal is already explaining something.
+	if PresentationCoordinator.HasPendingPresentation() then
+		return
+	end
 	bannerToken += 1
 	local myBannerToken = bannerToken
 	banner.Visible = true
@@ -586,6 +592,15 @@ local function showBanner(titleText, subtitleText, hintText, holdTime)
 		end)
 	end)
 end
+
+PresentationCoordinator.Changed:Connect(function()
+	if PresentationCoordinator.HasPendingPresentation() then
+		-- Storm gameplay and atmosphere continue; only the attention-grabbing
+		-- announcement is cancelled when a focused frame takes precedence.
+		bannerToken += 1
+		banner.Visible = false
+	end
+end)
 
 local function spawnRainStreak(palette, token)
 	rainCursor = (rainCursor % #rainStreaks) + 1

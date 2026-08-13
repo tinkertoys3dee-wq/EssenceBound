@@ -48,6 +48,7 @@ local TweenService = game:GetService("TweenService")
 local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
 local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
 local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
+local PresentationCoordinator = require(ReplicatedStorage:WaitForChild("PresentationCoordinator"))
 local formatNumber = ProgressionConfig.FormatNumber
 
 local player = Players.LocalPlayer
@@ -117,6 +118,12 @@ new("UITextSizeConstraint", { MaxTextSize = 22 }, bannerLabel)
 local activeBannerToken = 0
 
 local function showBanner(amount, essenceName)
+	-- A personal-best banner is optional feedback. Dropping one while the
+	-- player is reading onboarding is better than replaying stale celebration
+	-- noise after the tutorial or an event ends.
+	if PresentationCoordinator.HasPendingPresentation() then
+		return
+	end
 	activeBannerToken += 1
 	local myToken = activeBannerToken
 
@@ -157,6 +164,18 @@ local function showBanner(amount, essenceName)
 		end)
 	end)
 end
+
+PresentationCoordinator.Changed:Connect(function()
+	local focusReserved = PresentationCoordinator.HasPendingPresentation()
+	screenGui.Enabled = not focusReserved
+	if focusReserved then
+		-- Invalidate its delayed fade callback too, so an interrupted personal
+		-- best never reappears as a stale banner between later presentations.
+		activeBannerToken += 1
+		banner.Visible = false
+	end
+end)
+screenGui.Enabled = not PresentationCoordinator.HasPendingPresentation()
 
 -- =========================================================================
 -- TRACKING

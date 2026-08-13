@@ -23,6 +23,7 @@ local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
 local EssenceVisuals = require(ReplicatedStorage:WaitForChild("EssenceVisuals"))
+local PresentationCoordinator = require(ReplicatedStorage:WaitForChild("PresentationCoordinator"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -34,6 +35,8 @@ local playerGui = player:WaitForChild("PlayerGui")
 local POPUP_HOLD_TIME = 2.5      -- seconds fully visible before it starts leaving
 local TWEEN_IN_TIME = 0.45
 local TWEEN_OUT_TIME = 0.35
+local MAX_QUEUED_DISCOVERIES = 2
+local DISCOVERY_MAX_AGE = 20
 
 -- ============================================================
 -- Event other scripts fire to trigger this popup
@@ -170,9 +173,25 @@ oddsLabel.Parent = card
 -- ============================================================
 
 local queue = {}
+local queuedNames = {}
 local isShowing = false
 
-local function playPopup(essenceName, oddsText)
+local function playPopup(essenceName, oddsText, queuedAt)
+	local lease = PresentationCoordinator.Acquire("EssenceDiscovery", {
+		Priority = 55,
+		QuietAfter = 1.25,
+	})
+	if not lease then
+		return
+	end
+	-- The first item leaves this script's local queue while it waits for the
+	-- global foreground slot. Re-check its age after that wait too, otherwise
+	-- a discovery made under a long tutorial would still replay afterward.
+	if os.clock() - (queuedAt or os.clock()) > DISCOVERY_MAX_AGE then
+		PresentationCoordinator.Release(lease, 0)
+		return
+	end
+
 	local definition = EssenceConfig.Get(essenceName) or EssenceConfig.Get("Earth Essence")
 	nameLabel.Text = essenceName
 	oddsLabel.Text = "Odds: " .. oddsText
@@ -205,6 +224,7 @@ local function playPopup(essenceName, oddsText)
 	tweenOut.Completed:Wait()
 
 	card.Visible = false
+	PresentationCoordinator.Release(lease, 1.25)
 end
 
 local function processQueue()
@@ -215,14 +235,44 @@ local function processQueue()
 
 	while #queue > 0 do
 		local next = table.remove(queue, 1)
-		playPopup(next.name, next.odds)
+		if os.clock() - next.queuedAt > DISCOVERY_MAX_AGE then
+			queuedNames[next.name] = nil
+			continue
+		end
+		local ok, err = xpcall(function()
+			playPopup(next.name, next.odds, next.queuedAt)
+		end, debug.traceback)
+		queuedNames[next.name] = nil
+		if not ok then
+			card.Visible = false
+			PresentationCoordinator.ForceRelease("EssenceDiscovery", 1.25)
+			warn("[NewDiscovery] Presentation failed: " .. tostring(err))
+		end
 	end
 
 	isShowing = false
 end
 
 local function Show(essenceName, oddsText)
-	table.insert(queue, { name = essenceName, odds = oddsText or "1 in 1" })
+	if type(essenceName) ~= "string" or essenceName == "" or queuedNames[essenceName] then
+		return
+	end
+
+	-- A lucky burst can discover several essences during Tutorial or another
+	-- foreground beat. Their Index entries are already saved server-side, so
+	-- showing an old avalanche after the player regains control only creates
+	-- clutter. Keep at most two fresh, unique cards waiting behind the active
+	-- one and quietly discard stale presentation work.
+	if #queue >= MAX_QUEUED_DISCOVERIES then
+		return
+	end
+
+	queuedNames[essenceName] = true
+	table.insert(queue, {
+		name = essenceName,
+		odds = oddsText or "1 in 1",
+		queuedAt = os.clock(),
+	})
 	processQueue()
 end
 

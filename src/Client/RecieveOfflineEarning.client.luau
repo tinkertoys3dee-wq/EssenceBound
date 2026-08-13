@@ -39,6 +39,7 @@ local PlayerGui    = LocalPlayer:WaitForChild("PlayerGui")
 local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
 local EssenceVisuals = require(ReplicatedStorage:WaitForChild("EssenceVisuals"))
 local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
+local PresentationCoordinator = require(ReplicatedStorage:WaitForChild("PresentationCoordinator"))
 
 --// REMOTE EVENT
 local OfflineEssenceRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("OfflineEssenceReward")
@@ -210,7 +211,7 @@ backdrop.Parent = screenGui
 --=========================================================================
 -- Slightly larger than before, and internal content gets its own inset
 -- padding so nothing (icons, text, rows) ever touches or clips the edges.
-local POPUP_TARGET_SIZE = UDim2.fromScale(0.4, 0.62)
+local POPUP_TARGET_SIZE = UDim2.new(0.88, 0, 0.82, 0)
 
 local popup = Instance.new("Frame")
 popup.Name = "PopupPanel"
@@ -222,6 +223,13 @@ popup.BorderSizePixel = 0
 popup.ClipsDescendants = true
 popup.ZIndex = 2
 popup.Parent = backdrop
+
+local popupSizeConstraint = Instance.new("UISizeConstraint")
+-- The 88% target supplies the mobile size; retain only a desktop cap so the
+-- authored Size=0 entrance/exit animation can still collapse completely.
+popupSizeConstraint.MinSize = Vector2.new(0, 0)
+popupSizeConstraint.MaxSize = Vector2.new(560, 620)
+popupSizeConstraint.Parent = popup
 
 corner(popup, 0.035)
 stroke(popup, THEME.Gold, 3, 0)
@@ -370,6 +378,9 @@ closeButton.Parent = content
 corner(closeButton, 0.3)
 stroke(closeButton, THEME.Gold, 2, 0.2)
 textOutline(closeButton)
+local closeSizeConstraint = Instance.new("UISizeConstraint")
+closeSizeConstraint.MinSize = Vector2.new(34, 34)
+closeSizeConstraint.Parent = closeButton
 
 --=========================================================================
 -- BUILD: Scrolling reward list
@@ -474,6 +485,9 @@ gradient(claimButton, ColorSequence.new({
 	ColorSequenceKeypoint.new(1, THEME.GreenDark),
 }), 90)
 textOutline(claimButton)
+local claimSizeConstraint = Instance.new("UISizeConstraint")
+claimSizeConstraint.MinSize = Vector2.new(120, 40)
+claimSizeConstraint.Parent = claimButton
 
 --=========================================================================
 -- FUNCTION: Build a single reward row inside the scroll frame
@@ -757,6 +771,8 @@ end)
 --       ["Earth Essence"] = 60,
 --       ["Fire Essence"] = 12,
 --   })
+local offlinePresentationPending = false
+
 OfflineEssenceRemote.OnClientEvent:Connect(function(rewardTable)
 	if typeof(rewardTable) ~= "table" then
 		warn("[OfflineEssenceReward] Expected a table of rewards, got:", typeof(rewardTable))
@@ -772,6 +788,35 @@ OfflineEssenceRemote.OnClientEvent:Connect(function(rewardTable)
 	if not hasEntries then
 		return
 	end
+	-- Rewards are granted server-side before this event. If replication or a
+	-- retry sends the presentation twice, never make the player dismiss two
+	-- identical welcome-back frames.
+	if offlinePresentationPending then
+		return
+	end
+	offlinePresentationPending = true
 
-	openPopup(rewardTable)
+	task.spawn(function()
+		local lease = PresentationCoordinator.Acquire("OfflineRewards", {
+			Priority = 82,
+			QuietAfter = 0.9,
+		})
+		if not lease then
+			offlinePresentationPending = false
+			return
+		end
+		local ok, err = xpcall(function()
+			openPopup(rewardTable)
+			while isOpen and screenGui.Parent do
+				task.wait(0.1)
+			end
+		end, debug.traceback)
+		if not ok then
+			isOpen = false
+			screenGui.Enabled = false
+			warn("[OfflineEssenceReward] Presentation failed: " .. tostring(err))
+		end
+		PresentationCoordinator.Release(lease, 0.9)
+		offlinePresentationPending = false
+	end)
 end)

@@ -39,26 +39,26 @@ local TweenService = game:GetService("TweenService")
 local ContentProvider = game:GetService("ContentProvider")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
+local PresentationCoordinator = require(ReplicatedStorage:WaitForChild("PresentationCoordinator"))
 
--- "LoadingDone" (a BindableEvent under ReplicatedStorage.Remotes, despite
--- living alongside the real client-server RemoteEvents/Functions -- it's
--- purely a local, same-client signal) is what this script fires once
--- loading finishes, and FOUR other scripts (SoundController, TheHollow-
--- Glitch, Tutorial, UpgradeUIManagement) all separately WaitForChild it
--- with no timeout and no fallback anywhere in the codebase. If it was
--- ever missing, all five scripts would hang forever waiting on it (this
--- one included, further down) -- so this script, as the one that
--- actually fires it, takes ownership of guaranteeing it exists, as early
--- as possible so the other four scripts' own WaitForChild calls resolve
--- immediately regardless of which script happens to start first.
-local remotesFolder = game:GetService("ReplicatedStorage"):FindFirstChild("Remotes")
+-- Automatic presentations may initialize while assets are still loading,
+-- but none may take the foreground slot until this full-screen input layer
+-- has actually faded out and been destroyed.
+PresentationCoordinator.SetReady(false)
+
+-- Keep the legacy local LoadingDone BindableEvent for compatibility with any
+-- place-only scripts that are not represented in this source tree. Runtime
+-- systems here use PresentationCoordinator's durable readiness state instead
+-- of a one-shot event that can be missed when LocalScripts start out of order.
+local remotesFolder = ReplicatedStorage:FindFirstChild("Remotes")
 if not remotesFolder then
 	remotesFolder = Instance.new("Folder")
 	remotesFolder.Name = "Remotes"
-	remotesFolder.Parent = game:GetService("ReplicatedStorage")
+	remotesFolder.Parent = ReplicatedStorage
 end
 
 local loadingDoneEvent = remotesFolder:FindFirstChild("LoadingDone")
@@ -1713,8 +1713,6 @@ fadeOutTween.Completed:Wait()
 
 CONFIG.Music:Stop()
 CONFIG.Music.Volume = CONFIG.Music:GetAttribute("OriginalVolume") or CONFIG.Music.Volume -- restore volume for next time it plays
-ready:Fire("Done")
-
 --============================================================
 -- SECTION 24: FADE OUT + FULL CLEANUP
 --============================================================
@@ -1750,3 +1748,10 @@ end
 
 task.wait(CONFIG.FadeTime + 0.1)
 gui:Destroy()
+
+-- Fire readiness only after the blocking GUI is gone. Previously this fired
+-- before the fade/cleanup, allowing Tutorial to become visible underneath a
+-- still-interactive LoadingScreen and making its highlighted orb appear
+-- unclickable for the opening beat.
+PresentationCoordinator.SetReady(true)
+ready:Fire("Done")

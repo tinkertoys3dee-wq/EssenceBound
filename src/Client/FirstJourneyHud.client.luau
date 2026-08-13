@@ -18,6 +18,7 @@ local TweenService = game:GetService("TweenService")
 local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
 local FirstJourneyConfig = require(ReplicatedStorage:WaitForChild("FirstJourneyConfig"))
 local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
+local PresentationCoordinator = require(ReplicatedStorage:WaitForChild("PresentationCoordinator"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -642,7 +643,7 @@ local function updateMilestones(stageIndex: number)
 end
 
 local function revealHolder()
-	if shown or not currentState or not tutorialComplete() then
+	if shown or not currentState or not tutorialComplete() or PresentationCoordinator.HasPendingPresentation() then
 		return
 	end
 	if not currentState.Eligible or currentState.Completed then
@@ -692,6 +693,28 @@ local function hideAll(instant: boolean?)
 		end
 	end)
 end
+
+-- This HUD is useful between beats, but it should not sit underneath a
+-- tutorial, reward modal, discovery, or cinematic. Delay its return until
+-- the coordinator has been truly idle so a quiet gap between two queued
+-- presentations cannot make the panel flash on for a fraction of a second.
+local presentationChangeVersion = 0
+PresentationCoordinator.Changed:Connect(function()
+	presentationChangeVersion += 1
+	local version = presentationChangeVersion
+	if PresentationCoordinator.HasPendingPresentation() then
+		hideAll(false)
+		return
+	end
+
+	task.spawn(function()
+		if PresentationCoordinator.WaitUntilIdle(0.75, 4)
+			and presentationChangeVersion == version
+		then
+			revealHolder()
+		end
+	end)
+end)
 
 local function applyState(payload)
 	if type(payload) ~= "table" then
@@ -810,7 +833,7 @@ local function sweepSheen()
 end
 
 local function stageCelebration(payload)
-	if not tutorialComplete() then
+	if not tutorialComplete() or PresentationCoordinator.HasPendingPresentation() then
 		return
 	end
 
@@ -852,7 +875,7 @@ local function stageCelebration(payload)
 end
 
 local function rushCelebration(payload)
-	if not tutorialComplete() then
+	if not tutorialComplete() or PresentationCoordinator.HasPendingPresentation() then
 		return
 	end
 
@@ -911,7 +934,7 @@ local MINUTE_BEATS = {
 }
 
 local function minuteCelebration(payload)
-	if not tutorialComplete() then
+	if not tutorialComplete() or PresentationCoordinator.HasPendingPresentation() then
 		return
 	end
 	local beat = MINUTE_BEATS[tonumber(payload.Minute)]
@@ -951,6 +974,14 @@ local function playFinale(payload)
 		return
 	end
 	finalePlaying = true
+	local finaleLease = PresentationCoordinator.Acquire("AwakeningFinale", {
+		Priority = 90,
+		QuietAfter = 1,
+	})
+	if not finaleLease then
+		finalePlaying = false
+		return
+	end
 	hideAll(false)
 
 	local overlay = new("TextButton", {
@@ -1245,6 +1276,7 @@ local function playFinale(payload)
 				overlay:Destroy()
 			end
 			finalePlaying = false
+			PresentationCoordinator.Release(finaleLease, 1)
 		end)
 	end
 
@@ -1295,6 +1327,23 @@ local function playFinale(payload)
 	end)
 end
 
+local function startFinale(payload)
+	task.spawn(function()
+		local ok, err = xpcall(function()
+			playFinale(payload)
+		end, debug.traceback)
+		if not ok then
+			local orphanedOverlay = screenGui:FindFirstChild("AwakeningFinale")
+			if orphanedOverlay then
+				orphanedOverlay:Destroy()
+			end
+			finalePlaying = false
+			PresentationCoordinator.ForceRelease("AwakeningFinale", 1)
+			warn("[FirstJourneyHud] Finale presentation failed: " .. tostring(err))
+		end
+	end)
+end
+
 local function runStageCelebrationQueue()
 	if stageCelebrationWorker then
 		return
@@ -1320,7 +1369,7 @@ local function runStageCelebrationQueue()
 		if pendingFinale then
 			local finalePayload = pendingFinale
 			pendingFinale = nil
-			playFinale(finalePayload)
+			startFinale(finalePayload)
 		end
 	end)
 end
@@ -1353,7 +1402,7 @@ EventRemote.OnClientEvent:Connect(function(payload)
 		if stageCelebrationWorker then
 			pendingFinale = payload
 		else
-			playFinale(payload)
+			startFinale(payload)
 		end
 	end
 end)

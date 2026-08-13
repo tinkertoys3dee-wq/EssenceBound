@@ -53,7 +53,26 @@ local GuiService = game:GetService("GuiService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
-local remote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("LoadingDone")
+local PresentationCoordinator = require(ReplicatedStorage:WaitForChild("PresentationCoordinator"))
+
+-- PlayerDataHandler mirrors the saved flag shortly after join. Waiting for
+-- that first value prevents a returning player from briefly being treated as
+-- new just because nil is falsey, and avoids constructing hundreds of hidden
+-- tutorial instances (plus animation loops) for players who already finished.
+if player:GetAttribute("SeenTutorial") == nil then
+	local deadline = os.clock() + 30
+	while player:GetAttribute("SeenTutorial") == nil and os.clock() < deadline do
+		task.wait(0.1)
+	end
+end
+if player:GetAttribute("SeenTutorial") == true then
+	return
+end
+
+-- The lease is acquired after all authored targets and tutorial UI have been
+-- built successfully. Acquiring in a detached startup task can orphan the
+-- global slot forever if a missing descendant stops construction midway.
+local tutorialLease = nil
 
 local UpdData = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("UpdateData")
 local RequestStarterGift = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("RequestTutorialStarterGift")
@@ -79,11 +98,43 @@ local updateProgressDots
 
 local main = playerGui:WaitForChild("MainGui")
 local essencePopup = playerGui:WaitForChild("EssencePopupUI"):WaitForChild("PopupHolder")
-local RebirthPopup = essencePopup:WaitForChild("RebirthPopup")
-local ShopPopup = essencePopup:WaitForChild("ShopPopup")
 local UpgradesPopup = essencePopup:WaitForChild("UpgradesPopup")
-local StatsFrame = main:WaitForChild("Left"):WaitForChild("Detail")
-local LargeOrbFrame = main:WaitForChild("Center"):WaitForChild("LargeOrbFolder"):WaitForChild("LargeOrb")
+local CenterFrame = main:WaitForChild("Center")
+local LargeOrbFolder = CenterFrame:WaitForChild("LargeOrbFolder")
+local LargeOrbFrame = LargeOrbFolder:WaitForChild("LargeOrb")
+local LargeOrbButton = LargeOrbFrame:WaitForChild("TextButton")
+local OrbClickables = LargeOrbFolder:WaitForChild("OrbClickables")
+
+local largeOrbInputState = {
+	Active = LargeOrbButton.Active,
+	Selectable = LargeOrbButton.Selectable,
+}
+pcall(function()
+	largeOrbInputState.Interactable = LargeOrbButton.Interactable
+end)
+
+local function restoreLargeOrbInputState()
+	LargeOrbButton.Active = largeOrbInputState.Active
+	LargeOrbButton.Selectable = largeOrbInputState.Selectable
+	if largeOrbInputState.Interactable ~= nil then
+		pcall(function()
+			LargeOrbButton.Interactable = largeOrbInputState.Interactable
+		end)
+	end
+end
+
+local rightHolder = main:WaitForChild("Right"):WaitForChild("Holder")
+local function navKey(name: string): string
+	return string.lower(tostring(name)):gsub("button", ""):gsub("%s+", "")
+end
+local UpgradesNav = nil
+for _, child in ipairs(rightHolder:GetChildren()) do
+	if child:IsA("GuiObject") and navKey(child.Name) == "upgrades" then
+		UpgradesNav = child
+		break
+	end
+end
+UpgradesNav = UpgradesNav or UpgradesPopup
 
 --============================================================
 -- 1a. ORB-COLLECT DEMO (used by the Large Orb step's Extra fn)
@@ -94,13 +145,17 @@ local LargeOrbFrame = main:WaitForChild("Center"):WaitForChild("LargeOrbFolder")
 local DEMO_COLOR_PRIMARY = Color3.fromRGB(255, 209, 70)
 local DEMO_COLOR_ACCENT = Color3.fromRGB(96, 205, 255)
 
-local function getGuiInsetOffset()
+local function getGuiInsetOffset(frame)
+	local sourceGui = frame and frame:FindFirstAncestorOfClass("ScreenGui")
+	if sourceGui and sourceGui.IgnoreGuiInset then
+		return 0, 0
+	end
 	local topInset = GuiService:GetGuiInset()
 	return topInset.X, topInset.Y
 end
 
 local function getFrameCenter(frame)
-	local xinset, yinset = getGuiInsetOffset()
+	local xinset, yinset = getGuiInsetOffset(frame)
 	local pos = frame.AbsolutePosition
 	local size = frame.AbsoluteSize
 	return Vector2.new(pos.X + size.X / 2 + xinset, pos.Y + size.Y / 2 + yinset)
@@ -117,6 +172,7 @@ local function startOrbCollectDemo(targetFrame, screenGui)
 	orbDemoHolder.Name = "OrbDemoHolder"
 	orbDemoHolder.BackgroundTransparency = 1
 	orbDemoHolder.Size = UDim2.new(1, 0, 1, 0)
+	orbDemoHolder.Active = false
 	orbDemoHolder.ZIndex = 1005
 	orbDemoHolder.Parent = screenGui
 
@@ -292,9 +348,28 @@ local function startOrbCollectDemo(targetFrame, screenGui)
 				for _, desc in ipairs(orbClone:GetDescendants()) do
 					if desc:IsA("Script") or desc:IsA("LocalScript") then
 						desc:Destroy()
+					elseif desc:IsA("GuiObject") then
+						-- The clone is an illustration, never a second real input
+						-- target floating over the great orb.
+						desc.Active = false
+						if desc:IsA("GuiButton") then
+							desc.Selectable = false
+						end
+						pcall(function()
+							desc.Interactable = false
+						end)
 					end
 				end
 				orbClone.Name = "DemoOrb"
+				if orbClone:IsA("GuiObject") then
+					orbClone.Active = false
+					if orbClone:IsA("GuiButton") then
+						orbClone.Selectable = false
+					end
+					pcall(function()
+						orbClone.Interactable = false
+					end)
+				end
 				orbClone.Parent = orbDemoHolder
 
 				local orbScale = Instance.new("UIScale")
@@ -476,8 +551,11 @@ local function startOrbCollectDemo(targetFrame, screenGui)
 	end)
 
 	local function cleanup()
+		if cancelled then
+			return
+		end
 		cancelled = true
-		if orbDemoHolder then
+		if orbDemoHolder and orbDemoHolder.Parent then
 			orbDemoHolder:Destroy()
 		end
 	end
@@ -681,6 +759,14 @@ end
 local TUTORIAL_STEPS = {
 	{
 		Frame = LargeOrbFrame,
+		-- Real drops can land across the whole center playfield. Restricting
+		-- input to the orb's exact rectangle would recreate the reported bug by
+		-- preventing the required hover/hold collection after the first click.
+		InteractionFrame = CenterFrame,
+		-- OrbClicker intentionally lets edge drops orbit a little beyond their
+		-- container. Preserve that playable gutter without exposing the side-menu
+		-- buttons that onboarding is deliberately holding back.
+		InteractionPadding = 48,
 		Emoji = "🌀",
 		-- Kept to 1-2 short sentences on purpose -- the dialogue box is
 		-- small and the old, fully-explained version overflowed it.
@@ -695,18 +781,43 @@ local TUTORIAL_STEPS = {
 		-- anything until you hover one of the drops.
 		AdvanceOn = "Extra",
 		Extra = function(step, ctx)
+			-- Input recovery: decorative tutorial layers are click-through, and
+			-- the actual authored button is explicitly restored in case another
+			-- startup script temporarily disabled it while loading a modal.
+			LargeOrbButton.Active = true
+			LargeOrbButton.Selectable = true
+			pcall(function()
+				LargeOrbButton.Interactable = true
+			end)
 			local cleanupDemo = startOrbCollectDemo(step.Frame, ctx.ScreenGui)
+			-- The illustration exists only until the click lands. Once a real drop
+			-- spawns, remove every fake orb/cursor immediately so the player can
+			-- never mistake a non-interactive demo clone for their collectible.
+			local realDropConnection = nil
+			realDropConnection = OrbClickables.ChildAdded:Connect(function(child)
+				if child:IsA("GuiObject") then
+					cleanupDemo()
+					if realDropConnection then
+						realDropConnection:Disconnect()
+						realDropConnection = nil
+					end
+				end
+			end)
 			local cleanupWatch = startFirstCollectionWatch(ctx)
 			ctx.SetCleanup(function()
+				if realDropConnection then
+					realDropConnection:Disconnect()
+					realDropConnection = nil
+				end
 				cleanupDemo()
 				cleanupWatch()
 			end)
 		end,
 	},
 	{
-		Frame = UpgradesPopup,
+		Frame = UpgradesNav,
 		Emoji = "⚡",
-		Text = "Spend your essence in the UPGRADES menu to level up your power!",
+		Text = "Click UPGRADES, then buy the glowing first node with your starter essence.",
 		-- Same fix as the Large Orb step: don't just narrate the menu,
 		-- make sure the player actually buys something (see
 		-- startFirstUpgradeWatch above, which also grants the one-time
@@ -714,26 +825,29 @@ local TUTORIAL_STEPS = {
 		AdvanceOn = "Extra",
 		Extra = function(step, ctx)
 			local cleanupWatch = startFirstUpgradeWatch(ctx)
-			ctx.SetCleanup(cleanupWatch)
+			local popupConnection = UpgradesPopup:GetPropertyChangedSignal("Visible"):Connect(function()
+				if UpgradesPopup.Visible then
+					ctx.SetFocusFrame(UpgradesPopup)
+				else
+					ctx.SetFocusFrame(UpgradesNav)
+				end
+			end)
+			if UpgradesPopup.Visible then
+				ctx.SetFocusFrame(UpgradesPopup)
+			end
+			ctx.SetCleanup(function()
+				popupConnection:Disconnect()
+				cleanupWatch()
+				-- Leave the player with a clean gameplay canvas before the next
+				-- queued onboarding presentation is allowed to begin.
+				local popupApi = rawget(_G, "PopupUI")
+				if popupApi and popupApi.Close then
+					popupApi.Close("UpgradesPopup")
+				else
+					UpgradesPopup.Visible = false
+				end
+			end)
 		end,
-	},
-	{
-		Frame = RebirthPopup,
-		Emoji = "🔥",
-		Text = "Feeling strong? REBIRTH to reset your progress for a permanent essence boost!",
-		Extra = nil,
-	},
-	{
-		Frame = StatsFrame,
-		Emoji = "📊",
-		Text = "Track everything you've earned in your STATS menu!",
-		Extra = nil,
-	},
-	{
-		Frame = ShopPopup,
-		Emoji = "💎",
-		Text = "SHOP shows exact permanent perks and repeatable boosts with live Robux prices. Purchases are always optional!",
-		Extra = nil,
 	},
 }
 
@@ -747,6 +861,74 @@ screenGui.ResetOnSpawn = false
 screenGui.DisplayOrder = 1000
 screenGui.IgnoreGuiInset = true
 screenGui.Parent = playerGui
+
+local tutorialRunning = false
+local tutorialEnded = false
+
+-- Four transparent input guards form a real hole around the current task.
+-- This keeps every unrelated menu from opening over onboarding while still
+-- sending clicks/touches directly to the actual orb, its center playfield,
+-- or the Upgrades popup. A single full-screen blocker was intentionally not
+-- used because it would be the exact cause of an unclickable highlighted orb.
+local inputBlockers = {}
+for index = 1, 4 do
+	local blocker = Instance.new("TextButton")
+	blocker.Name = "InputGuard" .. index
+	blocker.BackgroundTransparency = 1
+	blocker.BorderSizePixel = 0
+	blocker.AutoButtonColor = false
+	blocker.Text = ""
+	blocker.Active = true
+	blocker.Selectable = false
+	blocker.Visible = false
+	blocker.ZIndex = 990
+	blocker.Parent = screenGui
+	inputBlockers[index] = blocker
+end
+
+local function setInputGuardRect(blocker, x, y, width, height)
+	local visible = tutorialRunning and width > 0 and height > 0
+	blocker.Visible = visible
+	if visible then
+		blocker.Position = UDim2.fromOffset(x, y)
+		blocker.Size = UDim2.fromOffset(width, height)
+	end
+end
+
+local function viewportSize()
+	local camera = workspace.CurrentCamera
+	return camera and camera.ViewportSize or Vector2.new(1280, 720)
+end
+
+local function blockEntireTutorialScreen()
+	local viewport = viewportSize()
+	setInputGuardRect(inputBlockers[1], 0, 0, viewport.X, viewport.Y)
+	for index = 2, #inputBlockers do
+		inputBlockers[index].Visible = false
+	end
+end
+
+local function positionTutorialInputGate(frame, padding)
+	if not frame or not frame.Parent then
+		blockEntireTutorialScreen()
+		return
+	end
+
+	padding = tonumber(padding) or 6
+	local viewport = viewportSize()
+	local absPos = frame.AbsolutePosition
+	local absSize = frame.AbsoluteSize
+	local xinset, yinset = getGuiInsetOffset(frame)
+	local left = math.clamp(absPos.X + xinset - padding, 0, viewport.X)
+	local top = math.clamp(absPos.Y + yinset - padding, 0, viewport.Y)
+	local right = math.clamp(absPos.X + xinset + absSize.X + padding, left, viewport.X)
+	local bottom = math.clamp(absPos.Y + yinset + absSize.Y + padding, top, viewport.Y)
+
+	setInputGuardRect(inputBlockers[1], 0, 0, viewport.X, top)
+	setInputGuardRect(inputBlockers[2], 0, bottom, viewport.X, viewport.Y - bottom)
+	setInputGuardRect(inputBlockers[3], 0, top, left, bottom - top)
+	setInputGuardRect(inputBlockers[4], right, top, viewport.X - right, bottom - top)
+end
 
 -- Cheerful color palette
 local COLOR_PRIMARY = Color3.fromRGB(255, 209, 70)   -- sunny gold
@@ -850,9 +1032,11 @@ local function spawnSparkle()
 end
 
 task.spawn(function()
-	while true do
+	while screenGui.Parent do
 		task.wait(math.random(15, 35) / 100)
-		spawnSparkle()
+		if tutorialRunning then
+			spawnSparkle()
+		end
 	end
 end)
 
@@ -870,7 +1054,7 @@ dialogueFrame.Position = UDim2.new(0.5, 0, 0.95, 0)
 -- Fill most of a narrow phone while capping at a comfortable desktop
 -- width. The previous 40%-wide box became only ~130px wide on phones,
 -- forcing the mascot, copy, and two controls into one another.
-dialogueFrame.Size = UDim2.new(0.9, 0, 0.18, 0)
+dialogueFrame.Size = UDim2.new(0.9, 0, 0, 140)
 dialogueFrame.BackgroundColor3 = COLOR_BG
 dialogueFrame.BorderSizePixel = 0
 dialogueFrame.ZIndex = 1000
@@ -879,8 +1063,38 @@ dialogueFrame.Parent = screenGui
 dialogueScale.Parent = dialogueFrame
 
 local dialogueSizeConstraint = Instance.new("UISizeConstraint")
-dialogueSizeConstraint.MaxSize = Vector2.new(680, 180)
+dialogueSizeConstraint.MinSize = Vector2.new(220, 98)
+dialogueSizeConstraint.MaxSize = Vector2.new(680, 140)
 dialogueSizeConstraint.Parent = dialogueFrame
+
+local tutorialViewportConnection = nil
+local function updateTutorialLayout()
+	local camera = workspace.CurrentCamera
+	local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+	local compactLandscape = viewport.Y < 520
+	-- On regular screens, sit above the persistent boost timers instead of on
+	-- top of them. On short landscape phones, move to the top where a 104px
+	-- card leaves the center playfield and bottom controls unobstructed.
+	dialogueFrame.AnchorPoint = compactLandscape and Vector2.new(0.5, 0) or Vector2.new(0.5, 1)
+	dialogueFrame.Position = UDim2.new(0.5, 0, compactLandscape and 0.12 or 0.87, 0)
+	dialogueFrame.Size = UDim2.new(compactLandscape and 0.86 or 0.9, 0, 0, compactLandscape and 104 or 140)
+	dialogueSizeConstraint.MaxSize = Vector2.new(compactLandscape and 610 or 680, compactLandscape and 104 or 140)
+end
+
+local function bindTutorialViewport()
+	if tutorialViewportConnection then
+		tutorialViewportConnection:Disconnect()
+		tutorialViewportConnection = nil
+	end
+	local camera = workspace.CurrentCamera
+	if camera then
+		tutorialViewportConnection = camera:GetPropertyChangedSignal("ViewportSize"):Connect(updateTutorialLayout)
+	end
+	updateTutorialLayout()
+end
+
+workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(bindTutorialViewport)
+bindTutorialViewport()
 
 local dialogueCorner = Instance.new("UICorner")
 dialogueCorner.CornerRadius = UDim.new(0, 20)
@@ -901,8 +1115,15 @@ dialogueGradient.Rotation = 0
 dialogueGradient.Parent = dialogueFrame
 
 task.spawn(function()
-	while true do
+	while screenGui.Parent do
+		if not tutorialRunning or not dialogueFrame.Visible then
+			task.wait(0.2)
+			continue
+		end
 		for r = 0, 360, 2 do
+			if not screenGui.Parent or not tutorialRunning or not dialogueFrame.Visible then
+				break
+			end
 			dialogueGradient.Rotation = r
 			task.wait(0.03)
 		end
@@ -944,13 +1165,20 @@ mascotLabel.ZIndex = 1003
 mascotLabel.Parent = mascotBadge
 
 task.spawn(function()
-	while true do
+	while screenGui.Parent do
+		if not tutorialRunning or not dialogueFrame.Visible then
+			task.wait(0.2)
+			continue
+		end
 		local upTween = TweenService:Create(mascotBadge, TweenInfo.new(0.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
 			Position = UDim2.new(0.11, 0, 0.44, 0),
 			Rotation = 8,
 		})
 		upTween:Play()
 		upTween.Completed:Wait()
+		if not screenGui.Parent or not tutorialRunning or not dialogueFrame.Visible then
+			continue
+		end
 		local downTween = TweenService:Create(mascotBadge, TweenInfo.new(0.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
 			Position = UDim2.new(0.11, 0, 0.5, 0),
 			Rotation = -8,
@@ -1157,10 +1385,37 @@ end
 --============================================================
 
 local currentStepIndex = 0
-local currentConnection = nil
+local currentConnections = {}
 local currentPopupFrame = nil
 local currentStepCleanup = nil
 local advanceSignal = Instance.new("BindableEvent")
+
+local function concludeTutorial(quietAfter: number?, destroyDelay: number?)
+	if tutorialEnded then
+		return
+	end
+	tutorialEnded = true
+	tutorialRunning = false
+	playerGui:SetAttribute("TutorialActive", false)
+
+	if tutorialLease then
+		PresentationCoordinator.Release(tutorialLease, quietAfter or 1)
+		tutorialLease = nil
+	end
+	restoreLargeOrbInputState()
+
+	if tutorialViewportConnection then
+		tutorialViewportConnection:Disconnect()
+		tutorialViewportConnection = nil
+	end
+
+	task.delay(math.max(0, tonumber(destroyDelay) or 0), function()
+		if screenGui.Parent then
+			screenGui:Destroy()
+		end
+		advanceSignal:Destroy()
+	end)
+end
 
 local function isPopupFrame(frame)
 	return frame ~= nil and frame.Name:find("Popup") ~= nil
@@ -1171,7 +1426,7 @@ local function positionHighlight(frame)
 	local absSize = frame.AbsoluteSize
 	local padding = 10
 
-	local xinset, yinset = getGuiInsetOffset()
+	local xinset, yinset = getGuiInsetOffset(frame)
 
 	highlight.Position = UDim2.new(0, absPos.X - padding + xinset, 0, absPos.Y - padding + yinset)
 	highlight.Size = UDim2.new(0, absSize.X + padding * 2, 0, absSize.Y + padding * 2)
@@ -1179,10 +1434,35 @@ local function positionHighlight(frame)
 end
 
 local function clearStepConnection()
-	if currentConnection then
-		currentConnection:Disconnect()
-		currentConnection = nil
+	for _, connection in ipairs(currentConnections) do
+		connection:Disconnect()
 	end
+	currentConnections = {}
+end
+
+local function bindStepFrames(highlightFrame, interactionFrame, interactionPadding)
+	clearStepConnection()
+	interactionFrame = interactionFrame or highlightFrame
+
+	local function refresh()
+		if highlightFrame and highlightFrame.Parent then
+			positionHighlight(highlightFrame)
+		else
+			highlight.Visible = false
+		end
+		positionTutorialInputGate(interactionFrame, interactionPadding)
+	end
+
+	local connected = {}
+	for _, frame in ipairs({ highlightFrame, interactionFrame }) do
+		if frame and not connected[frame] then
+			connected[frame] = true
+			table.insert(currentConnections, frame:GetPropertyChangedSignal("AbsolutePosition"):Connect(refresh))
+			table.insert(currentConnections, frame:GetPropertyChangedSignal("AbsoluteSize"):Connect(refresh))
+			table.insert(currentConnections, frame:GetPropertyChangedSignal("Visible"):Connect(refresh))
+		end
+	end
+	refresh()
 end
 
 local function runStepCleanup()
@@ -1210,6 +1490,9 @@ local function playDialogueIntro()
 end
 
 local function goToStep(index)
+	if tutorialEnded then
+		return
+	end
 	-- Whatever the previous step registered via ctx.SetCleanup runs
 	-- before we touch anything else (covers normal advance, and also
 	-- the "tutorial finished" path below since it flows through here).
@@ -1221,6 +1504,7 @@ local function goToStep(index)
 		-- Tutorial finished! Celebrate a little.
 		hideCurrentPopup()
 		highlight.Visible = false
+		blockEntireTutorialScreen()
 		local outTween = TweenService:Create(dialogueScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Scale = 0 })
 		outTween:Play()
 		burstConfetti()
@@ -1228,6 +1512,11 @@ local function goToStep(index)
 		dialogueFrame.Visible = false
 
 		UpdData:FireServer(true, "=", "SeenTutorial")
+		-- Keep the foreground slot through the short completion burst, then
+		-- leave a calm beat before Daily/discovery/journey presentations.
+		task.delay(1.35, function()
+			concludeTutorial(2.2, 0)
+		end)
 		return
 	end
 
@@ -1247,13 +1536,10 @@ local function goToStep(index)
 	playDialogueIntro()
 
 	if step.Frame then
-		positionHighlight(step.Frame)
-		-- Keep the highlight glued to the frame if it moves/resizes
-		currentConnection = step.Frame:GetPropertyChangedSignal("AbsolutePosition"):Connect(function()
-			positionHighlight(step.Frame)
-		end)
+		bindStepFrames(step.Frame, step.InteractionFrame or step.Frame, step.InteractionPadding)
 	else
 		highlight.Visible = false
+		blockEntireTutorialScreen()
 	end
 
 	-- Build the context object passed into Extra functions
@@ -1263,6 +1549,9 @@ local function goToStep(index)
 		end,
 		SetCleanup = function(fn)
 			currentStepCleanup = fn
+		end,
+		SetFocusFrame = function(frame, padding)
+			bindStepFrames(frame, frame, padding)
 		end,
 		ScreenGui = screenGui,
 		Step = step,
@@ -1281,20 +1570,31 @@ local function goToStep(index)
 		local ok, err = pcall(step.Extra, step, ctx)
 		if not ok then
 			warn("[TutorialLocalScript] Extra function errored on step " .. index .. ": " .. tostring(err))
+			nextButton.Visible = true
 		end
 	end
 end
 
 local function advanceTutorial()
-	goToStep(currentStepIndex + 1)
+	local ok, err = xpcall(function()
+		goToStep(currentStepIndex + 1)
+	end, debug.traceback)
+	if not ok then
+		warn("[TutorialLocalScript] Failed to advance tutorial: " .. tostring(err))
+		concludeTutorial(1, 0)
+	end
 end
 
 nextButton.MouseButton1Click:Connect(advanceTutorial)
 skipButton.MouseButton1Click:Connect(function()
+	if tutorialEnded then
+		return
+	end
 	runStepCleanup()
 	clearStepConnection()
 	hideCurrentPopup()
 	highlight.Visible = false
+	blockEntireTutorialScreen()
 	TweenService:Create(dialogueScale, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Scale = 0 }):Play()
 	task.delay(0.25, function()
 		dialogueFrame.Visible = false
@@ -1304,7 +1604,12 @@ skipButton.MouseButton1Click:Connect(function()
 	-- final Next button persisted SeenTutorial, so pressing Skip made the
 	-- whole tutorial return on every rejoin and also left follow-up newcomer
 	-- systems waiting forever for a completion flag that never arrived.
-	UpdData:FireServer(true, "=", "SeenTutorial")
+	pcall(function()
+		UpdData:FireServer(true, "=", "SeenTutorial")
+	end)
+	task.delay(0.28, function()
+		concludeTutorial(2, 0)
+	end)
 end)
 
 advanceSignal.Event:Connect(advanceTutorial)
@@ -1316,13 +1621,26 @@ advanceSignal.Event:Connect(advanceTutorial)
 local function startTutorial()
 	if #TUTORIAL_STEPS == 0 then
 		warn("[TutorialLocalScript] No tutorial steps defined yet.")
+		concludeTutorial(0.5, 0)
 		return
 	end
+	tutorialRunning = true
+	playerGui:SetAttribute("TutorialActive", true)
 	goToStep(1)
 end
 
-remote.Event:Wait()
-
-if not player:GetAttribute("SeenTutorial") then
-	startTutorial()
+-- Re-check after waiting in the global queue: the server flag may have
+-- arrived while loading was fading or this request was queued.
+tutorialLease = PresentationCoordinator.Acquire("Tutorial", {
+	Priority = 100,
+	QuietAfter = 2.2,
+})
+if player:GetAttribute("SeenTutorial") == true then
+	concludeTutorial(0.3, 0)
+else
+	local ok, err = xpcall(startTutorial, debug.traceback)
+	if not ok then
+		warn("[TutorialLocalScript] Failed to start tutorial: " .. tostring(err))
+		concludeTutorial(1, 0)
+	end
 end

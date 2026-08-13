@@ -6,6 +6,7 @@ local currencys = Left:WaitForChild("Currencys"):WaitForChild("ScrollingFrame")
 local RP = game:GetService("ReplicatedStorage")
 local EssenceConfig = require(RP:WaitForChild("EssenceConfig"))
 local EssenceVisuals = require(RP:WaitForChild("EssenceVisuals"))
+local PresentationCoordinator = require(RP:WaitForChild("PresentationCoordinator"))
 local PlayerStats = Left:WaitForChild("Playerstats")
 
 
@@ -249,6 +250,11 @@ local function highestPassed(value)
 end
 
 local function celebrateMilestone(threshold, label)
+	-- The balance and milestone state still advance while a tutorial or
+	-- cinematic is active; only the redundant full-screen flourish is skipped.
+	if PresentationCoordinator.HasPendingPresentation() then
+		return
+	end
 	Juice.PulseColor(label, MILESTONE_COLOR, 0.8)
 	Juice.Punch(Juice.GetScale(label), 0.3, 0.5)
 

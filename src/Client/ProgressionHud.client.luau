@@ -46,6 +46,7 @@ local SoundService = game:GetService("SoundService")
 
 local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
 local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
+local PresentationCoordinator = require(ReplicatedStorage:WaitForChild("PresentationCoordinator"))
 local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
 
 local player = Players.LocalPlayer
@@ -310,6 +311,12 @@ local toastShowing = false
 local toastScale = Juice.GetScale(toastFrame)
 
 local function playToast(payload)
+	-- Reward state is already visible in the panels and balances. During a
+	-- focused presentation, suppress this redundant celebration instead of
+	-- saving a stack that would avalanche immediately afterward.
+	if PresentationCoordinator.HasPendingPresentation() then
+		return
+	end
 	toastIcon.Text = payload.Icon or "🎁"
 	toastTitle.Text = payload.Title or "Reward"
 	toastSubtitle.Text = payload.Subtitle or ""
@@ -370,6 +377,12 @@ local function processToastQueue()
 
 	toastShowing = false
 end
+
+PresentationCoordinator.Changed:Connect(function()
+	if PresentationCoordinator.HasPendingPresentation() then
+		toastFrame.Visible = false
+	end
+end)
 
 ToastRemote.OnClientEvent:Connect(function(payload)
 	if type(payload) ~= "table" then
@@ -789,9 +802,14 @@ local function closePanel()
 	end)
 end
 
-local function showPanel(which)
+local manualProgressionPanelOpened = false
+
+local function showPanel(which, allowedOwner)
 	if openPanel == which then
 		closePanel()
+		return
+	end
+	if openPanel == nil and not PresentationCoordinator.CanOpenModal(allowedOwner) then
 		return
 	end
 
@@ -825,9 +843,18 @@ backdrop.Activated:Connect(closePanel)
 for _, panel in pairs(panels) do
 	panel.CloseButton.MouseButton1Click:Connect(closePanel)
 end
-dailyButton.MouseButton1Click:Connect(function() showPanel("Daily") end)
-questButton.MouseButton1Click:Connect(function() showPanel("Quests") end)
-codeButton.MouseButton1Click:Connect(function() showPanel("Codes") end)
+dailyButton.MouseButton1Click:Connect(function()
+	manualProgressionPanelOpened = true
+	showPanel("Daily")
+end)
+questButton.MouseButton1Click:Connect(function()
+	manualProgressionPanelOpened = true
+	showPanel("Quests")
+end)
+codeButton.MouseButton1Click:Connect(function()
+	manualProgressionPanelOpened = true
+	showPanel("Codes")
+end)
 
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then
@@ -1607,12 +1634,10 @@ task.spawn(function()
 end)
 
 -- =========================================================================
--- FIRST-SESSION NUDGE
+-- RETURNING-PLAYER DAILY NUDGE
 -- =========================================================================
--- Opening the daily panel unprompted on join is the single clearest way
--- to show a brand-new player that this game has things to come back for.
--- Held until after the loading screen and tutorial would have finished so
--- it doesn't stack on top of them.
+-- Returning players with a claim ready get one queued reminder. New players
+-- already have guided onboarding and keep Daily as an explicit badge/button.
 
 task.spawn(function()
 	local deadline = os.clock() + 45
@@ -1626,19 +1651,47 @@ task.spawn(function()
 	if not state.Daily or not state.Daily.CanClaim then
 		return
 	end
+	local journeyAttributeDeadline = os.clock() + 5
+	while player:GetAttribute("FirstJourneyEligible") == nil and os.clock() < journeyAttributeDeadline do
+		task.wait(0.1)
+	end
+	-- A newcomer already has Tutorial followed by the eight-minute Awakening
+	-- journey. Keep Daily's unread badge/button available, but make opening it
+	-- their choice instead of adding another mandatory post-tutorial frame.
+	if player:GetAttribute("FirstJourneyEligible") ~= false then
+		return
+	end
 
-	-- Wait out the tutorial for a first-time player rather than talking
-	-- over it.
-	if not player:GetAttribute("SeenTutorial") then
-		local tutorialDeadline = os.clock() + 120
-		while os.clock() < tutorialDeadline and not player:GetAttribute("SeenTutorial") do
-			task.wait(1)
+	local lease = PresentationCoordinator.Acquire("DailyWelcome", {
+		Priority = 46,
+		QuietAfter = 0.8,
+	})
+	if not lease then
+		return
+	end
+
+	local ok, err = xpcall(function()
+		if state.Daily and state.Daily.CanClaim and openPanel == nil and not manualProgressionPanelOpened then
+			showPanel("Daily", "DailyWelcome")
+			-- This is an optional nudge, not a hard onboarding gate. Give the
+			-- player time to claim/read it, then close it before the next queued
+			-- frame. A manual close releases the slot immediately.
+			local openedAt = os.clock()
+			while openPanel == "Daily" and os.clock() - openedAt < 18 do
+				task.wait(0.2)
+			end
+			if openPanel == "Daily" then
+				closePanel()
+				task.wait(0.25)
+			end
 		end
+	end, debug.traceback)
+	if not ok then
+		if openPanel == "Daily" then
+			closePanel()
+		end
+		warn("[ProgressionHud] Daily welcome presentation failed: " .. tostring(err))
 	end
 
-	task.wait(2)
-
-	if state.Daily and state.Daily.CanClaim and openPanel == nil then
-		showPanel("Daily")
-	end
+	PresentationCoordinator.Release(lease, 0.8)
 end)

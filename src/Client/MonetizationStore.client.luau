@@ -25,6 +25,7 @@ local GuiService = game:GetService("GuiService")
 local MonetizationConfig = require(ReplicatedStorage:WaitForChild("MonetizationConfig"))
 local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
 local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
+local PresentationCoordinator = require(ReplicatedStorage:WaitForChild("PresentationCoordinator"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -199,7 +200,7 @@ local panelShadow = new("Frame", {
 	Visible = false,
 	ZIndex = 201,
 }, screenGui)
-new("UISizeConstraint", { MinSize = Vector2.new(330, 450), MaxSize = Vector2.new(980, 720) }, panelShadow)
+new("UISizeConstraint", { MinSize = Vector2.new(280, 300), MaxSize = Vector2.new(980, 720) }, panelShadow)
 corner(panelShadow, UDim.new(0, 24))
 local shadowScale = new("UIScale", { Scale = 0.84 }, panelShadow)
 
@@ -214,7 +215,7 @@ local panel = new("Frame", {
 	Visible = false,
 	ZIndex = 202,
 }, screenGui)
-new("UISizeConstraint", { MinSize = Vector2.new(330, 450), MaxSize = Vector2.new(980, 720) }, panel)
+new("UISizeConstraint", { MinSize = Vector2.new(280, 300), MaxSize = Vector2.new(980, 720) }, panel)
 corner(panel, UDim.new(0, 24))
 local panelStroke = stroke(panel, THEME.Accent, 2.5, 0.06)
 local panelScale = new("UIScale", { Scale = 0.84 }, panel)
@@ -1011,6 +1012,11 @@ local function leadingOfferId(category)
 end
 
 local function openStore(offerId, source)
+	if not storeOpen and not PresentationCoordinator.CanOpenModal("StoreSpotlight") then
+		-- Do not let a manual Shop click put a full-screen store over onboarding
+		-- or a cinematic. The player can click again once the focused beat ends.
+		return
+	end
 	storeOpenedThisSession = true
 	local activeSpotlight = screenGui:FindFirstChild("OfferSpotlight")
 	if activeSpotlight and activeSpotlight:IsA("GuiObject") then
@@ -1568,6 +1574,13 @@ local function newcomerJourneyIsActive()
 end
 
 local function modalIsBusy()
+	local presentationOwner = PresentationCoordinator.GetOwner()
+	if presentationOwner and presentationOwner ~= "StoreSpotlight" then
+		return true
+	end
+	if not presentationOwner and PresentationCoordinator.GetQueueDepth() > 0 then
+		return true
+	end
 	if storeOpen or spotlight.Visible then
 		return true
 	end
@@ -1589,10 +1602,25 @@ local function modalIsBusy()
 	end
 
 	for _, gui in ipairs(playerGui:GetChildren()) do
-		if gui:IsA("ScreenGui") and gui ~= screenGui then
+		if gui:IsA("ScreenGui") and gui ~= screenGui and gui.Enabled then
 			for _, descendant in ipairs(gui:GetDescendants()) do
-				if descendant.Name == "Backdrop" and descendant:IsA("GuiObject") and descendant.Visible then
-					return true
+				if descendant.Name == "Backdrop"
+					and descendant:IsA("GuiObject")
+					and descendant.Active
+					and descendant.Visible
+				then
+					local effectivelyVisible = true
+					local ancestor = descendant.Parent
+					while ancestor and ancestor ~= gui do
+						if ancestor:IsA("GuiObject") and not ancestor.Visible then
+							effectivelyVisible = false
+							break
+						end
+						ancestor = ancestor.Parent
+					end
+					if effectivelyVisible then
+						return true
+					end
 				end
 			end
 		end
@@ -1671,12 +1699,44 @@ task.spawn(function()
 			break
 		end
 
+		local spotlightLease = PresentationCoordinator.Acquire("StoreSpotlight", {
+			Priority = 32,
+			QuietAfter = 0.8,
+		})
+		if not spotlightLease then
+			break
+		end
+
+		-- A manual action may have happened while this low-priority request was
+		-- queued. Re-check every eligibility condition before showing anything.
+		if storeOpenedThisSession or newcomerJourneyIsActive() or modalIsBusy() then
+			PresentationCoordinator.Release(spotlightLease, 0.4)
+			break
+		end
+
 		local offer = chooseSpotlight(promptNumber)
 		if not offer then
+			PresentationCoordinator.Release(spotlightLease, 0.4)
 			break
 		end
 		shownSpotlights[offer.Id] = true
-		showSpotlight(offer)
+		local presentationOk, presentationError = xpcall(function()
+			showSpotlight(offer)
+			-- Viewing a spotlight transitions directly into the store. Retain the
+			-- same foreground lease until that store closes so another automatic
+			-- frame cannot appear over the purchase decision.
+			while screenGui.Parent and (spotlight.Visible or storeOpen) do
+				task.wait(0.1)
+			end
+		end, debug.traceback)
+		if not presentationOk then
+			hideSpotlight()
+			if storeOpen then
+				closeStore()
+			end
+			warn("[MonetizationStore] Spotlight presentation failed: " .. tostring(presentationError))
+		end
+		PresentationCoordinator.Release(spotlightLease, 0.8)
 
 		if promptNumber < rules.MaximumPerSession then
 			task.wait(math.random(rules.RepeatDelayMin, rules.RepeatDelayMax))

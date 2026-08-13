@@ -26,6 +26,7 @@ local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
 local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
 local EssenceVisuals = require(ReplicatedStorage:WaitForChild("EssenceVisuals"))
 local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
+local PresentationCoordinator = require(ReplicatedStorage:WaitForChild("PresentationCoordinator"))
 local formatNumber = ProgressionConfig.FormatNumber
 
 local player = Players.LocalPlayer
@@ -1296,6 +1297,9 @@ end
 
 local function openPanel()
 	if open then
+		return
+	end
+	if not PresentationCoordinator.CanOpenModal() then
 		return
 	end
 	open = true

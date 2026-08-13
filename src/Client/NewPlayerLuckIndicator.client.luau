@@ -25,6 +25,7 @@ local TweenService = game:GetService("TweenService")
 
 local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
 local NewPlayerLuckConfig = require(ReplicatedStorage:WaitForChild("NewPlayerLuckConfig"))
+local PresentationCoordinator = require(ReplicatedStorage:WaitForChild("PresentationCoordinator"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -216,6 +217,15 @@ end
 -- covers the case where this script starts running before that finishes.
 player:GetAttributeChangedSignal("NewPlayerLuckExpiresAt"):Connect(update)
 update()
+
+-- Keep the newcomer benefit visible during normal play without stacking it
+-- over Tutorial, offline rewards, discoveries or Hollowed One encounters.
+local function updatePresentationVisibility()
+	screenGui.Enabled = not PresentationCoordinator.HasPendingPresentation()
+end
+
+PresentationCoordinator.Changed:Connect(updatePresentationVisibility)
+updatePresentationVisibility()
 
 -- Live countdown -- 24 hours of granularity doesn't need per-second
 -- updates; once a minute keeps the "Xh Ym left" text honest without
