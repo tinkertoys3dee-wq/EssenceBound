@@ -759,14 +759,6 @@ end
 local TUTORIAL_STEPS = {
 	{
 		Frame = LargeOrbFrame,
-		-- Real drops can land across the whole center playfield. Restricting
-		-- input to the orb's exact rectangle would recreate the reported bug by
-		-- preventing the required hover/hold collection after the first click.
-		InteractionFrame = CenterFrame,
-		-- OrbClicker intentionally lets edge drops orbit a little beyond their
-		-- container. Preserve that playable gutter without exposing the side-menu
-		-- buttons that onboarding is deliberately holding back.
-		InteractionPadding = 48,
 		Emoji = "🌀",
 		-- Kept to 1-2 short sentences on purpose -- the dialogue box is
 		-- small and the old, fully-explained version overflowed it.
@@ -865,70 +857,11 @@ screenGui.Parent = playerGui
 local tutorialRunning = false
 local tutorialEnded = false
 
--- Four transparent input guards form a real hole around the current task.
--- This keeps every unrelated menu from opening over onboarding while still
--- sending clicks/touches directly to the actual orb, its center playfield,
--- or the Upgrades popup. A single full-screen blocker was intentionally not
--- used because it would be the exact cause of an unclickable highlighted orb.
-local inputBlockers = {}
-for index = 1, 4 do
-	local blocker = Instance.new("TextButton")
-	blocker.Name = "InputGuard" .. index
-	blocker.BackgroundTransparency = 1
-	blocker.BorderSizePixel = 0
-	blocker.AutoButtonColor = false
-	blocker.Text = ""
-	blocker.Active = true
-	blocker.Selectable = false
-	blocker.Visible = false
-	blocker.ZIndex = 990
-	blocker.Parent = screenGui
-	inputBlockers[index] = blocker
-end
-
-local function setInputGuardRect(blocker, x, y, width, height)
-	local visible = tutorialRunning and width > 0 and height > 0
-	blocker.Visible = visible
-	if visible then
-		blocker.Position = UDim2.fromOffset(x, y)
-		blocker.Size = UDim2.fromOffset(width, height)
-	end
-end
-
-local function viewportSize()
-	local camera = workspace.CurrentCamera
-	return camera and camera.ViewportSize or Vector2.new(1280, 720)
-end
-
-local function blockEntireTutorialScreen()
-	local viewport = viewportSize()
-	setInputGuardRect(inputBlockers[1], 0, 0, viewport.X, viewport.Y)
-	for index = 2, #inputBlockers do
-		inputBlockers[index].Visible = false
-	end
-end
-
-local function positionTutorialInputGate(frame, padding)
-	if not frame or not frame.Parent then
-		blockEntireTutorialScreen()
-		return
-	end
-
-	padding = tonumber(padding) or 6
-	local viewport = viewportSize()
-	local absPos = frame.AbsolutePosition
-	local absSize = frame.AbsoluteSize
-	local xinset, yinset = getGuiInsetOffset(frame)
-	local left = math.clamp(absPos.X + xinset - padding, 0, viewport.X)
-	local top = math.clamp(absPos.Y + yinset - padding, 0, viewport.Y)
-	local right = math.clamp(absPos.X + xinset + absSize.X + padding, left, viewport.X)
-	local bottom = math.clamp(absPos.Y + yinset + absSize.Y + padding, top, viewport.Y)
-
-	setInputGuardRect(inputBlockers[1], 0, 0, viewport.X, top)
-	setInputGuardRect(inputBlockers[2], 0, bottom, viewport.X, viewport.Y - bottom)
-	setInputGuardRect(inputBlockers[3], 0, top, left, bottom - top)
-	setInputGuardRect(inputBlockers[4], right, top, viewport.X - right, bottom - top)
-end
+-- Tutorial visuals are deliberately click-through. The previous version built
+-- four invisible TextButtons around a calculated target rectangle. Those
+-- guards swallowed every unrelated click by design, and a stale or inset-shifted
+-- rectangle could swallow the highlighted orb or menu too. Guidance should
+-- explain and highlight; only the visible Skip and Next buttons may own input.
 
 -- Cheerful color palette
 local COLOR_PRIMARY = Color3.fromRGB(255, 209, 70)   -- sunny gold
@@ -945,6 +878,7 @@ local highlight = Instance.new("Frame")
 highlight.Name = "Highlight"
 highlight.BackgroundTransparency = 1
 highlight.BorderSizePixel = 0
+highlight.Active = false
 highlight.ZIndex = 999
 highlight.Visible = false
 highlight.Parent = screenGui
@@ -992,6 +926,7 @@ local sparkleHolder = Instance.new("Frame")
 sparkleHolder.Name = "Sparkles"
 sparkleHolder.BackgroundTransparency = 1
 sparkleHolder.Size = UDim2.new(1, 0, 1, 0)
+sparkleHolder.Active = false
 sparkleHolder.ZIndex = 999
 sparkleHolder.Parent = highlight
 
@@ -1057,6 +992,7 @@ dialogueFrame.Position = UDim2.new(0.5, 0, 0.95, 0)
 dialogueFrame.Size = UDim2.new(0.9, 0, 0, 140)
 dialogueFrame.BackgroundColor3 = COLOR_BG
 dialogueFrame.BorderSizePixel = 0
+dialogueFrame.Active = false
 dialogueFrame.ZIndex = 1000
 dialogueFrame.Visible = false
 dialogueFrame.Parent = screenGui
@@ -1288,6 +1224,7 @@ nextButton.Font = Enum.Font.GothamBold
 nextButton.TextScaled = true
 nextButton.TextColor3 = COLOR_BG
 nextButton.Text = "Next ➜"
+nextButton.Active = true
 nextButton.ZIndex = 1001
 nextButton.Parent = dialogueFrame
 
@@ -1321,6 +1258,7 @@ skipButton.Font = Enum.Font.GothamBold
 skipButton.TextScaled = true
 skipButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 skipButton.Text = "Skip"
+skipButton.Active = true
 skipButton.ZIndex = 1001
 skipButton.Parent = dialogueFrame
 
@@ -1440,9 +1378,8 @@ local function clearStepConnection()
 	currentConnections = {}
 end
 
-local function bindStepFrames(highlightFrame, interactionFrame, interactionPadding)
+local function bindStepFrame(highlightFrame)
 	clearStepConnection()
-	interactionFrame = interactionFrame or highlightFrame
 
 	local function refresh()
 		if highlightFrame and highlightFrame.Parent then
@@ -1450,17 +1387,12 @@ local function bindStepFrames(highlightFrame, interactionFrame, interactionPaddi
 		else
 			highlight.Visible = false
 		end
-		positionTutorialInputGate(interactionFrame, interactionPadding)
 	end
 
-	local connected = {}
-	for _, frame in ipairs({ highlightFrame, interactionFrame }) do
-		if frame and not connected[frame] then
-			connected[frame] = true
-			table.insert(currentConnections, frame:GetPropertyChangedSignal("AbsolutePosition"):Connect(refresh))
-			table.insert(currentConnections, frame:GetPropertyChangedSignal("AbsoluteSize"):Connect(refresh))
-			table.insert(currentConnections, frame:GetPropertyChangedSignal("Visible"):Connect(refresh))
-		end
+	if highlightFrame then
+		table.insert(currentConnections, highlightFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(refresh))
+		table.insert(currentConnections, highlightFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(refresh))
+		table.insert(currentConnections, highlightFrame:GetPropertyChangedSignal("Visible"):Connect(refresh))
 	end
 	refresh()
 end
@@ -1504,7 +1436,6 @@ local function goToStep(index)
 		-- Tutorial finished! Celebrate a little.
 		hideCurrentPopup()
 		highlight.Visible = false
-		blockEntireTutorialScreen()
 		local outTween = TweenService:Create(dialogueScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Scale = 0 })
 		outTween:Play()
 		burstConfetti()
@@ -1536,10 +1467,9 @@ local function goToStep(index)
 	playDialogueIntro()
 
 	if step.Frame then
-		bindStepFrames(step.Frame, step.InteractionFrame or step.Frame, step.InteractionPadding)
+		bindStepFrame(step.Frame)
 	else
 		highlight.Visible = false
-		blockEntireTutorialScreen()
 	end
 
 	-- Build the context object passed into Extra functions
@@ -1550,8 +1480,8 @@ local function goToStep(index)
 		SetCleanup = function(fn)
 			currentStepCleanup = fn
 		end,
-		SetFocusFrame = function(frame, padding)
-			bindStepFrames(frame, frame, padding)
+		SetFocusFrame = function(frame)
+			bindStepFrame(frame)
 		end,
 		ScreenGui = screenGui,
 		Step = step,
@@ -1594,7 +1524,6 @@ skipButton.MouseButton1Click:Connect(function()
 	clearStepConnection()
 	hideCurrentPopup()
 	highlight.Visible = false
-	blockEntireTutorialScreen()
 	TweenService:Create(dialogueScale, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Scale = 0 }):Play()
 	task.delay(0.25, function()
 		dialogueFrame.Visible = false
