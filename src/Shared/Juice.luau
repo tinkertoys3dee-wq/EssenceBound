@@ -1,9 +1,9 @@
 --[[
 	Juice (ModuleScript -> ReplicatedStorage)
 	=========================================
-	Shared "game feel" toolkit. Every effect in here is PURELY COSMETIC --
+	Shared "game feel" toolkit. Every effect in here is PURELY COSMETIC -
 	nothing in this file changes a reward, a rate, or any gameplay value.
-	It exists so the same punch/ring/burst/count-up behaviour can be reused
+	It exists so the same punch/ring/burst/count-up bhaviour can be reused
 	across the client scripts instead of each one hand-rolling its own
 	slightly different version.
 
@@ -513,10 +513,20 @@ end
 -- Flashes a label to a highlight colour and back. Used to draw the eye to
 -- a number that just changed.
 
-function Juice.PulseColor(label: TextLabel?, highlight: Color3, duration: number?)
-	if not isAlive(label) then
+function Juice.PulseColor(target: GuiObject?, highlight: Color3, duration: number?)
+	if not isAlive(target) then
 		return
 	end
+
+	-- Cosmetic effects must never break the caller. Older UI code may pass a
+	-- Frame here when it intends to pulse the container; route those objects
+	-- through the matching background effect instead of reading TextColor3.
+	if not (target:IsA("TextLabel") or target:IsA("TextButton") or target:IsA("TextBox")) then
+		Juice.PulseBackground(target, highlight, duration)
+		return
+	end
+
+	local label = target :: TextLabel
 
 	duration = duration or 0.35
 

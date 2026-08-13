@@ -22,6 +22,7 @@ local UserInputService = game:GetService("UserInputService")
 local RebirthShopUpgrades = require(ReplicatedStorage:WaitForChild("RebirthShopUpgrades"))
 local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
 local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
+local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -120,6 +121,7 @@ local backdrop = new("TextButton", {
 	Visible = false,
 	ZIndex = 120,
 }, screenGui)
+backdrop:SetAttribute("PresentationModal", true)
 
 -- =========================================================================
 -- STATE
@@ -511,10 +513,30 @@ for index, def in ipairs(RebirthShopUpgrades.List) do
 
 	buyButton.MouseButton1Click:Connect(function()
 		local entry = state.Upgrades and state.Upgrades[index]
-		if not entry or not entry.Cost then
+		if not entry then
+			NotificationService.Info("Your Prestige Shop is still loading.", {
+				Title = "Shop Still Loading",
+				Key = "rebirth-shop-loading",
+			})
+			return
+		end
+		if not entry.Cost then
+			NotificationService.Info(def.Name .. " is already fully awakened.", {
+				Title = "Relic Maxed",
+				Icon = "★",
+				Key = "rebirth-shop-maxed:" .. def.Id,
+			})
 			return
 		end
 		if state.Balance < entry.Cost then
+			NotificationService.Warning(("You need %s more Prestige Shards for %s."):format(
+				formatNumber(entry.Cost - state.Balance),
+				def.Name
+			), {
+				Title = "Not Enough Prestige Shards",
+				Icon = RebirthShopUpgrades.CURRENCY_ICON,
+				Key = "rebirth-shop-currency",
+			})
 			return
 		end
 		PurchaseRemote:FireServer(def.Id)

@@ -15,6 +15,7 @@ local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
+local PresentationCoordinator = require(ReplicatedStorage:WaitForChild("PresentationCoordinator"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -154,7 +155,7 @@ end
 -- =========================================================================
 
 local function announceArrival()
-	if not juiceLayer then
+	if not juiceLayer or PresentationCoordinator.HasPendingPresentation() then
 		return
 	end
 
@@ -181,6 +182,13 @@ local function announceArrival()
 		end
 	end
 end
+
+-- Keep the authoritative countdown running while a modal owns the screen,
+-- but hide this persistent banner until that focused presentation ends.
+PresentationCoordinator.Changed:Connect(function()
+	screenGui.Enabled = not PresentationCoordinator.HasPendingPresentation()
+end)
+screenGui.Enabled = not PresentationCoordinator.HasPendingPresentation()
 
 -- =========================================================================
 -- SYNC

@@ -1,17 +1,18 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ZonesConfig = require(ReplicatedStorage:WaitForChild("ZonesConfig"))
+local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
 
 local module = {}
 
--- Flat 50/50 fallback only -- used if a weight table ever comes back
+-- Catalog-derived fallback only -- used if a weight table ever comes back
 -- empty/malformed (never in normal play; ZonesConfig.GetEssenceWeights
 -- always returns a real zone's weights). Not read directly by either
 -- function below anymore now that zones exist; kept as the safety net
 -- resolveWeights falls back to.
-module.Essences = {
-	["Earth Essence"] = 50,
-	["Shadow Essence"] = 50
-}
+module.Essences = {}
+for _, definition in ipairs(EssenceConfig.Ordered) do
+	module.Essences[definition.Name] = definition.Rarity == 0 and 98 or 1
+end
 
 -- Shared by GetOddsText and GetRandomEssence so the two can never roll
 -- against a different table than the one the odds text describes.

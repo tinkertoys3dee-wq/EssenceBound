@@ -6,6 +6,7 @@ local IdleUpgrades = require(ReplicatedStorage:WaitForChild("IdleUpgrades"))
 local Criticals = require(ReplicatedStorage:WaitForChild("CriticalsController"))
 local GroupRewardConfig = require(ReplicatedStorage:WaitForChild("GroupRewardConfig"))
 local FriendBonusConfig = require(ReplicatedStorage:WaitForChild("FriendBonusConfig"))
+local MonetizationConfig = require(ReplicatedStorage:WaitForChild("MonetizationConfig"))
 -- Timed lookup with a graceful fallback, NOT a bare WaitForChild.
 --
 -- Every essence reward in the game flows through CalculateMultiplier. If
@@ -83,11 +84,18 @@ function EssenceMultiplier.CalculateMultiplier(plr, gold, crit, skipDoubleCritRo
 	if plr:GetAttribute("EssenceMultiplier") then
 		multiplier *= plr:GetAttribute("EssenceMultiplier")
 	end
-	if plr:GetAttribute(1907605899) then
+	if plr:GetAttribute(MonetizationConfig.GetOwnershipAttribute(1907605899)) then
 		multiplier *= 2
 	end
-	if plr:GetAttribute(1909291891) then
+	if plr:GetAttribute(MonetizationConfig.GetOwnershipAttribute(1909291891)) then
 		multiplier *= 1.5
+	end
+	-- One small permanent thank-you on the account's first successful
+	-- purchase. ProductPurchaseHandler owns this server-written attribute;
+	-- keeping the multiplier in shared config makes the storefront promise
+	-- and the actual economy effect impossible to drift apart.
+	if plr:GetAttribute("FirstPurchaseBonusClaimed") then
+		multiplier *= MonetizationConfig.FirstPurchaseBonus.PermanentMultiplier
 	end
 	if plr:GetAttribute("Rebirths") then
 		multiplier *= rebirthModule.CalculateTotalMultiplier(plr:GetAttribute("Rebirths"))
@@ -101,6 +109,40 @@ function EssenceMultiplier.CalculateMultiplier(plr, gold, crit, skipDoubleCritRo
 	if plr:GetAttribute("GroupMember") then
 		multiplier *= GroupRewardConfig.BonusMultiplier
 	end
+
+	-- Temporary Prophecy Crystal boon. ProphecyService owns this attribute
+	-- and resets it to the neutral 1x when the omen expires. Clamp here as
+	-- a final economy guard so a malformed value can never zero or explode
+	-- every collection payout.
+	local prophecyMultiplier = math.clamp(
+		tonumber(plr:GetAttribute("ProphecyEssenceMultiplier")) or 1,
+		1,
+		2
+	)
+	multiplier *= prophecyMultiplier
+
+	-- Chosen Astral Forge infusion. This is deliberately its own attribute
+	-- rather than reusing EssenceMultiplier: potion timers and Forge timers
+	-- may overlap, and letting either one write the other's value would make
+	-- the first effect to expire erase the still-active second effect.
+	local forgeMultiplier = math.clamp(
+		tonumber(plr:GetAttribute("ForgeEssenceMultiplier")) or 1,
+		1,
+		1.65
+	)
+	multiplier *= forgeMultiplier
+
+	-- Minutes 5-8 of a genuinely new player's Essence Awakening journey
+	-- become a personal 2x rush. This lives on its own attribute so it can
+	-- overlap with potions, prophecies, the Forge and global Rush events
+	-- without one timer erasing another. FirstJourneyService is the only
+	-- writer; this clamp is the final economy guard.
+	local firstJourneyMultiplier = math.clamp(
+		tonumber(plr:GetAttribute("FirstJourneyEssenceMultiplier")) or 1,
+		1,
+		2
+	)
+	multiplier *= firstJourneyMultiplier
 
 	-- Friend bonus. FriendsInServer is maintained by FriendBonusService,
 	-- recomputed on every join/leave -- tonumber-guarded the same way as
@@ -173,6 +215,16 @@ function EssenceMultiplier.CalculateMultiplier(plr, gold, crit, skipDoubleCritRo
 	-- a guard -- it would be a flat ~2x baseline inflation of every reward
 	-- in the game.
 	multiplier *= (shadowEssence + 1)^.2
+
+	-- Solar Radiance is deliberately bounded. Every mythic Solar find adds
+	-- permanent value, but a rare currency must not exponentiate the entire
+	-- economy the way an uncapped power curve could. Lifetime earnings make
+	-- spending Solar on capstones safe; logarithmic growth gives roughly
+	-- +5% per order of magnitude and caps at +50%.
+	local solarEssence = tonumber(plr:GetAttribute("SolarEssenceLifetime")
+		or plr:GetAttribute("SolarEssence")) or 0
+	local solarRadianceBonus = math.min(math.log10(math.max(solarEssence, 0) + 1) * 0.05, 0.5)
+	multiplier *= 1 + solarRadianceBonus
 	return multiplier
 end
 

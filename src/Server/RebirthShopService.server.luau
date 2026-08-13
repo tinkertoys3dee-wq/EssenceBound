@@ -27,6 +27,8 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local RebirthShopUpgrades = require(ReplicatedStorage:WaitForChild("RebirthShopUpgrades"))
+local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
+local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
 
 -- =========================================================================
 -- REMOTES
@@ -161,6 +163,12 @@ PurchaseRemote.OnServerEvent:Connect(function(player, upgradeId)
 
 	local data = getData(player)
 	if not data then
+		NotificationService.Send(player, {
+			Kind = "Error",
+			Title = "Shop Still Loading",
+			Message = "Your prestige upgrades are still loading. Try again in a moment.",
+			Key = "rebirth-shop-loading",
+		})
 		return
 	end
 
@@ -170,12 +178,25 @@ PurchaseRemote.OnServerEvent:Connect(function(player, upgradeId)
 
 	if level >= def.MaxLevel then
 		pushState(player)
+		NotificationService.Send(player, {
+			Kind = "Info",
+			Title = "Relic Maxed",
+			Message = def.Name .. " is already fully awakened.",
+			Icon = "★",
+			Key = "rebirth-shop-maxed:" .. upgradeId,
+		})
 		return
 	end
 
 	local cost = RebirthShopUpgrades.GetCostForNextLevel(upgradeId, level)
 	if not cost then
 		pushState(player)
+		NotificationService.Send(player, {
+			Kind = "Error",
+			Title = "Price Unavailable",
+			Message = "That relic's next price could not be loaded. Try again in a moment.",
+			Key = "rebirth-shop-price:" .. upgradeId,
+		})
 		return
 	end
 
@@ -183,6 +204,16 @@ PurchaseRemote.OnServerEvent:Connect(function(player, upgradeId)
 	if balance < cost then
 		-- Re-sync so a client showing a stale price corrects itself.
 		pushState(player)
+		NotificationService.Send(player, {
+			Kind = "Warning",
+			Title = "Not Enough Prestige Shards",
+			Message = ("You need %s more Prestige Shards for %s."):format(
+				ProgressionConfig.FormatNumber(cost - balance),
+				def.Name
+			),
+			Icon = RebirthShopUpgrades.CURRENCY_ICON,
+			Key = "rebirth-shop-currency",
+		})
 		return
 	end
 
@@ -200,6 +231,14 @@ PurchaseRemote.OnServerEvent:Connect(function(player, upgradeId)
 	player:SetAttribute(upgradeId, newLevel)
 
 	pushState(player)
+	NotificationService.Send(player, {
+		Kind = "Success",
+		Title = "Prestige Relic Awakened",
+		Message = ("%s reached level %d."):format(def.Name, newLevel),
+		Icon = RebirthShopUpgrades.CURRENCY_ICON,
+		Duration = 2.8,
+		Key = "rebirth-shop-success:" .. upgradeId,
+	}, { Cooldown = 0 })
 end)
 
 local requestSyncDebounce = {}

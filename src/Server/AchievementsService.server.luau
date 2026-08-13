@@ -21,6 +21,18 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local AchievementsConfig = require(ReplicatedStorage:WaitForChild("AchievementsConfig"))
+local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
+local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
+
+local function formatReward(reward)
+	local amount = ProgressionConfig.FormatNumber(tonumber(reward and reward.Amount) or 0)
+	if reward and reward.Type == "Shards" then
+		return amount .. " Prestige Shards"
+	elseif reward and reward.Type == "SolarEssence" then
+		return amount .. " Solar Essence"
+	end
+	return amount .. " Earth Essence"
+end
 
 -- =========================================================================
 -- REMOTES
@@ -125,6 +137,12 @@ ClaimRemote.OnServerEvent:Connect(function(player, milestoneId)
 
 	local data = getData(player)
 	if not data then
+		NotificationService.Send(player, {
+			Kind = "Error",
+			Title = "Milestones Still Loading",
+			Message = "Your milestone data is still loading. Try again in a moment.",
+			Key = "milestone-loading",
+		})
 		return
 	end
 
@@ -133,32 +151,92 @@ ClaimRemote.OnServerEvent:Connect(function(player, milestoneId)
 	-- re-derive both from server-owned state, same as every purchase flow
 	-- in this codebase.
 	if data.ClaimedMilestones[milestoneId] then
+		NotificationService.Send(player, {
+			Kind = "Info",
+			Title = "Reward Already Claimed",
+			Message = def.Name .. " has already been claimed.",
+			Icon = "✓",
+			Key = "milestone-claimed:" .. milestoneId,
+		})
 		return
 	end
 	if not AchievementsConfig.IsComplete(data, milestoneId) then
+		local current = AchievementsConfig.GetStatValue(data, def.Stat)
+		NotificationService.Send(player, {
+			Kind = "Info",
+			Title = def.Name .. " In Progress",
+			Message = ("%s / %s complete — %s"):format(
+				ProgressionConfig.FormatNumber(math.min(current, def.Target)),
+				ProgressionConfig.FormatNumber(def.Target),
+				def.Description
+			),
+			Icon = def.Icon,
+			Key = "milestone-incomplete:" .. milestoneId,
+		})
+		return
+	end
+
+	local reward = def.Reward
+	local rewardAmount = type(reward) == "table" and tonumber(reward.Amount) or nil
+	if type(reward) ~= "table" or type(reward.Type) ~= "string" or not rewardAmount or rewardAmount <= 0 then
+		NotificationService.Send(player, {
+			Kind = "Error",
+			Title = "Reward Unavailable",
+			Message = "That milestone's reward is not configured correctly.",
+			Key = "milestone-reward-invalid:" .. milestoneId,
+		})
+		return
+	end
+	local leaderstats = player:FindFirstChild("leaderstats")
+	local rewardStat
+	if reward.Type == "Essence" then
+		rewardStat = leaderstats and leaderstats:FindFirstChild("Earth Essence")
+	elseif reward.Type == "SolarEssence" then
+		rewardStat = leaderstats and leaderstats:FindFirstChild("Solar Essence")
+	end
+
+	-- Validate the destination before marking the milestone claimed. The old
+	-- order could permanently consume a claim during a leaderstats load race
+	-- and then grant nothing.
+	if (reward.Type == "Essence" or reward.Type == "SolarEssence") and not rewardStat then
+		NotificationService.Send(player, {
+			Kind = "Error",
+			Title = "Reward Delivery Delayed",
+			Message = "Your currency balance is still loading. Try claiming again in a moment.",
+			Key = "milestone-reward-loading:" .. milestoneId,
+		})
+		return
+	elseif reward.Type ~= "Essence" and reward.Type ~= "SolarEssence" and reward.Type ~= "Shards" then
+		NotificationService.Send(player, {
+			Kind = "Error",
+			Title = "Reward Unavailable",
+			Message = "That milestone's reward type is not configured correctly.",
+			Key = "milestone-reward-invalid:" .. milestoneId,
+		})
 		return
 	end
 
 	data.ClaimedMilestones[milestoneId] = true
 
-	local reward = def.Reward
-	if reward.Type == "Essence" then
-		-- Same path every other essence grant in the game uses: write the
-		-- leaderstat's Quantity attribute, PlayerDataHandler mirrors it
-		-- back into PlayerData and the display Value for free.
-		local leaderstats = player:FindFirstChild("leaderstats")
-		local earthStat = leaderstats and leaderstats:FindFirstChild("Earth Essence")
-		if earthStat then
-			local current = tonumber(earthStat:GetAttribute("Quantity")) or 0
-			earthStat:SetAttribute("Quantity", current + reward.Amount)
-		end
-	elseif reward.Type == "Shards" then
+	if rewardStat then
+		local current = tonumber(rewardStat:GetAttribute("Quantity")) or 0
+		rewardStat:SetAttribute("Quantity", current + rewardAmount)
+		data.TotalEssenceGathered = (tonumber(data.TotalEssenceGathered) or 0) + rewardAmount
+	else
 		-- Same path the Prestige Shop / Shard Rain use.
 		local current = tonumber(player:GetAttribute("RebirthCurrency")) or 0
-		player:SetAttribute("RebirthCurrency", current + reward.Amount)
+		player:SetAttribute("RebirthCurrency", current + rewardAmount)
 	end
 
 	pushSync(player)
+	NotificationService.Send(player, {
+		Kind = "Success",
+		Title = "Milestone Reward Claimed",
+		Message = ("%s complete — +%s."):format(def.Name, formatReward(reward)),
+		Icon = def.Icon,
+		Duration = 4,
+		Key = "milestone-success:" .. milestoneId,
+	}, { Cooldown = 0 })
 end)
 
 RequestSyncRemote.OnServerEvent:Connect(function(player)

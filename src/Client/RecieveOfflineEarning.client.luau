@@ -36,6 +36,10 @@ local SoundService       = game:GetService("SoundService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui    = LocalPlayer:WaitForChild("PlayerGui")
+local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
+local EssenceVisuals = require(ReplicatedStorage:WaitForChild("EssenceVisuals"))
+local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
+local PresentationCoordinator = require(ReplicatedStorage:WaitForChild("PresentationCoordinator"))
 
 --// REMOTE EVENT
 local OfflineEssenceRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("OfflineEssenceReward")
@@ -98,6 +102,7 @@ local ESSENCE_COLOR_KEYWORDS = {
 	Light  = Color3.fromRGB(255, 250, 200),
 	Dark   = Color3.fromRGB(90, 40, 120),
 	Gold   = Color3.fromRGB(255, 200, 60),
+	Solar  = Color3.fromRGB(255, 184, 48),
 }
 
 local DEFAULT_ICON_COLOR = Color3.fromRGB(120, 220, 150) -- matches the green orb in your screenshot
@@ -200,13 +205,14 @@ backdrop.BorderSizePixel = 0
 backdrop.ZIndex = 1
 backdrop.Active = true -- blocks click-through to the game world
 backdrop.Parent = screenGui
+backdrop:SetAttribute("PresentationModal", true)
 
 --=========================================================================
 -- BUILD: Main Popup Panel
 --=========================================================================
 -- Slightly larger than before, and internal content gets its own inset
 -- padding so nothing (icons, text, rows) ever touches or clips the edges.
-local POPUP_TARGET_SIZE = UDim2.fromScale(0.4, 0.62)
+local POPUP_TARGET_SIZE = UDim2.new(0.88, 0, 0.82, 0)
 
 local popup = Instance.new("Frame")
 popup.Name = "PopupPanel"
@@ -218,6 +224,13 @@ popup.BorderSizePixel = 0
 popup.ClipsDescendants = true
 popup.ZIndex = 2
 popup.Parent = backdrop
+
+local popupSizeConstraint = Instance.new("UISizeConstraint")
+-- The 88% target supplies the mobile size; retain only a desktop cap so the
+-- authored Size=0 entrance/exit animation can still collapse completely.
+popupSizeConstraint.MinSize = Vector2.new(0, 0)
+popupSizeConstraint.MaxSize = Vector2.new(560, 620)
+popupSizeConstraint.Parent = popup
 
 corner(popup, 0.035)
 stroke(popup, THEME.Gold, 3, 0)
@@ -366,6 +379,9 @@ closeButton.Parent = content
 corner(closeButton, 0.3)
 stroke(closeButton, THEME.Gold, 2, 0.2)
 textOutline(closeButton)
+local closeSizeConstraint = Instance.new("UISizeConstraint")
+closeSizeConstraint.MinSize = Vector2.new(34, 34)
+closeSizeConstraint.Parent = closeButton
 
 --=========================================================================
 -- BUILD: Scrolling reward list
@@ -470,6 +486,9 @@ gradient(claimButton, ColorSequence.new({
 	ColorSequenceKeypoint.new(1, THEME.GreenDark),
 }), 90)
 textOutline(claimButton)
+local claimSizeConstraint = Instance.new("UISizeConstraint")
+claimSizeConstraint.MinSize = Vector2.new(120, 40)
+claimSizeConstraint.Parent = claimButton
 
 --=========================================================================
 -- FUNCTION: Build a single reward row inside the scroll frame
@@ -514,6 +533,9 @@ local function createRewardRow(essenceName, amount, layoutOrder)
 	iconGlyph.ScaleType = Enum.ScaleType.Fit
 	iconGlyph.ZIndex = 6
 	iconGlyph.Parent = iconCircle
+	if EssenceConfig.Get(essenceName) then
+		EssenceVisuals.ApplyToImage(iconGlyph, essenceName)
+	end
 
 	-- Essence name label (given generous width + left offset from icon)
 	local nameLabel = Instance.new("TextLabel")
@@ -598,7 +620,7 @@ local function populateRewards(rewardTable)
 	-- Update the total summary row
 	totalAmountLabel.Text = "+" .. formatAmount(runningTotal)
 
-	return rows
+	return rows, runningTotal
 end
 
 --=========================================================================
@@ -606,6 +628,7 @@ end
 --=========================================================================
 local isOpen = false
 local glowTween
+local currentRewardTotal = 0
 
 local function startGlowPulse()
 	if glowTween then
@@ -645,7 +668,8 @@ local function openPopup(rewardTable)
 	isOpen = true
 
 	screenGui.Enabled = true
-	local rows = populateRewards(rewardTable)
+	local rows, runningTotal = populateRewards(rewardTable)
+	currentRewardTotal = runningTotal
 
 	-- Reset animated properties
 	backdrop.BackgroundTransparency = 1
@@ -703,7 +727,20 @@ end
 -- BUTTON HOOKUPS
 --=========================================================================
 closeButton.MouseButton1Click:Connect(closePopup)
-claimButton.MouseButton1Click:Connect(closePopup)
+claimButton.MouseButton1Click:Connect(function()
+	if not isOpen then
+		return
+	end
+	NotificationService.Success(("%s offline essence has been added to your balances."):format(
+		formatAmount(currentRewardTotal)
+	), {
+		Title = "Offline Rewards Claimed",
+		Icon = "⌛",
+		Duration = 3.8,
+		Key = "offline-rewards-claimed",
+	})
+	closePopup()
+end)
 
 -- Hover / press feedback for the claim button
 claimButton.MouseEnter:Connect(function()
@@ -735,6 +772,8 @@ end)
 --       ["Earth Essence"] = 60,
 --       ["Fire Essence"] = 12,
 --   })
+local offlinePresentationPending = false
+
 OfflineEssenceRemote.OnClientEvent:Connect(function(rewardTable)
 	if typeof(rewardTable) ~= "table" then
 		warn("[OfflineEssenceReward] Expected a table of rewards, got:", typeof(rewardTable))
@@ -750,6 +789,35 @@ OfflineEssenceRemote.OnClientEvent:Connect(function(rewardTable)
 	if not hasEntries then
 		return
 	end
+	-- Rewards are granted server-side before this event. If replication or a
+	-- retry sends the presentation twice, never make the player dismiss two
+	-- identical welcome-back frames.
+	if offlinePresentationPending then
+		return
+	end
+	offlinePresentationPending = true
 
-	openPopup(rewardTable)
+	task.spawn(function()
+		local lease = PresentationCoordinator.Acquire("OfflineRewards", {
+			Priority = 82,
+			QuietAfter = 0.9,
+		})
+		if not lease then
+			offlinePresentationPending = false
+			return
+		end
+		local ok, err = xpcall(function()
+			openPopup(rewardTable)
+			while isOpen and screenGui.Parent do
+				task.wait(0.1)
+			end
+		end, debug.traceback)
+		if not ok then
+			isOpen = false
+			screenGui.Enabled = false
+			warn("[OfflineEssenceReward] Presentation failed: " .. tostring(err))
+		end
+		PresentationCoordinator.Release(lease, 0.9)
+		offlinePresentationPending = false
+	end)
 end)

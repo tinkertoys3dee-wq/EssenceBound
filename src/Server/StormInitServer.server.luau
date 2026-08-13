@@ -10,6 +10,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local StormController = require(script.Parent:WaitForChild("StormController")) -- adjust path
+local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local EssenceStormEvent = Remotes:WaitForChild("EssenceStorm")
 
@@ -62,6 +63,46 @@ end
 ManualStormSummon.OnServerEvent:Connect(function(player)
 	local controller = StormController.Get(player)
 	if controller then
-		controller:TryManualSummon()
+		local success, reason = controller:TryManualSummon()
+		if success then
+			return
+		end
+
+		if reason == "OnCooldown" then
+			local remaining = math.max(0, tonumber(player:GetAttribute("ManualStormCooldownRemaining")) or 0)
+			NotificationService.Send(player, {
+				Kind = "Warning",
+				Title = "Storm Focus Recharging",
+				Message = ("Manual summoning is ready again in %d:%02d."):format(
+					math.floor(remaining / 60),
+					math.floor(remaining % 60)
+				),
+				Icon = "⚡",
+				Key = "manual-storm-cooldown",
+			})
+		elseif reason == "StormAlreadyActive" then
+			NotificationService.Send(player, {
+				Kind = "Info",
+				Title = "Storm Already Active",
+				Message = "Ride this storm before summoning another one.",
+				Icon = "⚡",
+				Key = "manual-storm-active",
+			})
+		elseif reason == "NotUnlocked" then
+			NotificationService.Send(player, {
+				Kind = "Info",
+				Title = "Summoning Locked",
+				Message = "Unlock Manual Storm Summon in the upgrade tree first.",
+				Icon = "◇",
+				Key = "manual-storm-locked",
+			})
+		end
+	else
+		NotificationService.Send(player, {
+			Kind = "Error",
+			Title = "Storms Still Loading",
+			Message = "Your storm controller is still waking up. Try again in a moment.",
+			Key = "manual-storm-loading",
+		})
 	end
 end)

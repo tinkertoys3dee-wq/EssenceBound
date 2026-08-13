@@ -29,6 +29,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local WheelConfig = require(ReplicatedStorage:WaitForChild("WheelConfig"))
 local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
+local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
 
 -- =========================================================================
 -- REMOTES
@@ -36,8 +37,12 @@ local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionCon
 
 local function ensureRemote(parent, className, name)
 	local existing = parent:FindFirstChild(name)
-	if existing then
+	if existing and existing.ClassName == className then
 		return existing
+	end
+	if existing then
+		warn(("WheelService: %s exists as %s, expected %s"):format(name, existing.ClassName, className))
+		existing:Destroy()
 	end
 	local remote = Instance.new(className)
 	remote.Name = name
@@ -54,6 +59,7 @@ end
 
 local SyncRemote = ensureRemote(remotesFolder, "RemoteEvent", "WheelSync")
 local SpinFunction = ensureRemote(remotesFolder, "RemoteFunction", "SpinWheel")
+local GetStateFunction = ensureRemote(remotesFolder, "RemoteFunction", "GetWheelState")
 
 -- =========================================================================
 -- HELPERS
@@ -100,21 +106,37 @@ local function freeSpinReadyAt(wheel)
 	return wheel.LastSpinAt + WheelConfig.FreeSpinCooldownSeconds
 end
 
+local function buildClientState(wheel)
+	local readyAt = freeSpinReadyAt(wheel)
+	local now = os.time()
+	return {
+		ServerNow = now,
+		Tickets = wheel.Tickets,
+		CollectionsSinceLastTicket = wheel.CollectionsSinceLastTicket,
+		FreeSpinReady = now >= readyAt,
+		FreeSpinSecondsRemaining = math.max(0, readyAt - now),
+		FreeSpinReadyAt = readyAt,
+	}
+end
+
 local function pushState(player)
 	local wheel = getWheel(player)
 	if not wheel then
 		return
 	end
 
-	local readyAt = freeSpinReadyAt(wheel)
-	local now = os.time()
+	SyncRemote:FireClient(player, buildClientState(wheel))
+end
 
-	SyncRemote:FireClient(player, {
-		Tickets = wheel.Tickets,
-		CollectionsSinceLastTicket = wheel.CollectionsSinceLastTicket,
-		FreeSpinReady = now >= readyAt,
-		FreeSpinSecondsRemaining = math.max(0, readyAt - now),
-	})
+-- Race-proof initial read for the rebuilt WheelPanel. The delayed push on
+-- join remains useful, but the client no longer depends on receiving one
+-- particular RemoteEvent during startup in order to leave LOADING state.
+GetStateFunction.OnServerInvoke = function(player)
+	local wheel = getWheel(player)
+	if not wheel then
+		return nil
+	end
+	return buildClientState(wheel)
 end
 
 -- =========================================================================
@@ -134,7 +156,7 @@ task.spawn(function()
 	end
 
 	collection.OnServerEvent:Connect(function(player, orbName)
-		if orbName ~= "Earth Essence" and orbName ~= "Shadow Essence" then
+		if not EssenceConfig.IsValidName(orbName) then
 			return
 		end
 
@@ -183,14 +205,14 @@ end
 -- neighborhood uses (ProgressionService.grantEssence, AchievementsService):
 -- write the leaderstat's Quantity attribute, PlayerDataHandler mirrors it
 -- back into PlayerData for free.
-local function grantEssence(player, amount)
+local function grantEssence(player, essenceName, amount)
 	amount = math.floor(tonumber(amount) or 0)
 	if amount <= 0 then
 		return
 	end
 
 	local leaderstats = player:FindFirstChild("leaderstats")
-	local stat = leaderstats and leaderstats:FindFirstChild("Earth Essence")
+	local stat = leaderstats and leaderstats:FindFirstChild(essenceName)
 	if not stat then
 		return
 	end
@@ -244,7 +266,9 @@ SpinFunction.OnServerInvoke = function(player)
 	local segment = WheelConfig.Segments[segmentIndex]
 
 	local essence = ProgressionConfig.ScaleReward(segment.Essence or 0, getRebirths(player))
-	grantEssence(player, essence)
+	local solarEssence = math.max(0, math.floor(tonumber(segment.SolarEssence) or 0))
+	grantEssence(player, "Earth Essence", essence)
+	grantEssence(player, "Solar Essence", solarEssence)
 
 	if segment.Potion then
 		local PotionTimerService = getPotionTimerService()
@@ -263,6 +287,7 @@ SpinFunction.OnServerInvoke = function(player)
 	return true, nil, {
 		SegmentIndex = segmentIndex,
 		Essence = essence,
+		SolarEssence = solarEssence,
 		Shards = segment.Shards,
 		PotionLabel = segment.PotionLabel,
 	}

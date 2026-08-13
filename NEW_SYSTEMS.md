@@ -1,6 +1,6 @@
 # What changed, and what to check in Studio
 
-Two commits on `claude/retention-and-captivation`. Everything below is
+Changes on `claude/retention-and-captivation`. Everything below is
 either a bug fix to existing code or a self-contained new file — no
 existing gameplay system was restructured.
 
@@ -10,7 +10,7 @@ existing gameplay system was restructured.
 
 This section used to be a "READ THIS FIRST" warning that three Game
 Passes took real Robux and did nothing at all -- explicitly left
-unfixed at the time since guessing what a paid feature should do isn't
+unfixed at the time since guessing what a paid feature should do isn'
 a call to make unilaterally. All three are now implemented against
 their REAL store descriptions (see sections 39 and 40 for the full
 writeups):
@@ -18,14 +18,14 @@ writeups):
 | Game Pass | Id | Store description | What it does now |
 |---|---|---|---|
 | Dedicated Essence | `1907077899` | (name only) | Sharpens whichever Zone you're standing in toward its specialty essence (section 39) |
-| Lucky Finder | `1907239833` | "Increases the base chance of finding rarer essences by 50%." | ×1.5 to the Shadow Essence weight (section 40) |
-| Ultra Luck | `1906063939` | "Stacks with regular luck to give a massive boost (x3 luck)." | ×2 to the Shadow Essence weight alone, ×3 total combined with Lucky Finder (section 40) |
+| Lucky Finder | `1907239833` | "Increases the base chance of finding rarer essences by 50%." | ×1.5 to every non-common essence weight (section 40) |
+| Ultra Luck | `1906063939` | "Stacks with regular luck to give a massive boost (x3 luck)." | ×2 to every non-common weight alone, ×3 total combined with Lucky Finder (section 40) |
 
 **An earlier version of this pass guessed crit chance for Lucky
 Finder/Ultra Luck before their real store text was available --
-wrong, replaced entirely once it was.** "Rarer essences" means Shadow
-Essence, the only rarer of the game's two essence types (Rarity 1 vs
-Earth's Rarity 0) -- both passes now multiply that weight inside
+wrong, replaced entirely once it was.** "Rarer essences" now means both
+Shadow (Rare) and Solar (Mythic), while Earth remains Common -- both
+passes multiply every non-common weight inside
 `ZonesConfig.GetEssenceWeights`, the exact same function Dedicated
 Essence and Zones already share, so all three "Luck"-flavored passes
 and the odds a player actually sees all come from one place.
@@ -36,30 +36,20 @@ gold name/icon outline (`UIInitializerHooks.client.luau`), 2x Essence
 Multiplier (`1907605899`) is read in `EssenceMultiplier.
 CalculateMultiplier`, Auto Absorption (`1907677938`) is read in
 `CursorCollection.client.luau`'s collection loop, and Material
-Alchemist (`1907863864`) doubles the offline-earnings base rate in
+Alchemist (`1907863864`) raises the offline-earnings base rate from 10%
+to 50% in
 `IdleService.server.luau`.
 
 ---
 
-## ⚠️ What you need to do -- Zones won't work without this
+## Zones no longer require a manual Studio setup step
 
-Section 39 (Zones) needs one thing placed in Studio before any of it
-does anything: a **`ZonesButton`** instance parented under
-**`MainGui.Right.Holder`** -- the same subfolder
-`UIInitializerHooks.client.luau`'s own nav-bar block already iterates.
-`ZonePanel.client.luau` only ever wires a click handler onto it; it
-does not build the button itself, and it will not build a fallback one
-in its place. It handles either shape that folder's own convention
-uses -- a real `TextButton`/`ImageButton` directly named `ZonesButton`,
-or a plain `Frame` named `ZonesButton` with a `TextButton`/`ImageButton`
-nested inside it. Until it exists, the script quietly warns once in the
-Output window and does nothing else -- it will not error or break
-anything else in the game, but Zones will be completely inaccessible.
-
-Nothing else is required -- everything server-side, the picker panel,
-the travel animation, and the persistent zone glow around the orb are
-already fully built and will start working the moment the button
-exists. See item 21 further down for how to test it once it's placed.
+Section 39 still prefers the authored **`ZonesButton`** under
+**`MainGui.Right.Holder`**, accepting either a real GuiButton or a Frame
+that wraps one. If that instance is missing, renamed, or lost during
+syncback, `ZonePanel.client.luau` now creates a styled fallback in the
+same navigation slot. The picker, travel animation, and zone ambience
+therefore remain reachable without any manual repair in Studio.
 
 ---
 
@@ -384,16 +374,16 @@ rather than a number that never mattered.
 The automatic Essence Storm (every 5 minutes minimum, even at zero
 upgrades — so most sessions that clear the first few minutes will see
 one) used to land as nothing but a text label quietly updating in the
-corner. It's the game's biggest recurring free-bonus moment and was
-landing completely flat. Now gets a screen flash, a big "⚡ ESSENCE
-STORM! ⚡" (or "✨ GOLDEN STORM! ✨") callout, and a distinct sound —
-golden storms ring at a higher pitch so the rarer version is audibly
-distinct before the label is even read. Purely cosmetic; the storm's
-actual duration, spawn rate and golden roll are untouched.
+corner. Its first flash/callout pass fixed the silence; section 47 now
+supersedes that small treatment with a complete tri-essence storm-eye
+arrival, persistent weather, lightning, energy rain, real Earth/Shadow/Solar
+orb previews, comet-tailed collectibles and a distinct exit. Golden storms
+receive their own stronger palette and sound. This remains purely
+cosmetic; duration, spawn rate, collection validation, payouts and the
+server's golden roll are untouched.
 
-All rewards scale with rebirth count, so they stay meaningful for a
-returning player without breaking a new one. Everything pays out in
-ordinary in-game essence — nothing here costs Robux or pressures a
+Earth rewards scale with rebirth count, while fixed mythic Solar bonuses
+preserve their endgame value. Nothing here costs Robux or pressures a
 purchase.
 
 ### How it integrates
@@ -627,7 +617,7 @@ entirely missing.
 
 **`src/Server/LeaderboardService.server.luau`** (new) owns two
 `OrderedDataStore`s -- `EssenceLeaderboard` (lifetime `TotalEssenceGathered`,
-both essence types combined) and `RebirthsLeaderboard`. Deliberately
+all essence types combined) and `RebirthsLeaderboard`. Deliberately
 conservative on DataStore budget since this is a pure social/cosmetic
 feature that must never risk anything else:
 
@@ -918,7 +908,7 @@ auto-popup is pending, this one tends to land after, not simultaneously.
 Given it only fires once per version bump, occasional overlap is a minor
 cosmetic risk, not a broken experience.
 
-## 17. Fixed a real button collision, added an (inert until configured) Group Reward
+## 17. Fixed a real button collision, added a Group Reward
 
 **The bug.** While picking a screen position for a new button (below),
 I checked every existing right-edge button's coordinates against each
@@ -941,26 +931,27 @@ math, not a screenshot** -- please eyeball it in Studio (checklist item
 
 **The new feature.** `GroupRewardConfig.luau` + `GroupRewardService.
 server.luau` + `GroupRewardPrompt.client.luau` add a standard, free,
-permanent essence bonus (+10% by default) for players who've joined the
-game's Roblox group -- unlike a gamepass, group membership actively
+permanent essence bonus for players who've joined the game's Roblox
+group -- unlike a gamepass, group membership actively
 helps the game itself (shouts, wall posts reach every member). Checked
-once per join server-side (`Player:IsInGroup`, cached to a `GroupMember`
-attribute so `EssenceMultiplier.CalculateMultiplier` -- which runs on
-every single collection -- never makes a live API call) and folded into
-the multiplier stack the same way every other bonus in that function
-already works. The client button (👥, +N% shown live from config) opens
-the group's page via `GuiService:OpenBrowserWindowAsync` and disappears
-once the player is actually a member.
+on join server-side (`Player:IsInGroup`, cached to a `GroupMember`
+attribute so hot reward paths never make a live API call) and folded into
+the same server-owned bonus stack used by the rest of the game. It is
+configured for **Mundane Studios** (group `15575113`) with three permanent
+member benefits: **+35% essence**, **+5% critical chance**, and **+15%
+offline earnings**. The essence bonus is read by `EssenceMultiplier`, the
+crit bonus is added and capped inside `CriticalsController`, and the extra
+offline bonus is applied by `IdleService`; the client only displays the
+same values from `GroupRewardConfig` and cannot grant any of them.
 
-**Ships fully inert:** `GroupRewardConfig.GroupId` defaults to `0`,
-which every piece of this feature treats as "disabled" -- no API calls,
-no attribute, no button. This is a different situation from the three
-non-functional gamepasses flagged in section 0: those needed an actual
-product decision I can't make (what should "Lucky Finder" *do*?); this
-one's design is just the genre standard, and the only missing piece is
-a literal id copy-pasted from the group's own URL. **To turn it on,
-set `GroupRewardConfig.GroupId` to your real group id** -- that's the
-entire setup step.
+Non-members see a delayed, responsive community panel plus a persistent
+FREE reminder button. The panel now has a layered EssenceBound-style
+frame, animated ambient glows, a community crest, three dedicated benefit
+cards, clearer verification states, outside-click/Escape closing, and a
+short success confirmation. It opens the community page through
+`GuiService:OpenBrowserWindowAsync`, and its "I've joined" action asks the
+server for a rate-limited authoritative recheck so every benefit can
+activate without requiring a rejoin.
 
 ## 18. Fixed a purchase-crashing nil in ProductPurchaseHandler
 
@@ -1698,6 +1689,29 @@ ring. The math always spins FORWARD from wherever the ring currently
 is (never snaps backward) and adds several extra full turns before
 landing exactly on the segment the server has already decided.
 
+**The presentation is now a full astral arcade cabinet, matching the
+quality bar set by the Prophecy Crystal.** The larger, deliberately
+padded modal has a layered wheel face, radial dividers, 24 pulsing
+cabinet bulbs, counter-rotating energy rings, orbiting runes, an
+illuminated hub and jewel reward pedestals that remain upright while
+their positions spin. A fixed pointer visibly ticks across candidates
+as the wheel accelerates and decelerates, while the prize ledger keeps
+all eight rewards and their exact percentage chances readable beside
+the action. The landing replaces that ledger with a dedicated result
+chamber showing the player's actual rebirth-scaled grant, not merely
+the segment's base value. Common, Uncommon, Rare, Epic and Jackpot
+presentation tiers progressively add stronger color, rings, particles,
+flash and shake; the 1% Jackpot receives the complete celebration.
+These tiers are visual escalation only and do not alter a single weight
+or reward.
+
+The bottom-right DAILY shortcut now reads its initial state through a
+`GetWheelState` RemoteFunction as well as continuing to receive live
+`WheelSync` pushes. That closes the startup race where the old client
+could miss the one delayed event and remain visually stuck loading,
+while the server's own clock remains authoritative for the free-spin
+countdown.
+
 **Server-authoritative, same as every purchase flow in this
 codebase.** `WheelService.server.luau` rolls the segment
 (`WheelConfig.RollSegmentIndex`, weighted, server-side only) and grants
@@ -1864,23 +1878,23 @@ of sync with each other.
 ## 39. Zones -- pick a zone, lean into an essence type, watch it actually look different
 
 Requested directly: a picker that lets a player choose which "zone"
-they're collecting in, where a new zone costs essence to unlock, each
-zone weights the Earth/Shadow essence roll differently (both types
-still drop everywhere -- picking a zone leans into a currency, it
-never locks the other one out), the split "amplified depending on
-gamepasses" is a real mechanic now, and switching zones plays a travel
+they're collecting in, where new zones cost essence to unlock, each
+zone weights the complete Earth/Shadow/Solar catalog differently (all
+three retain a non-zero trace chance in every zone), and the split is
+amplified by relevant gamepasses. Switching zones plays a travel
 animation. All of it new; nothing existing was restructured to build
 it -- `EssenceOrbController`'s HP/click mechanics are completely
 untouched, there's still exactly one orb to click. A zone is a reskin
 of the same click loop with a different essence-type roll under it,
 not a second physical map.
 
-**Two zones, live now, in `ZonesConfig.luau`:**
+**Three zones, live now, in `ZonesConfig.luau`:**
 
-| Zone | Cost | Odds (base → with Dedicated Essence) |
+| Zone | Cost / gate | Base weights → with Dedicated Essence |
 |---|---|---|
-| 🌍 Earthen Grove | Free, always unlocked | 82% Earth / 18% Shadow → 92% / 8% |
-| 🌑 The Shadowfen | 300 Earth Essence | 18% Earth / 82% Shadow → 8% / 92% |
+| 🌍 Earthen Grove | Free | 81 Earth / 18 Shadow / 1 Solar → 92 / 7 / 1 |
+| 🌑 The Shadowfen | 300 Earth | 17 Earth / 82 Shadow / 1 Solar → 7 / 92 / 1 |
+| ☀️ The Sunforge | Rebirth 4; 500K Earth + 25K Shadow | 15 Earth / 15 Shadow / 70 Solar → 6 / 6 / 88 |
 
 Switching between zones you already own is free and unlimited --
 only the first unlock of a paid zone ever costs anything, and
@@ -1901,10 +1915,9 @@ before, it does something on-brand now. (The other two, Lucky Finder
 and Ultra Luck, are wired up too now -- see section 40.)
 
 **New files:**
-- `ZonesConfig.luau` (Shared) -- zone data (name, icon, cost, both
-  weight tables) plus every helper every other file below shares, so
-  none of them can drift out of sync with each other on names, costs,
-  or odds.
+- `ZonesConfig.luau` (Shared) -- zone data (name, icon, cost, base and
+  amplified weight tables) plus every shared helper used below, so names,
+  costs, and odds cannot drift between systems.
 - `ZoneService.server.luau` -- the only thing that actually unlocks or
   switches a zone. Same `RemoteFunction` returning `(success, message,
   result)` convention `WheelService`'s `SpinFunction` already
@@ -1912,30 +1925,28 @@ and Ultra Luck, are wired up too now -- see section 40.)
   `TreeUpgrades.PurchaseUpgrade` already does (the leaderstat's
   `Quantity` attribute directly, never `PlayerData` first).
 - `GetEssence.luau` (Shared, **edited**, not new) -- the actual
-  Earth/Shadow roll now reads `ZonesConfig.GetEssenceWeights(player)`
+  complete essence roll now reads `ZonesConfig.GetEssenceWeights(player)`
   instead of a flat, everyone-gets-the-same 50/50 table. `GetOddsText`
   (the "1 in N" text on a first discovery) now takes the player too, so
   it can never show odds that don't match what they're actually zoned
   into -- `CursorCollection.client.luau`'s two call sites were updated
   to pass it.
-- `ZonePanel.client.luau` -- the picker. **Does not build its own
-  trigger button** -- unlike every other side-panel script in this
-  codebase, the button is Studio-authored (see "What you need to do"
-  below). Shows every zone's lock state, live-updating cost/odds, and
-  plays the travel animation only after the server confirms a switch
-  actually happened, never optimistically on click.
+- `ZonePanel.client.luau` -- the picker. Prefers the Studio-authored
+  navigation button and builds a fallback in the same slot only if that
+  entry point is missing. Shows every zone's lock state, live-updating
+  cost/odds, and plays the travel animation only after the server
+  confirms a switch actually happened, never optimistically on click.
 - `ZoneAmbience.client.luau` -- a persistent, subtle glow behind the
   great orb, tinted to whichever zone is current, so a zone actually
   looks different for as long as you stay there, not just for the
-  few seconds the travel animation plays. Same safe "additive sibling
-  layer, never touches `LargeOrb`'s own properties" pattern
-  `PrestigeAura.client.luau` already established -- `LargeOrb.
-  ImageColor3` is already fought over by more than one existing
-  effect reverting to their own hardcoded "resting" white; a third,
-  zone-varying idea of what resting should be would just make all of
-  them wrong some of the time. Deliberately more understated than
-  PrestigeAura's own aura, and sits behind it (lower ZIndex) so the
-  two never visually compete.
+  few seconds the travel animation plays. Its glow remains an additive
+  sibling behind `LargeOrb`, and it deliberately leaves `ImageColor3`
+  alone because several existing effects already animate that property.
+  The configured zone orb art itself does swap: Grove restores the captured
+  Studio image, Shadowfen uses the uploaded Shadow orb, and Sunforge uses
+  the uploaded Solar presentation. It remains more understated than
+  PrestigeAura's own aura and sits behind it (lower ZIndex), so the two
+  never visually compete.
 
 **Self-review caught two things before committing:** the odds preview
 for a zone you're NOT currently standing in originally always showed
@@ -1953,12 +1964,9 @@ room.
 as living directly under `MainGui.Right`, matching where
 `ManualSummonButton` already sits -- the actual location is one level
 deeper, `MainGui.Right.Holder`, the same subfolder
-`UIInitializerHooks.client.luau`'s own nav-bar block iterates.
-`ZonePanel.client.luau` and every doc reference below are updated to
-the corrected path, and the lookup now also accepts `ZonesButton`
-being a plain `Frame` wrapping a nested `TextButton`/`ImageButton`
-(that folder's own established shape) rather than assuming it's a raw
-button instance.
+`UIInitializerHooks.client.luau`'s own nav-bar block iterates. The
+lookup accepts either a raw GuiButton or that folder's usual Frame
+wrapper, and now creates a code-owned fallback if neither resolves.
 
 **Added afterward: the Shadowfen has its own orb image.** The
 Shadowfen zone entry in `ZonesConfig.Zones` now carries
@@ -2004,10 +2012,10 @@ actual store descriptions were available:
 > Ultra Luck: "Stacks with regular luck to give a massive boost
 > (x3 luck)."
 
-"Rarer essences" means Shadow Essence specifically -- the only two
-essence types in the game are Earth Essence (Rarity 0) and Shadow
-Essence (Rarity 1), see `DefaultPlayerData.luau`. Both passes multiply
-the Shadow Essence WEIGHT inside `ZonesConfig.GetEssenceWeights` --
+"Rarer essences" means every catalog entry above Common: Shadow
+Essence (Rare) and Solar Essence (Mythic), see `EssenceConfig.luau`.
+Both passes multiply every non-common WEIGHT inside
+`ZonesConfig.GetEssenceWeights` --
 Lucky Finder alone is ×1.5 (its own "+50%" is unambiguous), Ultra Luck
 alone is ×2, and owning both multiplies together to exactly ×3 (1.5 ×
 2), matching Ultra Luck's own "x3 luck" headline for the stacked case.
@@ -2178,69 +2186,447 @@ function takes `player`/`playerData` as arguments and works on exactly
 what it's given, which is what makes it safe to share across however many
 players are on the server at once.
 
-## 43. Two tutorial bugs reported directly: buttons unclickable, highlight ring offset up
+## 43. Essence Market -- every paid benefit is visible, accurate, and reachable
 
-Reported: "during the tutorial, I can't click on any buttons," plus the
-highlight ring appearing offset. Traced both to real, concrete bugs --
-one in `LoadingScreen.client.luau` and one in `Tutorial.client.luau`
-itself -- rather than one shared cause.
+The old Shop depended almost entirely on Studio-authored presentation, so
+the repo could neither guarantee that the entry point existed nor explain
+what a player actually received. `MonetizationConfig.luau` now catalogs all
+seven permanent passes and six repeatable products with benefit copy that
+matches the live implementation. `MonetizationStore.client.luau` builds a
+responsive market in code with Featured/Passes/Boosts tabs, product art,
+owned/unavailable states, exact benefit details, and player-specific live
+prices from `MarketplaceService` -- no guessed or hard-coded Robux prices.
+Featured deliberately puts the short starter potion in the first row beside
+the strongest permanent conveniences instead of burying every approachable
+repeatable offer below all seven passes.
+
+The market never opens Roblox checkout by itself. A player must first open
+the market and then deliberately press an offer's BUY button; the existing
+server purchase remote still allowlists every id before it can prompt. To
+make the catalog discoverable without becoming spammy, at most two optional
+interest cards may appear in a session: the first only after 2.5--4 minutes
+and the tutorial, the second 5.5--8 minutes later. They wait for other modal
+UI to clear, choose among unowned offers with weighted randomness, and only
+open the relevant market card. Opening the market once disables the
+remaining cards for that session.
+
+The authored Shop button receives a small R$ badge and opens the new market.
+If either Shop or Zones is missing from `MainGui.Right.Holder`, a code-created
+fallback appears in its expected slot. The rest of the screenshot's
+always-on controls were present and correctly placed; Group, Friend Bonus,
+New Adventurer's Luck, and manual storm summon remain conditional because
+their underlying features genuinely are conditional. Finally, VIP's gold
+name/portrait outline now updates immediately after a purchase instead of
+waiting for the next join.
+
+## 44. Prophecy Crystal -- temporary futures with a Fate guarantee
+
+The new 🔮 Fate shortcut opens a fully source-built divination chamber:
+layered crystal glow, counter-rotating rune rings, moving internal wisps,
+twinkling starlight, a faceted pedestal, rarity-responsive colors, and a
+server-result reveal that accelerates through false futures before the real
+prophecy lands. Rare, Epic and Mythic results escalate through extra rings,
+particles, flashes, impact shake and a dedicated callout. The entire frame
+and both nested information cards use explicit `UIPadding`, so the long
+Mythic benefit line stays clear of the border even on a narrow viewport.
+An active-prophecy pill remains beside the shortcut with the exact countdown,
+so a player never has to reopen the modal to remember what is running.
+
+Every reading is free and the first is immediately available. The crystal
+then reawakens every ten minutes. A roll grants one temporary prophecy for
+three to six minutes and replaces the previous one; the catalog spans
+Essence multiplier, additive critical chance, rare-Essence weighting, and
+hybrid futures. The strongest Mythic reading grants 2x Essence, +20% crit,
+and 2x rare-Essence weight for three minutes. Paid luck still stacks with a
+prophecy rather than being replaced by the free bonus.
+
+`ProphecyService.server.luau` owns cooldown validation, weighted selection,
+effect attributes, expiry and persistence. Both cooldown and active expiry
+use Unix timestamps, so leaving does not pause either timer and reconnecting
+cannot duplicate a reading. After seven consecutive below-Rare results, Fate
+fills and the eighth reading is selected only from Rare-or-better entries;
+landing Rare+ at any point resets that meter. `ProphecyConfig.luau` is the
+single catalog read by server and client, keeping every displayed duration
+and benefit identical to the effect gameplay actually receives.
+
+## 45. Astral visual language -- the premium treatment now reaches the whole game
+
+The Prophecy Crystal and rebuilt Fortune Wheel established a much stronger
+visual standard than the older interfaces: luminous layered surfaces,
+animated trim, readable inset hierarchy, restrained ambient particles,
+reward-specific color, and controls that respond when the player touches
+them. `AstralVisuals.luau` now turns that language into one shared client
+toolkit instead of copying another several hundred lines of effects into
+every panel. It supplies modal shells, raised cards, animated edge gradients,
+soft sibling halos, top light rails, corner glyphs, star fields, reveal
+sweeps, progress-fill flow, heading shadows, button sheens/ripples and the
+upgrade-node constellation treatment from one palette and one animation
+loop.
+
+`GlobalVisualPolish.client.luau` applies that toolkit non-destructively at
+runtime. This is important because most of the original Upgrades, Inventory,
+Index, Rebirth, Settings, Shop and MainGui visual properties exist only in
+Studio -- the repository has their controller scripts, not a safe complete
+copy of their frames. The pass never changes a frame's Position, Size,
+AnchorPoint, visibility contract, price, remote or click handler. It keeps
+the authored layout and adds finish around it: each legacy popup receives a
+screen-specific shell, title treatment, close-control feedback, nested card
+hierarchy and flowing trim; the left HUD currencies/stats and right navigation
+receive matching raised surfaces; the manual summon control receives its own
+pink relic treatment.
+
+The same decorator understands all of the source-built systems too:
+Achievements, leaderboards, Prestige Shop, Sanctum, Zones, progression/daily/
+quest/code panels, Group Reward, What's New, offline harvest, tutorial,
+potion timers, friend/new-player badges, the Essence Market, discovery and
+personal-best banners, Essence Rush, zone travel and the Hollowed One's
+framed log. It watches `DescendantAdded`, so offers, quests, leaderboard rows,
+daily rewards, potion cards and other runtime clones get exactly the same
+finish even when they did not exist during join. Each family retains its own
+meaningful accent (green market actions, red rebirth, cyan zones, purple
+Sanctum, gold achievements, orange Rush, blood-red Hollowed One) instead of
+flattening the entire game into one color.
+
+Upgrades gets the deepest dedicated pass. The viewport now reads as an
+"Essence Constellation" with a fixed title, platform-aware drag/zoom/help
+instructions, a live zoom percentage and illuminated side rails. Every
+tagged node receives a softly breathing aura, a rotating branch-colored
+hex orbit and a compact state badge: locked paths dim and show an ×,
+available paths accelerate and show +, purchased tiers show their level,
+and completed nodes turn gold with a star. All of those react to the existing
+`Tier`, `Unlocked`, `Buyable` and category attributes, so the presentation
+updates immediately after a purchase or rebirth without inventing a second
+source of progression truth.
+
+The upgrade tooltip was also rebuilt where its old implementation could
+quietly degrade a long play session. Previously every single mouse-enter
+connected one more node attribute listener and one more player listener;
+repeated hovering therefore accumulated duplicate callbacks forever. Nodes
+now bind once, the current tooltip alone refreshes, removed nodes clean up
+naturally, and Rebirths uses one shared listener. The tooltip shows exact
+`TIER n / max`, a distinct mastered state, real multiline costs, trimmed lock
+requirements and a clear unavailable state instead of displaying the old
+fabricated fallback cost of 5. Touch players can tap a node to hold its details
+onscreen rather than losing the feature entirely without a mouse. Both copies
+of the Studio/cloneable tooltip script remain byte-for-byte identical.
+
+The effects are deliberately budgeted for a Roblox game, not a static mockup.
+All decoration is idempotent, removed instances fall out of the registries,
+hidden ScreenGuis and invisible panel hierarchies stop animating, and the one
+shared animation pass is throttled to 30 updates per second. Existing authored
+gradients are preserved rather than stacking a second modifier on top. The
+loading screen keeps its separate horror presentation, and Prophecy/Wheel are
+excluded from the global decorator because they already are the benchmark and
+double-applying the shared effects would only add noise.
+
+## 46. Zone travel is now a real attunement sequence, with exact orb previews
+
+The Zones picker now shows the actual collectible-orb artwork beside every
+zone instead of using only a generic colored emoji circle. `ZonesConfig`
+owns the shared mapping (`79479049281587` for Earth Essence and
+`106130917603943` for Shadow Essence), and each zone declares its specialty
+and preview image. The same value feeds its card and full-screen reveal, so
+the menu cannot drift away from what the player collects after arriving.
+Earthen Grove's central great-orb image remains Studio-authored and is still
+restored from the value captured at load; the explicit Earth asset is used
+only where a deterministic menu/transition preview is required.
+
+Each card now has a zone-colored pedestal, soft aura, illuminated orbit,
+specialty pill and exact orb image. The current zone receives a stronger
+resonance state, while opening the picker gives both orbs one finite,
+staggered materialization and ring turn. `AstralAccentColor` lets the shared
+visual pass honor each card's green/purple identity instead of repainting
+both with the panel's generic cyan accent.
+
+Confirmed travel now closes two destination-colored energy gates over the
+old scene, blocks click-through, resolves the new orb inside counter-rotating
+portal rings, drives an attunement meter through three readable states, and
+releases through streaks, rings, motes, flashes and a clean arrival beat.
+All delayed work is guarded by a transition token, all movement is finite
+TweenService work, and the cinematic still starts only after the server has
+accepted the unlock/switch. A rejected or unaffordable request never plays a
+fake success transition.
+
+## 47. Essence Storms now feel like the sky has actually opened
+
+`StormVisuals.client.luau` is a new presentation-only director listening to
+the existing authoritative `StormStart` / `StormEnd` remote. A storm now
+opens a dual-essence eye at the top of the screen, orbiting the real Earth and
+Shadow orb art inside counter-rotating runes. A responsive arrival chamber
+announces normal or golden weather, then clears so it never hides the drops.
+The persistent layer adds a restrained screen grade, charged cloud ceiling,
+edge haze, pooled colored energy rain, occasional self-cleaning lightning,
+portal pulses and a dedicated subsiding sequence. Buying/forcing more storm
+time while one is active gets a separate surge beat instead of replaying the
+whole entrance.
+
+Normal storms use a cyan/green/purple dual-essence palette; golden storms
+change the entire eye, rain, lightning, flash intensity, particles and audio
+to gold/amber/white. The atmosphere root is inactive and cannot consume
+input. Twenty-four rain streaks are created once and recycled, lightning is
+Debris-cleaned, only three inexpensive rotation tweens persist while the
+event is active, and a storm token immediately invalidates stale callbacks
+on end. `EssenceStormVisuals` is excluded from the global decorator because
+it already owns a complete custom visual language.
+
+The drops were upgraded too: every falling orb now carries a type-colored
+aura and counter-rotated comet tail, with sparse cloud-line emission ripples;
+crit and golden variants remain visually stronger. The existing active timer
+was also using the 300-second cooldown as its denominator, so a fresh
+60-second storm incorrectly appeared only 20% full. It now uses the confirmed
+duration in the server payload and correctly labels the mixed event
+"ESSENCE STORM" rather than "EARTH STORM." Reward math, spawn interval,
+orb cap, server collection checks and golden multipliers were not changed.
+
+## 48. Rebirth resets every spendable essence
+
+`RebirthHandler.PerformRebirth` resets Earth, Shadow, and Solar balances in
+one server-authoritative transaction. Shadow previously survived in full
+while Earth and the upgrade tree reset, creating a prestige loophole; Solar
+uses the corrected contract from launch. Rebirth Echo applies consistently to
+all three: without Echo they become zero; with its 15% level, every balance
+retains 15% (floored). Leaderstat quantities, player attributes, PlayerData,
+and saved-EPM baselines are updated together.
+
+`LifetimeShadowEssence` and `LifetimeSolarEssence` deliberately do not reset:
+they are permanent earned totals used by Shadow synergy and Solar Radiance.
+Purchased Sanctum/Prestige upgrades still survive.
+
+## 49. End-branch upgrades are priced like endgame upgrades now
+
+The late-tree audit found why the most powerful nodes stayed cheap through
+eight previous balance passes: most of those passes raised `CostGrowth`, but
+growth never runs on a `MaxLevel = 1` purchase. Auto Collection therefore
+cost only 1,788, Automation Core 1,544, Manual Storm 1,300, Double Crit 2,438,
+and the ultimate +150% Essence Convergence only 8,125. Their prices were
+closer to another rebirth than to permanent-feeling branch conclusions.
+
+Tier 0–2 was left completely unchanged so first purchases and midgame routing
+keep the pacing already tuned in passes 1–8. Tier 3 gateway ranks received a
+smaller tens-of-thousands floor; terminal automation/double-proc/retention
+abilities received a 35k–150k floor according to power and effective rebirth
+gate; cross-branch capstones now start at 750k. Convergence is the final node
+with nine prerequisites and now costs 2.5m. Storm Caller retains its existing
+1.61 growth across five ranks, so its 250k opener becomes a 4,023,591 total
+endgame sink rather than a 78,460 branch that could be casually cleared.
+
+| Upgrade | Old first price | New first price | New cost to max |
+|---|---:|---:|---:|
+| Orb Vitality III | 1,880 | 12,500 | 1,558,457 |
+| Overload Shots | 1,625 | 35,000 | 35,000 |
+| Core Resilience | 1,463 | 50,000 | 50,000 |
+| Essence Magnet Field (auto-collect) | 1,788 | 150,000 | 150,000 |
+| Critical Chance III | 3,126 | 20,000 | 2,874,249 |
+| Double Crit | 2,438 | 150,000 | 150,000 |
+| Guaranteed Crit Streak | 5,000 | 50,000 | 942,755 |
+| Storm Mastery | 4,376 | 35,000 | 2,532,895 |
+| Manual Storm Summon | 1,300 | 125,000 | 125,000 |
+| Rebirth Echo | 2,275 | 100,000 | 100,000 |
+| Ascension Insight | 5,626 | 75,000 | 2,018,395 |
+| Automation Core | 1,544 | 75,000 | 75,000 |
+| Twin Orb Manifestation | 9,750 | 750,000 | 750,000 |
+| Storm Caller Ascension | 4,875 | 250,000 | 4,023,591 |
+| Essence Convergence | 8,125 | 2,500,000 | 2,500,000 |
+
+No effect, maximum level, prerequisite, rebirth gate or early/midgame price
+changed. `TreeUpgrades` remains the one source read by both the tooltip and
+the server purchase path, so the newly displayed costs are exactly what gets
+deducted.
+
+## 50. Solar Essence -- a complete mythic progression layer
+
+Solar Essence is a real third currency rather than an icon pasted onto one
+screen. `EssenceConfig.luau` is now the authoritative ordered catalog for
+Earth, Shadow, and Solar; collection validation, session leaderstats,
+discovery, odds, colors, Index data, HUD rendering, storm pools, tutorials,
+quests, and rewards derive from that catalog instead of maintaining separate
+two-item allowlists.
+
+Solar is intentionally discoverable before endgame but specialized later:
+
+| Zone | Earth | Shadow | Solar | With Dedicated Essence |
+|---|---:|---:|---:|---|
+| Earthen Grove | 81 | 18 | 1 | 92 / 7 / 1 |
+| The Shadowfen | 17 | 82 | 1 | 7 / 92 / 1 |
+| The Sunforge | 15 | 15 | 70 | 6 / 6 / 88 |
+
+The Sunforge unlocks at Rebirth 4 for 500,000 Earth + 25,000 Shadow. Its
+mixed cost is validated completely before either balance is touched, so a
+failed second-currency check cannot partially spend the first. Lucky Finder,
+Ultra Luck, and temporary Prophecy luck amplify both non-common types (Rare
+Shadow and Mythic Solar), and the Zones UI previews those exact live weights.
+Essence Storm drops now roll against the same current-zone table instead of a
+uniform Earth/Shadow list.
+
+Every Solar find permanently builds **Solar Radiance**: +5% global essence
+per order of magnitude of lifetime Solar, capped at +50%. The multiplier reads
+`LifetimeSolarEssence`, so spending Solar never makes a player weaker. The
+spendable balance resets on rebirth alongside Earth and Shadow; Rebirth Echo
+retains 15% of all three while every lifetime counter survives.
+
+Solar has several earn paths without becoming a free faucet: normal/storm
+orbs, fixed rare Fortune Wheel payouts (20/40/250), a fixed 100-Solar day-7
+streak cache, the three-essence discovery milestone, and restrained offline
+harvesting after discovery. Solar EPM is bounded to 1–6/min and its second
+offline multiplier pass is capped at 2×; this prevents a one-time Wheel/Daily
+payout or an extreme late-game multiplier from turning into thousands of
+unearned mythic currency overnight.
+
+The existing tree's strongest terminals and capstones are now genuine mixed
+currency sinks:
+
+| Upgrade | Solar | Other cost at first rank |
+|---|---:|---|
+| Overload Shots | 100 | 35K Earth |
+| Core Resilience | 150 | 50K Earth |
+| Rebirth Echo | 250 | 100K Earth + 2.5K Shadow |
+| Automation Core | 250 | 75K Earth |
+| Manual Storm Summon | 350 | 125K Earth |
+| Essence Magnet Field / Double Crit | 500 each | 150K Earth each |
+| Storm Caller Ascension | 750 | 250K Earth + 5K Shadow (rank 1) |
+| Twin Orb Manifestation | 1K | 750K Earth + 10K Shadow |
+| Essence Convergence | 5K | 2.5M Earth + 50K Shadow |
+
+The Solar counter is created in the existing padded/scrollable currency rail,
+and its Index slot is cloned and live-bound even when the Studio-authored GUI
+only contains the old two slots. Discoveries, offline rewards, zone cards,
+travel, storms, falling orbs, trails, and the great Sunforge orb all use the
+same molten-corona presentation through `EssenceVisuals.luau`.
+
+Source art ships at `assets/solar-essence-orb.svg`: transparent 1024×1024 SVG
+with corona blades, prominences, plasma orbits, granulation, molten bands, and
+a white-hot stellar heart. Its transparent raster export is uploaded as
+`rbxassetid://97084886370150`, configured once in Solar's `IconAssetId` field
+in `EssenceConfig.luau`. Every surface now resolves that uploaded artwork
+automatically. `EssenceVisuals` retains the matching native Roblox UI build as
+a fallback if the catalog id is deliberately cleared later.
+
+## 51. Essence Awakening -- the first eight minutes are now a designed journey
+
+New saves no longer fall out of the tutorial into an undirected grind. A
+persistent six-beat **Essence Awakening** begins alongside the tutorial,
+credits actions the player is already learning, then carries them through a
+minute-five power spike and an eight-minute finale:
+
+| Beat | Verified goal | Automatic reward |
+|---|---|---|
+| First Spark | Collect 3 orbs | 75 Earth |
+| Resonant Rhythm | Strike the great orb 20 times | 150 Earth |
+| Shape Your Power | Buy any upgrade | 300 Earth |
+| Touch the Veil | Find Shadow or reach 25 total collections | 250 Earth + 20 Shadow |
+| Read the Current | Roll a prophecy or reach 45 total collections | 500 Earth + 25 Shadow |
+| Awakening Rush | Collect 25 orbs after minute 5 | 1,000 Earth + 50 Shadow |
+
+At five active minutes the service turns on a personal 2× essence multiplier.
+It uses `FirstJourneyEssenceMultiplier`, independent from potions, Prophecy,
+Forge and global Rush effects, so overlapping timers multiply correctly and
+cannot erase one another. At eight active minutes, after the route is complete,
+the player receives 2,500 Earth, 100 Shadow, 5 Solar and a ten-minute 1.5×
+handoff boost. If someone learns slowly, the clock caps at 8:00 and the 2×
+rush stays active until their remaining objective is finished; the design
+rewards persistence instead of turning the deadline into a punishment.
+
+The clock counts online play only and persists across rejoins. The service
+observes the same gameplay remotes and server-written attributes as the real
+systems, rate-limits client-fired actions, applies OrbClickManager's collection
+validation boundary, advances stages on the server and grants every reward
+automatically. The template defaults `Eligible` to false; only
+`PlayerDataHandler`'s proven brand-new-save branch flips it true, so veterans
+whose older saves receive the merged fields never get misclassified or handed
+new-player currency.
+
+`FirstJourneyHud.client.luau` is code-built and intentionally occupies the
+lower-center gap above the relic timers rather than adding another right-rail
+button or covering the great orb. It waits until the tutorial is completed or
+skipped, has real inner padding, a collapsible compass, six milestone pips,
+live objective/reward copy, a locally smoothed server clock, stage-specific
+colors and sequenced reward effects. Minute five transforms the panel into a
+Solar rush state. The finale converges the real Earth/Shadow/Solar icon assets
+inside rotating rune rings, reveals the full cache, and hands the player back
+to normal play through **Begin Your Ascent**. Fast consecutive completions are
+queued, and the finale takes priority, so effects never pile into unreadable
+screen noise.
+
+The existing Robux interest-card loop and one-time favorite prompt now respect
+this arc too. Eligible newcomers do not receive either during minutes 1–8;
+the personalized interest card waits for both journey completion and a clear
+modal moment, while the favorite prompt leaves an additional 45-second
+breathing gap. Returning players keep their existing timing. This removes two
+competing calls-to-action from the most fragile part of the first session
+without deleting either conversion path.
+
+The tutorial Skip button also now persists `SeenTutorial = true`. Previously
+Skip only hid the current dialogue; the entire tutorial returned after every
+rejoin and any follow-up system waiting for tutorial completion remained
+blocked.
+
+Creator Hub receives a one-time start event, each stage reach, each retained
+minute from 1 through 8, the Rush, completion, and session-exit active time.
+Those calls are wrapped and observational only: analytics failure cannot block
+the clock, multiplier, save or reward. This makes the next retention pass
+answerable from real minute-by-minute drop-off instead of another guess.
+
+## 52. Tutorial buttons unclickable + highlight ring offset -- root-caused and fixed
+
+Reported directly: "during the tutorial, I can't click on any buttons,"
+plus the highlight ring appearing offset up. Diagnosed two independent,
+concrete bugs while reading through `LoadingScreen.client.luau` and
+`Tutorial.client.luau` -- and this branch had ALSO independently
+diagnosed and fixed the same two bugs (plus a third, deeper one) by the
+time this session's own fix reached the remote, in commits "Make
+tutorial overlay click-through," "Restore player-driven frame opening,"
+and "Fix modal coordinator button lockout." The merge kept that version
+below -- it's a strict superset of this session's own first attempt.
 
 **1. `LoadingScreen.client.luau` fired "done" before it was actually
-done, hiding the tutorial's real buttons under itself for ~0.8s.**
-`LoadingDone` (the BindableEvent `Tutorial.client.luau`'s `remote.Event
-:Wait()` gates on before building any tutorial UI at all) used to fire
-right after the music fade -- a full `CONFIG.FadeTime + 0.1` (~0.8
-seconds) *before* `gui:Destroy()` actually removed the loading screen.
-That screen sits on a ScreenGui with `DisplayOrder = 10000`, far above
-everything else in the game (Tutorial's own GUI is 1000). In that
-window, the tutorial had already built and shown its fully-interactive
-dialogue box, highlight ring, and Next/Skip buttons -- underneath a
-loading screen that was still visually mid-fade on top of all of it. A
-player's first click, right as control was handed over, could land
-while the real target was still buried under the old screen. Fixed by
-moving `ready:Fire("Done")` to after `gui:Destroy()`, so nothing
-downstream (Tutorial, plus SoundController/TheHollowGlitch/
-UpgradeUIManagement, which all wait on the same event) proceeds until
-the loading screen is verifiably gone, not just about to be.
+done.** `LoadingDone`/`PresentationCoordinator.SetReady` -- what
+`Tutorial.client.luau` gates its startup on -- used to fire right after
+the music fade, a full `CONFIG.FadeTime + 0.1` (~0.8s) *before*
+`gui:Destroy()` actually removed the loading screen (a ScreenGui at
+`DisplayOrder = 10000`, far above everything else). In that window the
+tutorial had already built and shown its fully-interactive dialogue box,
+highlight ring, and Next/Skip buttons underneath a screen that hadn't
+visually cleared yet. Both this session and the merged branch reached
+the identical fix independently: fire readiness only after `gui
+:Destroy()`, not before the fade even starts.
 
 **2. The highlight ring's inset math assumed one fixed answer this
 codebase already knew not to assume.** `positionHighlight`/
-`getFrameCenter` unconditionally added `GuiService:GetGuiInset()` to a
-target frame's `AbsolutePosition` to convert it into TutorialGui's
-`IgnoreGuiInset = true` coordinate space. That conversion is only
-correct if the TARGET frame's own ScreenGui (`MainGui` for the orb/
-stats steps, `EssencePopupUI` for the popup steps) does NOT itself
-ignore the inset -- and this codebase already has an established,
-defensive answer for that exact ambiguity: `OrbClicker.client.luau` and
-`CursorCollection.client.luau` both check `MainGui.IgnoreGuiInset` LIVE
-before deciding whether to compensate at all, specifically because
-hardcoding one assumption isn't safe here. `Tutorial.client.luau` never
-checked anything -- it just always added the inset. Fixed by making
-`getGuiInsetOffset` take the target frame, walk up to its actual
-ScreenGui ancestor, and skip the compensation entirely if that
-ScreenGui also ignores the inset -- matching the same live-checked
-pattern rather than guessing which of the two configurations is
-actually true in Studio.
+`getFrameCenter` unconditionally added `GuiService:GetGuiInset()`
+regardless of whether the TARGET frame's own ScreenGui (`MainGui` or
+`EssencePopupUI`) actually ignores the inset -- even though
+`OrbClicker.client.luau`/`CursorCollection.client.luau` already
+established the correct, defensive pattern for this exact ambiguity
+(check `IgnoreGuiInset` live, don't assume). Again, both sides
+independently landed on the same fix: `getGuiInsetOffset` now takes the
+target frame, walks up to its real ScreenGui ancestor, and skips the
+compensation if that ScreenGui also ignores the inset.
 
-**3. Popup steps (Upgrades/Rebirth/Shop) bypassed the real popup
-system entirely, which plausibly explains the button report for those
-specific steps too.** `goToStep` showed/hid popup steps with a direct
-`step.Frame.Visible = true`/`false`, never calling
-`_G.PopupUI.Open`/`.Close` (the system `UIInitializerHooks.client.luau`
-builds and every other path into a popup already goes through). That
-system owns more than visibility: `openPopup` resets the popup's
-`Size`/`GroupTransparency` and tweens them open, shows the click-
-catching `Backdrop`, and records the popup as `currentOpen`. A bare
-`Visible = true` skips all of that -- a popup that had ever been closed
-once before (by anything, any time this session) would still be sitting
-at its closed-state `Size` (85% of target) and `GroupTransparency`
-(fully transparent), since only `closePopup`'s tween ever restores
-those, and the tutorial's bypass never called it. Fixed by routing both
-directions through `_G.PopupUI.Open(name)`/`.Close(name)` (falling back
-to the old bare `Visible` toggle only if `_G.PopupUI` somehow isn't set
-yet). As a side effect, the highlight ring now visibly tracks the
-popup's real open animation instead of being computed once against a
-frame that may not have been in its final state yet.
+**3. The deeper cause of "can't click any buttons": something was
+disabling the real orb button's input, not just the tutorial's own
+overlays.** This session's first attempt only got as far as suspecting
+the tutorial's decorative overlays (the full-screen orb-collect demo,
+the highlight ring) and the popup steps' bypass of the real
+`_G.PopupUI.Open`/`.Close` system -- routing popup steps through that
+system was this session's own fix for the "can't click" report. The
+merged version goes further and fixes what was actually the bigger
+culprit: `Tutorial.client.luau` now explicitly saves the real orb
+`TextButton`'s `Active`/`Selectable`/`Interactable` state up front and
+force-restores it to enabled at the start of the orb step (a "modal
+coordinator" -- now `PresentationCoordinator.luau`, a new shared
+lease/queue module -- could otherwise leave it disabled), and every
+decorative element the tutorial itself creates (the demo cursor, ring,
+and cloned orb) is explicitly set `Active = false` / `Selectable =
+false` / `Interactable = false` so it can never be mistaken for -- or
+block -- a real input target. `PresentationCoordinator` also now
+arbitrates ALL automatic popups/toasts/tutorials through one
+`Acquire`/`Release` lease so only one ever holds the foreground at a
+time, which is the more durable fix for a "some button doesn't respond"
+class of bug than anything narrower to the tutorial alone could have
+been. As a real side benefit that was missed until this pass: the
+tutorial's Skip button now also persists `SeenTutorial = true` (it
+previously only hid the dialogue, so the whole tutorial came back on
+every rejoin).
 
 ## What to check when you open Studio
 
@@ -2281,11 +2667,13 @@ frame that may not have been in its final state yet.
    account -- the popup should appear a few seconds after join. To re-test
    repeatedly after that, just bump `WhatsNewConfig.CurrentVersion` by 1
    each time rather than trying to reset the save.
-9. **Group Reward is invisible until you configure it, on purpose.** Set
-   `GroupRewardConfig.GroupId` to your real group id to turn it on (see
-   section 17), then confirm the 👥 button opens the right group page
-   and disappears once your test account actually joins that group and
-   rejoins the game.
+9. **Test Group Reward with a Mundane Studios non-member and member.** A
+   non-member should see the new three-card panel and FREE reminder;
+   confirm Join opens the right community page. After joining, press
+   "I've joined — verify" and confirm the success state appears, then the
+   panel/reminder disappear. Essence payouts should rise by 35%, displayed
+   crit chance by 5 percentage points, and offline harvest payouts by an
+   additional 15%, all without requiring a rejoin (see section 17).
 10. **Confirm the loading screen still plays its glitch sounds AND still
     reaches the game** (see section 22, both fixes). Both should be
     silent/invisible if everything's already set up correctly in
@@ -2357,12 +2745,19 @@ frame that may not have been in its final state yet.
     should continue instead of resetting, the toast should read "🛡️
     Streak Saved", and the daily panel's status line should show one
     fewer freeze banked.
-17. **Fortune Wheel (section 35)**: click the 🎡 button, bottom-right
-    corner. A fresh account should have its free spin available
-    immediately (confirm the wheel actually spins several full turns
-    and lands cleanly on a segment, not a partial/jittery stop). Click
-    SPIN again right after -- it should now say "No spins available
-    yet" and stay disabled (0 tickets, free spin just used). To see a
+17. **Fortune Wheel (section 35)**: click the illuminated 🎡 DAILY
+    button in the bottom-right corner. Confirm the padded astral cabinet
+    opens without overlapping its title, ticket strip, wheel, prize
+    ledger, status or spin control at both desktop and narrow/mobile
+    viewport sizes. A fresh account should have its free spin available
+    immediately. Confirm the reward pedestals orbit but remain upright,
+    the fixed pointer ticks through candidates, all eight odds remain
+    visible, and the wheel makes several full turns before landing
+    cleanly on the server-selected segment (not a partial/jittery stop).
+    The right-side ledger should then become a result chamber whose
+    displayed Essence matches the amount actually credited. Click SPIN
+    again right after -- it should remain disabled with the countdown
+    visible (0 tickets, free spin just used). To see a
     ticket get earned without collecting 60 real orbs, run
     `require(game.Players.YourName.PlayerData).Wheel.CollectionsSinceLastTicket = 59`
     in the command bar, then collect one orb -- a ticket should appear
@@ -2370,7 +2765,9 @@ frame that may not have been in its final state yet.
     bigger celebration (extra burst, screen flash) without relying on
     its real 1% odds, temporarily swap `WheelConfig.Segments[8]`'s
     `Weight` to something large (or `WheelConfig.RollSegmentIndex`'s
-    return to `return 8` directly) -- revert either before shipping.
+    return to `return 8` directly). Confirm the Jackpot adds the third
+    ring, full particle burst, flash and cabinet shake, then revert the
+    temporary test change before shipping.
 18. **Biggest Gain (section 36)** needs a session with at least two
     collections of noticeably different sizes to see fire -- the very
     first gain of the session never celebrates (nothing to beat yet),
@@ -2404,41 +2801,42 @@ frame that may not have been in its final state yet.
     account that already existed before this shipped, confirm the
     badge never appears at all, even on the very first load after
     updating.
-21. **Zones (section 39) needs one thing from you first -- see "What
-    you need to do" immediately below, it won't do anything in Studio
-    until that button exists.** Once placed: click it, confirm the
-    panel shows Earthen Grove as "📍 HERE" and The Shadowfen as
-    "🔒 UNLOCK · 300 Essence" (greyed out under 300 essence, lit up
-    orange once you have enough). Click UNLOCK -- essence should drop
-    by 300, a full-screen travel animation should play, and the panel
+21. **Zones (sections 39/50)** -- click the authored Zones button and
+    confirm Earthen Grove is "📍 HERE", Shadowfen costs 300 Earth, and
+    Sunforge shows its Rebirth-4 gate before the 500K Earth + 25K Shadow
+    mixed cost. Unlock Shadowfen -- Earth should drop by exactly 300, a
+    full-screen travel animation should play, and the panel
     (now closed) should reveal a subtle purple glow behind the great
     orb that wasn't there before. Reopen the panel: Shadowfen now
     reads "📍 HERE" and Earthen Grove reads "TRAVEL". Click TRAVEL
     back to Earthen Grove and confirm the glow turns green again and
     the travel animation plays a second time. Collect a good number of
-    orbs in each zone and confirm Shadowfen visibly favors Shadow
-    Essence drops while Earthen Grove favors Earth -- both should still
-    occasionally drop the other type. To see Dedicated Essence's
-    amplified odds (8%/92% instead of 18%/82%) without buying the real
+    orbs in each zone and confirm Shadowfen visibly favors Shadow,
+    Earthen Grove favors Earth, and Sunforge favors Solar -- every zone
+    should still show trace drops of the other types. To see Dedicated Essence's
+    amplified specialty odds without buying the real
     Game Pass, run
     `game.Players.YourName:SetAttribute(1907077899, true)` in the
     command bar and reopen the panel -- every card's odds line should
-    sharpen immediately.
-22. **Lucky Finder / Ultra Luck (section 40)** -- open the Zones panel
-    on Earthen Grove and note the odds line (should read "🌍 82% •
-    🌑 18%"). Run
+    sharpen immediately. Then temporarily rename/remove the authored
+    `MainGui.Right.Holder.ZonesButton` in a Studio copy and re-run: a
+    fallback ZONES button should appear in the same slot and open the
+    same panel.
+22. **Lucky Finder / Ultra Luck (sections 40/50)** -- open Zones on
+    Earthen Grove and note the base line (roughly 🌍 81% • 🌑 18% •
+    ☀️ 1%). Run
     `game.Players.YourName:SetAttribute(1907239833, true)` in the
     command bar (Lucky Finder) and reopen the panel -- Shadow's share
-    should visibly rise (roughly 24-25%, since ×1.5 on the weight
+    should visibly rise to roughly 25% and Solar remain roughly 1% (×1.5
     doesn't translate to a flat ×1.5 on the displayed percentage once
     the total renormalizes -- see the section's own math). Add
     `game.Players.YourName:SetAttribute(1906063939, true)` (Ultra
-    Luck, both now owned) and confirm Shadow's share climbs further
-    still (roughly 40%). Collect a good number of orbs and confirm
-    Shadow Essence is genuinely landing more often, not just the
+    Luck, both now owned) and confirm roughly 59% Earth / 39% Shadow /
+    2% Solar. Collect a good number of orbs and confirm the non-common
+    types genuinely land more often, not just the
     displayed number changing. Remove both attributes
     (`SetAttribute(id, nil)`) and confirm the odds line and real drop
-    rate both return to the un-boosted 82/18 split.
+    rate both return to the un-boosted 81/18/1 split.
 23. **Shadowfen orb image (section 39 addendum)** -- travel to the
     Shadowfen and confirm the great orb's actual picture changes (not
     just the ambient glow color) to the configured image right as the
@@ -2467,6 +2865,121 @@ frame that may not have been in its final state yet.
     one does, its fix is the same one-line move every button in
     section 41 got: shift its `x` in the relevant file's `LAYOUT`
     table.
+25. **Essence Market (section 43)** -- open Shop and confirm the new
+    market appears alone (the legacy ShopPopup must not open behind it),
+    all three tabs render, every card eventually replaces "VIEW OFFER"
+    with its live price, owned passes say "OWNED", and BUY opens the
+    correct Roblox confirmation. Cancel that confirmation once to verify
+    cancellation grants nothing. For the interest-card test, temporarily
+    set the first delay to 5--8 seconds in `MonetizationConfig.Spotlights`,
+    join with `SeenTutorial = true`, and confirm one card appears only
+    while no other modal is open; its button should focus the advertised
+    market card but must not open checkout. Restore the real delays before
+    publishing. Finally, temporarily rename the authored Shop button in a
+    Studio copy and confirm the fallback STORE entry appears.
+26. **Prophecy Crystal (section 44)** -- click the large 🔮 FATE shortcut in
+    the top-right corner. On a fresh save it should pulse green and
+    offer a free reading immediately. Roll once and confirm the outer and
+    inner runes counter-rotate quickly, false futures cycle without changing
+    the server-selected result, and the final rarity produces rings, motes,
+    a readable benefit card and an active countdown pill. Collect while the
+    boon is active and confirm its stated Essence/crit/luck effect is real;
+    for a luck omen, the Zones odds preview should update immediately too.
+    Rejoin during the timer and confirm the same prophecy resumes with less
+    time remaining, then expires back to neutral. Roll again immediately and
+    confirm the button shows the remaining ten-minute cooldown. To test Fate
+    without waiting through seven real cooldowns, set
+    `require(game.Players.YourName.PlayerData).Prophecy.RollsSinceRare = 7`
+    and `require(game.Players.YourName.PlayerData).Prophecy.NextRollAt = 0`
+    in the server command bar, then roll: the meter should announce FATE FULL
+    and the result must be Rare, Epic or Mythic. Finally check the padded
+    panel at both desktop and phone emulator widths; no title, benefit or
+    close control should touch the frame edge.
+27. **Whole-game Astral pass (section 45)** -- do one visual circuit on both
+    desktop and a narrow phone emulator: open Upgrades, Inventory, Index,
+    Rebirth, Settings, Shop/Essence Market, Zones, Sanctum, Prestige Shop,
+    Ranks, Goals, Daily, Quests and Codes. Every real panel should retain its
+    existing size/position while gaining animated trim, a clear header, raised
+    content cards and tactile buttons; no text, icon or close control should
+    touch a border or disappear behind a star/sweep. In Upgrades, drag and zoom
+    the constellation, verify the live percentage changes, and inspect one
+    locked, available, leveled and maxed node. Hover the same node repeatedly
+    and rebirth once if possible: the tooltip should update once per change,
+    not flicker or multiply callbacks; then repeat with a tap in the mobile
+    emulator. Trigger or temporarily shorten a potion, Essence Rush and a
+    personal-best/discovery banner to confirm late-created cards receive the
+    treatment. Finally open/close the major panels repeatedly for several
+    minutes and watch Studio's client performance: hidden panels should not
+    keep visibly animating, button clicks should still invoke their original
+    actions exactly once, and Output should remain free of new UI errors.
+28. **Zone orb cards + attunement travel (section 46)** -- open Zones on both
+    desktop and a narrow phone emulator. Earthen Grove must show the green
+    Earth collectible, Shadowfen the purple Shadow collectible, and the
+    unlocked Sunforge its molten Solar collectible, each with
+    its own pedestal/orbit/specialty pill and without touching the card edge,
+    description or action button. Travel among all unlocked zones. Confirm the gates
+    fully cover every corner, input is blocked only during the cinematic, the
+    portal uses the destination's matching orb/color, all three status beats
+    and the meter are readable, and controls work again immediately after the
+    reveal. Rapidly reopen/close the picker afterward and confirm no stale
+    callback hides the HUD or replays an old destination.
+29. **Essence Storm spectacle (sections 47/50)** -- use Manual Storm Summon or a
+    server-side forced storm. The active bar should start full, say ESSENCE
+    STORM, and drain against the real duration. Confirm the storm eye contains
+    all three orb presentations, its banner clears quickly, rain/lightning/tint
+    do not block any HUD or falling-orb click, and Earth/Shadow/Solar drops use
+    current-zone odds with matching aura/tail. End the storm and verify every
+    persistent visual fades away. Force another storm while one is already
+    active to check the shorter
+    SURGE treatment. For golden QA, temporarily force `isGolden = true` in
+    `StormController:_startStorm`, confirm the complete gold palette and
+    stronger entrance, then revert that temporary test edit. Let one full
+    storm run with the mobile performance graph open: pooled streak count must
+    stay flat and Output must remain clean.
+30. **All-essence rebirth reset (sections 48/50)** -- seed Earth, Shadow, and
+    Solar balances. With no Rebirth Echo, perform a real rebirth and confirm
+    all three leaderstat quantities and player attributes become 0. Repeat with
+    `rebirth_echo` level 1 and confirm all three retain exactly 15% (floored).
+    Before/after each attempt, compare every lifetime attribute and a purchased
+    Sanctum level: no permanent value may decrease, while all three spendable
+    `PlayerData.Essences[*].Quantity` values must match their displayed
+    leaderstats after the transaction and after a rejoin.
+31. **Endgame price audit (sections 49/50)** -- inspect every Tier 3/4 node in
+    the upgrade tooltip and compare it to the table above. Essence Magnet
+    Field must show 150K Earth + 500 Solar, Twin Orb 750K Earth + 10K Shadow
+    + 1K Solar, and Convergence 2.5M Earth + 50K Shadow + 5K Solar; buying a
+    test node must deduct every displayed amount exactly once. Check one Tier 1
+    and Tier 2 route as a regression guard—their prices must be unchanged.
+    For a leveled late node such as Storm Caller, buy successive ranks and
+    confirm the existing growth still advances the price rather than leaving
+    every rank at its new base. Finally rebirth and verify the nodes reset as
+    before; this pass changes cost only, not the tree's reset contract.
+32. **Solar end-to-end (section 50)** -- on a clean account confirm the HUD
+    shows a padded Solar row, the Index counts 3 total entries, and Grove odds
+    show a 1% Solar trace. Force or wait for a Solar roll: the molten Solar
+    orb, MYTHIC SOLAR collection burst, discovery card, leaderstat, Index slot,
+    unique count, rarest essence, lifetime attribute, and Radiance multiplier
+    should update together. At Rebirth 4, buy Sunforge with both currencies and
+    confirm Solar becomes the dominant drop. Claim day 7 and force the three
+    Solar Wheel rewards, checking fixed 100 / 20-or-40 / 250 payouts rather
+    than rebirth-scaled amounts. Finally rejoin after offline time: Solar may
+    pay only after discovery and its saved EPM must remain inside 1–6/min.
+
+33. **Essence Awakening (section 51)** -- use a genuinely fresh DataStore key
+    (an old save is intentionally ineligible). Confirm the padded journey card
+    stays hidden during the tutorial, appears above the bottom relic bar after
+    finishing or skipping, and never covers the great orb or right navigation
+    at desktop and phone emulator widths. Complete each goal and verify its
+    exact reward lands once; rejoin midway and confirm the same stage, counters
+    and active-time clock resume rather than reset or advance offline. At 5:00,
+    collect before/after the transition and verify only the latter gain is 2×,
+    while an existing potion/prophecy still stacks. At 8:00, confirm the
+    Earth/Shadow/Solar convergence finale, exact 2,500/100/5 cache, and
+    ten-minute 1.5× potion. Finally, deliberately leave the last objective
+    unfinished at 8:00: the clock should hold, the Rush should remain, and the
+    finale should fire once the objective is completed. Rejoin after completion
+    and confirm neither the HUD nor any reward returns. Also skip the tutorial,
+    rejoin, and confirm the tutorial itself no longer comes back.
 
 ## ⚠️ One thing to be careful about
 

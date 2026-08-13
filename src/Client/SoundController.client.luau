@@ -1,7 +1,6 @@
 local Music = game:GetService("SoundService"):WaitForChild("Music")
 local EarthMusic = Music:WaitForChild("Earth Essence")
-
-local loadingDone = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("LoadingDone")
+local PresentationCoordinator = require(game:GetService("ReplicatedStorage"):WaitForChild("PresentationCoordinator"))
 local tracks = {
 	EarthMusic:WaitForChild("Music1"),
 	EarthMusic:WaitForChild("Music2"),
@@ -30,15 +29,8 @@ local function playNextTrack()
 	track.Ended:Wait()
 end
 
-local LoadingIsDone = false
-loadingDone.Event:Connect(function()
-	LoadingIsDone = true
-end)
+PresentationCoordinator.WaitUntilReady()
 
 while true do
-	if LoadingIsDone then
-		playNextTrack()
-	else
-		task.wait(1)
-	end
+	playNextTrack()
 end

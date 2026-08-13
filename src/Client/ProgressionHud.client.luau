@@ -27,8 +27,8 @@
 	---------------------------
 	This script never grants anything. It draws whatever state the server
 	sends and fires "I'd like to claim" requests; ProgressionService
-	re-validates every one of them. Buttons disable themselves purely as
-	a courtesy so the player isn't clicking something that will bounce.
+	re-validates every one of them. Locked-looking buttons remain responsive
+	so NotificationService can explain what is missing or when to return.
 
 	LAYOUT
 	-------
@@ -46,6 +46,8 @@ local SoundService = game:GetService("SoundService")
 
 local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
 local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
+local PresentationCoordinator = require(ReplicatedStorage:WaitForChild("PresentationCoordinator"))
+local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -83,13 +85,17 @@ local LAYOUT = {
 	-- Vertical button stack (Daily + Quests + Codes). Anchored to the right
 	-- edge, below the currency panel that occupies the top-left.
 	--
-	-- Y=0.63 rather than the original 0.2: this 3-button stack (rendered
-	-- via UIListLayout, ~0.09-0.32 tall when centered at 0.2) was overlapping
-	-- RebirthShopPanel's (0.213) and SanctumPanel's (0.295) buttons on the
-	-- same x column -- moved this stack below the whole RebirthShop/
-	-- Sanctum/Leaderboard/Achievements column (which bottoms out around
-	-- 0.49-0.51) with margin to spare, rather than renumbering four
-	-- already-placed buttons in four other files for one collision.
+	-- The stack now starts at y=0.59 (top-anchored) directly beneath the
+	-- Astral Forge's fifth rail slot. A compact fixed band and small gap keep
+	-- all three square buttons above the bottom-corner Wheel at every common
+	-- landscape resolution.
+	--
+	-- This replaces the old center-at-0.63 layout, whose large proportional
+	-- list padding actually overflowed into GroupReward even before Forge was
+	-- added. GroupReward now sits beside this lower rail, not on top of it.
+	--
+	-- Originally this stack lived near y=0.2 and overlapped the Prestige and
+	-- Sanctum shortcuts on the same x column.
 	--
 	-- x=0.952 (was 0.895, then briefly 0.92): a real screenshot showed
 	-- the whole RebirthShop/Sanctum/Leaderboard/Achievements/GroupReward
@@ -97,9 +103,10 @@ local LAYOUT = {
 	-- live nav bar (Upgrades/Zones/Rebirth/Index/Shop/Settings). 0.952
 	-- is the shared shortcut rail every code-created button on the right
 	-- edge now uses -- keeps them all clear of the Studio-authored rows.
-	ButtonsPosition = UDim2.fromScale(0.952, 0.63),
-	ButtonsAnchor = Vector2.new(0, 0.5),
+	ButtonsPosition = UDim2.fromScale(0.952, 0.59),
+	ButtonsAnchor = Vector2.new(0, 0),
 	ButtonSize = UDim2.fromScale(0.044, 0.062),
+	ButtonsHeight = 0.27,
 
 	-- The old y=0.12 placement covered MainGui.Right.ManualSummonButton
 	-- (the CLAIM First Find bar). Put the pill immediately beneath it and
@@ -209,6 +216,7 @@ local backdrop = new("TextButton", {
 	Visible = false,
 	ZIndex = 100,
 }, screenGui)
+backdrop:SetAttribute("PresentationModal", true)
 
 -- =========================================================================
 -- STATE
@@ -304,6 +312,12 @@ local toastShowing = false
 local toastScale = Juice.GetScale(toastFrame)
 
 local function playToast(payload)
+	-- Reward state is already visible in the panels and balances. During a
+	-- focused presentation, suppress this redundant celebration instead of
+	-- saving a stack that would avalanche immediately afterward.
+	if PresentationCoordinator.HasPendingPresentation() then
+		return
+	end
 	toastIcon.Text = payload.Icon or "🎁"
 	toastTitle.Text = payload.Title or "Reward"
 	toastSubtitle.Text = payload.Subtitle or ""
@@ -365,6 +379,12 @@ local function processToastQueue()
 	toastShowing = false
 end
 
+PresentationCoordinator.Changed:Connect(function()
+	if PresentationCoordinator.HasPendingPresentation() then
+		toastFrame.Visible = false
+	end
+end)
+
 ToastRemote.OnClientEvent:Connect(function(payload)
 	if type(payload) ~= "table" then
 		return
@@ -382,17 +402,46 @@ local buttonHolder = new("Frame", {
 	Name = "ProgressionButtons",
 	AnchorPoint = LAYOUT.ButtonsAnchor,
 	Position = LAYOUT.ButtonsPosition,
-	Size = UDim2.fromScale(LAYOUT.ButtonSize.X.Scale, LAYOUT.ButtonSize.Y.Scale * 3.5),
+	Size = UDim2.fromScale(LAYOUT.ButtonSize.X.Scale, LAYOUT.ButtonsHeight),
 	BackgroundTransparency = 1,
 	ZIndex = 50,
 }, screenGui)
 
-new("UIListLayout", {
+local buttonListLayout = new("UIListLayout", {
 	FillDirection = Enum.FillDirection.Vertical,
 	SortOrder = Enum.SortOrder.LayoutOrder,
-	Padding = UDim.new(0.12, 0),
+	Padding = UDim.new(0.02, 0),
 	HorizontalAlignment = Enum.HorizontalAlignment.Center,
 }, buttonHolder)
+
+-- Very short landscape phones have less vertical space above the Wheel's
+-- enforced 64px minimum. Narrow this one lower band only; the four primary
+-- rail shortcuts and the Forge stay full-sized, while Daily/Quests/Codes
+-- remain separate, visible buttons instead of overlapping the Wheel.
+local cameraViewportConnection = nil
+local function updateProgressionButtonBand()
+	local camera = workspace.CurrentCamera
+	local compact = camera ~= nil and camera.ViewportSize.Y < 500
+	buttonHolder.Size = compact
+		and UDim2.fromScale(0.03, 0.215)
+		or UDim2.fromScale(LAYOUT.ButtonSize.X.Scale, LAYOUT.ButtonsHeight)
+	buttonListLayout.Padding = compact and UDim.new(0.015, 0) or UDim.new(0.02, 0)
+end
+
+local function bindProgressionViewport()
+	if cameraViewportConnection then
+		cameraViewportConnection:Disconnect()
+		cameraViewportConnection = nil
+	end
+	local camera = workspace.CurrentCamera
+	if camera then
+		cameraViewportConnection = camera:GetPropertyChangedSignal("ViewportSize"):Connect(updateProgressionButtonBand)
+	end
+	updateProgressionButtonBand()
+end
+
+workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(bindProgressionViewport)
+bindProgressionViewport()
 
 -- Builds one round icon button with an unread "!" badge.
 local function createSideButton(icon, labelText, order)
@@ -754,6 +803,8 @@ local function closePanel()
 	end)
 end
 
+local manualProgressionPanelOpened = false
+
 local function showPanel(which)
 	if openPanel == which then
 		closePanel()
@@ -790,9 +841,18 @@ backdrop.Activated:Connect(closePanel)
 for _, panel in pairs(panels) do
 	panel.CloseButton.MouseButton1Click:Connect(closePanel)
 end
-dailyButton.MouseButton1Click:Connect(function() showPanel("Daily") end)
-questButton.MouseButton1Click:Connect(function() showPanel("Quests") end)
-codeButton.MouseButton1Click:Connect(function() showPanel("Codes") end)
+dailyButton.MouseButton1Click:Connect(function()
+	manualProgressionPanelOpened = true
+	showPanel("Daily")
+end)
+questButton.MouseButton1Click:Connect(function()
+	manualProgressionPanelOpened = true
+	showPanel("Quests")
+end)
+codeButton.MouseButton1Click:Connect(function()
+	manualProgressionPanelOpened = true
+	showPanel("Codes")
+end)
 
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then
@@ -873,13 +933,20 @@ for index, reward in ipairs(ProgressionConfig.DailyRewards) do
 	}, card)
 	new("UITextSizeConstraint", { MaxTextSize = 15 }, amountLabel)
 
+	local bonusParts = {}
+	if (tonumber(reward.SolarEssence) or 0) > 0 then
+		table.insert(bonusParts, "+" .. ProgressionConfig.FormatNumber(reward.SolarEssence) .. " ☀")
+	end
+	if reward.Potion then
+		table.insert(bonusParts, "BOOST")
+	end
 	local bonusLabel = new("TextLabel", {
 		Name = "Bonus",
 		Position = UDim2.fromScale(0, 0.82),
 		Size = UDim2.fromScale(1, 0.15),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamMedium,
-		Text = reward.Potion and "+ BOOST" or "",
+		Text = table.concat(bonusParts, " • "),
 		TextColor3 = THEME.Accent,
 		TextScaled = true,
 		ZIndex = 113,
@@ -992,14 +1059,30 @@ function refreshDaily()
 	else
 		dailyClaimButton.Text = "CLAIMED TODAY"
 		dailyClaimButton.BackgroundColor3 = THEME.Locked
-		dailyClaimButton.Active = false
+		-- Keep completed rewards responsive: clicking explains when the next
+		-- one arrives instead of making the interface feel broken.
+		dailyClaimButton.Active = true
 		dailyStatusLabel.Text = ("Streak: %d day(s)  •  Next reward in %s%s")
 			:format(daily.Streak or 0, ProgressionConfig.FormatDuration(daily.SecondsUntilReset or 0), freezeSuffix)
 	end
 end
 
 dailyClaimButton.MouseButton1Click:Connect(function()
-	if not state.Daily or not state.Daily.CanClaim then
+	if not state.Daily then
+		NotificationService.Info("Your daily streak is still loading.", {
+			Title = "Rewards Still Loading",
+			Key = "daily-loading",
+		})
+		return
+	end
+	if not state.Daily.CanClaim then
+		NotificationService.Info(("You already claimed today. The next reward arrives in %s."):format(
+			ProgressionConfig.FormatDuration(state.Daily.SecondsUntilReset or 0)
+		), {
+			Title = "Daily Reward Claimed",
+			Icon = "✓",
+			Key = "daily-already-claimed",
+		})
 		return
 	end
 	ClaimDailyRemote:FireServer()
@@ -1146,10 +1229,31 @@ for slot = 1, ProgressionConfig.QuestsPerDay do
 
 	claimButton.MouseButton1Click:Connect(function()
 		local questState = state.Quests and state.Quests[slot]
-		if not questState or questState.Claimed then
+		if not questState then
+			NotificationService.Info("Your daily quests are still loading.", {
+				Title = "Quests Still Loading",
+				Key = "quest-loading",
+			})
+			return
+		end
+		if questState.Claimed then
+			NotificationService.Info((questState.Title or "This quest") .. " has already been claimed.", {
+				Title = "Quest Complete",
+				Icon = "✓",
+				Key = "quest-claimed:" .. slot,
+			})
 			return
 		end
 		if (questState.Progress or 0) < (questState.Target or math.huge) then
+			local remaining = math.max(0, (questState.Target or 0) - (questState.Progress or 0))
+			NotificationService.Info(("%s needs %s more progress before it can be claimed."):format(
+				questState.Title or "This quest",
+				ProgressionConfig.FormatNumber(remaining)
+			), {
+				Title = "Quest In Progress",
+				Icon = questState.Icon or "◆",
+				Key = "quest-incomplete:" .. slot,
+			})
 			return
 		end
 		ClaimQuestRemote:FireServer(slot)
@@ -1213,7 +1317,7 @@ function refreshQuests()
 				row.ClaimButton.Text = "DONE ✓"
 				row.ClaimButton.BackgroundColor3 = THEME.Locked
 				row.ClaimButton.TextColor3 = THEME.Green
-				row.ClaimButton.Active = false
+				row.ClaimButton.Active = true
 				row.Stroke.Color = THEME.Green
 				row.BarFill.BackgroundColor3 = THEME.Green
 			elseif complete then
@@ -1227,7 +1331,7 @@ function refreshQuests()
 				row.ClaimButton.Text = "CLAIM"
 				row.ClaimButton.BackgroundColor3 = THEME.Locked
 				row.ClaimButton.TextColor3 = THEME.Grey
-				row.ClaimButton.Active = false
+				row.ClaimButton.Active = true
 				row.Stroke.Color = THEME.Locked
 				row.BarFill.BackgroundColor3 = THEME.Accent
 			end
@@ -1306,6 +1410,11 @@ local function submitCode()
 	if entered:gsub("%s", "") == "" then
 		codeStatus.Text = "Enter a code first."
 		codeStatus.TextColor3 = THEME.Grey
+		NotificationService.Info("Type a code before pressing redeem.", {
+			Title = "Enter a Code",
+			Icon = "#",
+			Key = "code-empty",
+		})
 		return
 	end
 
@@ -1327,6 +1436,10 @@ local function submitCode()
 		if not ok then
 			codeStatus.Text = "Something went wrong -- try again."
 			codeStatus.TextColor3 = THEME.Red
+			NotificationService.Error(codeStatus.Text, {
+				Title = "Code Connection Failed",
+				Key = "code-connection",
+			})
 			return
 		end
 
@@ -1335,6 +1448,17 @@ local function submitCode()
 
 		if success then
 			codeBox.Text = ""
+			NotificationService.Success(tostring(message or "Your reward was delivered."), {
+				Title = "Code Redeemed",
+				Icon = "#",
+				Key = "code-success",
+			})
+		else
+			NotificationService.Warning(tostring(message or "That code could not be redeemed."), {
+				Title = "Code Not Redeemed",
+				Icon = "#",
+				Key = "code-failed:" .. string.lower(entered),
+			})
 		end
 	end)
 end
@@ -1409,18 +1533,30 @@ local function refreshChest()
 		chestStroke.Color = THEME.Locked
 		chestStroke.Thickness = 2
 		chestFill.BackgroundColor3 = THEME.Accent
-		chestPill.Active = false
+		chestPill.Active = true
 	end
 end
 
 chestPill.MouseButton1Click:Connect(function()
 	local chest = state.Chest
 	if not chest then
+		NotificationService.Info("Your playtime chest is still loading.", {
+			Title = "Chest Still Loading",
+			Key = "chest-loading",
+		})
 		return
 	end
 
 	local elapsed = (chest.Elapsed or 0) + (os.clock() - chestSyncedAt)
 	if elapsed < (chest.NextAt or math.huge) then
+		NotificationService.Info(("%s unlocks in %s."):format(
+			chest.NextTitle or "Your next chest",
+			ProgressionConfig.FormatDuration((chest.NextAt or elapsed) - elapsed)
+		), {
+			Title = "Playtime Chest Charging",
+			Icon = chest.NextIcon or "🎁",
+			Key = "chest-not-ready",
+		})
 		return
 	end
 
@@ -1496,12 +1632,10 @@ task.spawn(function()
 end)
 
 -- =========================================================================
--- FIRST-SESSION NUDGE
+-- RETURNING-PLAYER DAILY NUDGE
 -- =========================================================================
--- Opening the daily panel unprompted on join is the single clearest way
--- to show a brand-new player that this game has things to come back for.
--- Held until after the loading screen and tutorial would have finished so
--- it doesn't stack on top of them.
+-- Returning players with a claim ready get one queued reminder. New players
+-- already have guided onboarding and keep Daily as an explicit badge/button.
 
 task.spawn(function()
 	local deadline = os.clock() + 45
@@ -1515,19 +1649,47 @@ task.spawn(function()
 	if not state.Daily or not state.Daily.CanClaim then
 		return
 	end
+	local journeyAttributeDeadline = os.clock() + 5
+	while player:GetAttribute("FirstJourneyEligible") == nil and os.clock() < journeyAttributeDeadline do
+		task.wait(0.1)
+	end
+	-- A newcomer already has Tutorial followed by the eight-minute Awakening
+	-- journey. Keep Daily's unread badge/button available, but make opening it
+	-- their choice instead of adding another mandatory post-tutorial frame.
+	if player:GetAttribute("FirstJourneyEligible") ~= false then
+		return
+	end
 
-	-- Wait out the tutorial for a first-time player rather than talking
-	-- over it.
-	if not player:GetAttribute("SeenTutorial") then
-		local tutorialDeadline = os.clock() + 120
-		while os.clock() < tutorialDeadline and not player:GetAttribute("SeenTutorial") do
-			task.wait(1)
+	local lease = PresentationCoordinator.Acquire("DailyWelcome", {
+		Priority = 46,
+		QuietAfter = 0.8,
+	})
+	if not lease then
+		return
+	end
+
+	local ok, err = xpcall(function()
+		if state.Daily and state.Daily.CanClaim and openPanel == nil and not manualProgressionPanelOpened then
+			showPanel("Daily")
+			-- This is an optional nudge, not a hard onboarding gate. Give the
+			-- player time to claim/read it, then close it before the next queued
+			-- frame. A manual close releases the slot immediately.
+			local openedAt = os.clock()
+			while openPanel == "Daily" and os.clock() - openedAt < 18 do
+				task.wait(0.2)
+			end
+			if openPanel == "Daily" then
+				closePanel()
+				task.wait(0.25)
+			end
 		end
+	end, debug.traceback)
+	if not ok then
+		if openPanel == "Daily" then
+			closePanel()
+		end
+		warn("[ProgressionHud] Daily welcome presentation failed: " .. tostring(err))
 	end
 
-	task.wait(2)
-
-	if state.Daily and state.Daily.CanClaim and openPanel == nil then
-		showPanel("Daily")
-	end
+	PresentationCoordinator.Release(lease, 0.8)
 end)

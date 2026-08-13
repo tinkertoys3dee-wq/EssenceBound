@@ -18,8 +18,8 @@
 		  remotes. Roblox fires every connected listener, so OrbClickManager
 		  keeps working exactly as before and neither script knows about
 		  the other.
-		- Essence earned is measured from the Earth Essence leaderstat's
-		  own Quantity attribute changing.
+		- Essence earned is measured from positive Quantity changes across
+		  the complete essence catalog.
 		- Upgrade purchases and rebirths are read from the player
 		  attributes those systems already set.
 
@@ -43,6 +43,8 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
 local TreeUpgrades = require(ReplicatedStorage:WaitForChild("TreeUpgrades"))
+local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
+local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
 
 -- =========================================================================
 -- REMOTES
@@ -113,7 +115,7 @@ local MAX_CODE_LENGTH = 32
 
 local sessionStart = {}      -- [player] = os.clock() at join
 local chestsClaimed = {}     -- [player] = number of chests claimed this session
-local lastKnownEssence = {}  -- [player] = last observed Earth Essence total
+local lastKnownEssence = {}  -- [player] = { [displayName] = last observed total }
 local lastUpgradeLevels = {} -- [player] = { [upgradeId] = level }
 local lastRebirths = {}      -- [player] = number
 local claimDebounce = {}     -- [player] = os.clock() of last claim action
@@ -189,12 +191,12 @@ local function getRebirths(player)
 	return tonumber(player:GetAttribute("Rebirths")) or 0
 end
 
-local function getEssenceStat(player)
+local function getEssenceStat(player, essenceName)
 	local leaderstats = player:FindFirstChild("leaderstats")
 	if not leaderstats then
 		return nil
 	end
-	return leaderstats:FindFirstChild("Earth Essence")
+	return leaderstats:FindFirstChild(essenceName or "Earth Essence")
 end
 
 -- The one place rewards are actually paid out.
@@ -206,13 +208,14 @@ end
 -- Doing it before the write (rather than after) is deliberate: it's
 -- correct whether Roblox delivers the attribute signal immediately or
 -- defers it to the end of the frame.
-local function grantEssence(player, amount)
+local function grantEssence(player, amount, essenceName)
 	amount = math.floor(tonumber(amount) or 0)
 	if amount <= 0 then
 		return false
 	end
 
-	local stat = getEssenceStat(player)
+	essenceName = essenceName or "Earth Essence"
+	local stat = getEssenceStat(player, essenceName)
 	if not stat then
 		return false
 	end
@@ -220,7 +223,8 @@ local function grantEssence(player, amount)
 	local current = tonumber(stat:GetAttribute("Quantity")) or 0
 	local newTotal = current + amount
 
-	lastKnownEssence[player] = newTotal
+	lastKnownEssence[player] = lastKnownEssence[player] or {}
+	lastKnownEssence[player][essenceName] = newTotal
 	stat:SetAttribute("Quantity", newTotal)
 
 	local data = getData(player)
@@ -493,11 +497,26 @@ ClaimDailyRemote.OnServerEvent:Connect(function(player)
 
 	local progression = getProgression(player)
 	if not progression then
+		NotificationService.Send(player, {
+			Kind = "Error",
+			Title = "Rewards Still Loading",
+			Message = "Your daily streak is still loading. Try again in a moment.",
+			Key = "daily-loading",
+		})
 		return
 	end
 
 	local today = ProgressionConfig.GetDayNumber()
 	if progression.LastClaimDay == today then
+		NotificationService.Send(player, {
+			Kind = "Info",
+			Title = "Daily Reward Claimed",
+			Message = ("The next daily reward arrives in %s."):format(
+				ProgressionConfig.FormatDuration(ProgressionConfig.GetSecondsUntilNextDay())
+			),
+			Icon = "✓",
+			Key = "daily-already-claimed",
+		})
 		return -- already claimed today
 	end
 
@@ -535,13 +554,18 @@ ClaimDailyRemote.OnServerEvent:Connect(function(player)
 
 	local reward = ProgressionConfig.GetDailyRewardForStreak(progression.Streak)
 	local essence = ProgressionConfig.ScaleReward(reward.Essence, getRebirths(player))
+	local solarEssence = math.max(0, math.floor(tonumber(reward.SolarEssence) or 0))
 
 	grantEssence(player, essence)
+	grantEssence(player, solarEssence, "Solar Essence")
 	if reward.Potion then
 		grantPotion(player, reward.Potion)
 	end
 
 	local subtitle = ("+%s Essence"):format(ProgressionConfig.FormatNumber(essence))
+	if solarEssence > 0 then
+		subtitle ..= ("  +%s Solar"):format(ProgressionConfig.FormatNumber(solarEssence))
+	end
 	if reward.PotionLabel then
 		subtitle ..= "  " .. reward.PotionLabel
 	end
@@ -570,6 +594,12 @@ ClaimQuestRemote.OnServerEvent:Connect(function(player, slot)
 
 	local progression = getProgression(player)
 	if not progression then
+		NotificationService.Send(player, {
+			Kind = "Error",
+			Title = "Quests Still Loading",
+			Message = "Your daily quests are still loading. Try again in a moment.",
+			Key = "quest-loading",
+		})
 		return
 	end
 
@@ -582,11 +612,28 @@ ClaimQuestRemote.OnServerEvent:Connect(function(player, slot)
 	end
 
 	if progression.QuestClaimed[slot] == true then
+		NotificationService.Send(player, {
+			Kind = "Info",
+			Title = "Quest Already Claimed",
+			Message = quest.Title .. " has already been claimed.",
+			Icon = "✓",
+			Key = "quest-claimed:" .. slot,
+		})
 		return
 	end
 
 	local progress = tonumber(progression.QuestProgress[slot]) or 0
 	if progress < quest.Target then
+		NotificationService.Send(player, {
+			Kind = "Info",
+			Title = "Quest In Progress",
+			Message = ("%s needs %s more progress."):format(
+				quest.Title,
+				ProgressionConfig.FormatNumber(quest.Target - progress)
+			),
+			Icon = quest.Icon,
+			Key = "quest-incomplete:" .. slot,
+		})
 		return -- not actually complete; client asked for something it can't have
 	end
 
@@ -605,6 +652,12 @@ ClaimChestRemote.OnServerEvent:Connect(function(player)
 	end
 
 	if not sessionStart[player] then
+		NotificationService.Send(player, {
+			Kind = "Error",
+			Title = "Chest Still Loading",
+			Message = "Your playtime chest is still loading. Try again in a moment.",
+			Key = "chest-loading",
+		})
 		return
 	end
 
@@ -613,6 +666,16 @@ ClaimChestRemote.OnServerEvent:Connect(function(player)
 	local elapsed = os.clock() - sessionStart[player]
 
 	if elapsed < chest.Seconds then
+		NotificationService.Send(player, {
+			Kind = "Info",
+			Title = "Playtime Chest Charging",
+			Message = ("%s unlocks in %s."):format(
+				chest.Title,
+				ProgressionConfig.FormatDuration(chest.Seconds - elapsed)
+			),
+			Icon = chest.Icon,
+			Key = "chest-not-ready",
+		})
 		return -- not earned yet
 	end
 
@@ -727,7 +790,7 @@ task.spawn(function()
 		-- reject outright -- same validity bar that handler enforces
 		-- before granting anything, applied here too.
 		collection.OnServerEvent:Connect(function(player, orbName, _quantity, crit)
-			if orbName ~= "Earth Essence" and orbName ~= "Shadow Essence" then
+			if not EssenceConfig.IsValidName(orbName) then
 				return
 			end
 			addStat(player, ProgressionConfig.Stats.OrbsCollected, 1)
@@ -739,35 +802,36 @@ task.spawn(function()
 end)
 
 local function watchPlayerProgress(player)
-	-- Essence earned: measured as positive deltas on the leaderstat the
-	-- economy already maintains.
+	-- Essence earned: measured as positive deltas across every catalogued
+	-- leaderstat. Solar and Shadow collections are real progression and
+	-- therefore count toward the same earn-essence quests as Earth.
 	task.spawn(function()
-		local stat = nil
-		local deadline = os.clock() + 30
-		while os.clock() < deadline do
-			stat = getEssenceStat(player)
-			if stat or not player.Parent then
-				break
-			end
-			task.wait(0.5)
-		end
-
-		if not stat or not player.Parent then
+		local leaderstats = player:WaitForChild("leaderstats", 30)
+		if not leaderstats or not player.Parent then
 			return
 		end
 
-		lastKnownEssence[player] = tonumber(stat:GetAttribute("Quantity")) or 0
-
-		stat:GetAttributeChangedSignal("Quantity"):Connect(function()
-			local current = tonumber(stat:GetAttribute("Quantity")) or 0
-			local previous = lastKnownEssence[player] or current
-			lastKnownEssence[player] = current
-
-			local delta = current - previous
-			if delta > 0 then
-				addStat(player, ProgressionConfig.Stats.EssenceEarned, delta)
+		lastKnownEssence[player] = {}
+		for _, essence in ipairs(EssenceConfig.Ordered) do
+			local essenceName = essence.Name
+			local stat = leaderstats:WaitForChild(essenceName, 10)
+			if stat then
+				lastKnownEssence[player][essenceName] = tonumber(stat:GetAttribute("Quantity")) or 0
+				stat:GetAttributeChangedSignal("Quantity"):Connect(function()
+					local current = tonumber(stat:GetAttribute("Quantity")) or 0
+					local tracked = lastKnownEssence[player]
+					if not tracked then
+						return
+					end
+					local previous = tracked[essenceName] or current
+					tracked[essenceName] = current
+					local delta = current - previous
+					if delta > 0 then
+						addStat(player, ProgressionConfig.Stats.EssenceEarned, delta)
+					end
+				end)
 			end
-		end)
+		end
 	end)
 
 	-- Upgrades bought / rebirths: both systems already mirror their state

@@ -267,20 +267,29 @@ function RebirthModule.PerformRebirth(playerData, player)
 
 	local rebirthCount = playerData.Rebirths or 0
 	local essence = playerData.Essences["EarthEssence"].Quantity or 0
+	local shadowEssence = playerData.Essences["Shadow Essence"].Quantity or 0
+	local solarEssence = playerData.Essences.SolarEssence.Quantity or 0
 
 	local requirementReduction = EssenceUpgrades.GetSummedEffectFromAttributes(player, "RebirthRequirementReduction")
 	local essenceNeeded = RebirthModule.CalculateEssenceNeeded(rebirthCount, requirementReduction)
 
 	if essence < essenceNeeded then
-		return false, false
+		return false, false, essenceNeeded
 	end
 
 	local newRebirthCount = rebirthCount + 1
 	local unlocks = RebirthModule.GetMilestone(newRebirthCount)
 
-	-- rebirth_echo: retain a % of current essence instead of zeroing it out
+	-- rebirth_echo: retain the same percentage of ALL spendable essence
+	-- balances. Shadow Essence used to survive a rebirth entirely, letting
+	-- players bypass the intended prestige reset; it now follows Earth's
+	-- reset contract, and Solar follows it from day one. Lifetime Shadow /
+	-- Solar totals deliberately remain untouched because they are permanent
+	-- progression totals, not spendable balances.
 	local retainPercent = math.clamp(EssenceUpgrades.GetSummedEffectFromAttributes(player, "RebirthRetainPercent"), 0, 1)
 	local retainedEssence = math.floor(essence * retainPercent)
+	local retainedShadowEssence = math.floor(shadowEssence * retainPercent)
+	local retainedSolarEssence = math.floor(solarEssence * retainPercent)
 	local bonusCurrency = EssenceUpgrades.GetSummedEffectFromAttributes(player, "BonusRebirthCurrency")
 	
 	for upgrade, tier in pairs(playerData.Upgrades) do
@@ -290,9 +299,19 @@ function RebirthModule.PerformRebirth(playerData, player)
 	
 	playerData.Rebirths = newRebirthCount
 	player:SetAttribute("Rebirths", newRebirthCount)
-	player:WaitForChild("leaderstats"):WaitForChild("Earth Essence"):SetAttribute("Quantity", retainedEssence)
+	local leaderstats = player:WaitForChild("leaderstats")
+	leaderstats:WaitForChild("Earth Essence"):SetAttribute("Quantity", retainedEssence)
+	leaderstats:WaitForChild("Shadow Essence"):SetAttribute("Quantity", retainedShadowEssence)
+	leaderstats:WaitForChild("Solar Essence"):SetAttribute("Quantity", retainedSolarEssence)
+	player:SetAttribute("EarthEssence", retainedEssence)
+	player:SetAttribute("ShadowEssence", retainedShadowEssence)
+	player:SetAttribute("SolarEssence", retainedSolarEssence)
 	playerData.Essences["EarthEssence"].Quantity = retainedEssence
 	playerData.Essences["EarthEssence"].savedEPM = 0
+	playerData.Essences["Shadow Essence"].Quantity = retainedShadowEssence
+	playerData.Essences["Shadow Essence"].savedEPM = 0
+	playerData.Essences.SolarEssence.Quantity = retainedSolarEssence
+	playerData.Essences.SolarEssence.savedEPM = 0
 	
 	-- ascension_insight: bonus RebirthCurrency on top of the base grant
 
@@ -317,7 +336,7 @@ function RebirthModule.PerformRebirth(playerData, player)
 	playerData.RebirthCurrency = (playerData.RebirthCurrency or 0) + grantedCurrency
 	player:SetAttribute("RebirthCurrency", playerData.RebirthCurrency)
 
-	return true, wasTwinAscension
+	return true, wasTwinAscension, essenceNeeded
 end
 
 return RebirthModule

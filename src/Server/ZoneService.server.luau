@@ -4,7 +4,7 @@
 	Server-authoritative Zones: the client can only ever ASK to unlock or
 	switch to a zone (see ZonesConfig for what a zone actually is and
 	ZonePanel.client.luau for the picker UI) -- this validates the request,
-	deducts Earth Essence for an unlock (same leaderstat-Quantity-attribute
+	deducts every configured essence cost for an unlock (same leaderstat-Quantity-attribute
 	pattern TreeUpgrades.PurchaseUpgrade already uses for every other
 	purchase in the game), and is the only thing that actually flips
 	CurrentZoneId or a zone's unlock flag.
@@ -20,6 +20,8 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local ZonesConfig = require(ReplicatedStorage:WaitForChild("ZonesConfig"))
+local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
+local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
 
 -- =========================================================================
 -- REMOTES
@@ -105,8 +107,14 @@ UnlockZoneFunction.OnServerInvoke = function(player, zoneId)
 		return false, "That zone doesn't exist."
 	end
 
-	if zone.UnlockCost <= 0 then
+	local unlockCosts = ZonesConfig.GetUnlockCosts(zone)
+	if not next(unlockCosts) then
 		return false, "This zone is already unlocked."
+	end
+
+	local rebirths = tonumber(player:GetAttribute("Rebirths")) or 0
+	if rebirths < (tonumber(zone.RebirthRequired) or 0) then
+		return false, ("Reach Rebirth %d first."):format(zone.RebirthRequired)
 	end
 
 	local zones = getZones(player)
@@ -119,17 +127,33 @@ UnlockZoneFunction.OnServerInvoke = function(player, zoneId)
 	end
 
 	local leaderstats = player:FindFirstChild("leaderstats")
-	local stat = leaderstats and leaderstats:FindFirstChild("Earth Essence")
-	if not stat then
+	if not leaderstats then
 		return false, "Still loading -- try again in a moment."
 	end
 
-	local current = tonumber(stat:GetAttribute("Quantity")) or 0
-	if current < zone.UnlockCost then
-		return false, "Not enough Earth Essence."
+	-- Validate the complete mixed cost before touching a balance, then
+	-- deduct as one transaction. A missing/short second currency can never
+	-- leave the first one partially spent.
+	local deductions = {}
+	for currencyKey, amount in pairs(unlockCosts) do
+		local definition = EssenceConfig.Get(currencyKey)
+		local stat = definition and leaderstats:FindFirstChild(definition.Name)
+		if not stat then
+			return false, "Still loading -- try again in a moment."
+		end
+		local current = tonumber(stat:GetAttribute("Quantity")) or 0
+		if current < amount then
+			return false, ("You need %s more %s."):format(
+				ProgressionConfig.FormatNumber(amount - current),
+				definition.Name
+			)
+		end
+		table.insert(deductions, { Stat = stat, NewQuantity = current - amount })
 	end
 
-	stat:SetAttribute("Quantity", current - zone.UnlockCost)
+	for _, deduction in ipairs(deductions) do
+		deduction.Stat:SetAttribute("Quantity", deduction.NewQuantity)
+	end
 
 	zones.Unlocked[zoneId] = true
 	player:SetAttribute(ZonesConfig.UnlockedAttributeName(zoneId), true)

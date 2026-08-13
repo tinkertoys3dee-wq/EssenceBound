@@ -28,6 +28,13 @@ local DefaultPlayerData = {
 	WeeklyBaselineWeekNumber = 0,
 	WeeklyBaselineValue = 0,
 	RobuxSpent = 0,
+	PurchaseCount = 0,
+	-- Any successfully granted Robux purchase unlocks the Supporter Blessing
+	-- exactly once: permanent +10% essence plus a 15-minute 1.5x boost. The
+	-- pending flag lets ProductPurchaseHandler retry the timed portion if its
+	-- potion state was not ready at the exact instant a receipt arrived.
+	FirstPurchaseBonusClaimed = false,
+	FirstPurchaseBonusPending = false,
 	UniqueEssences = 0,
 	LastLeaveTime = 0,
 	ManualStormsSummoned = 0,
@@ -40,6 +47,30 @@ local DefaultPlayerData = {
 	-- boost and nothing else.
 	FirstJoinAt = 0,
 	SeenTutorial = false,
+	-- A persistent, server-owned first-session journey. Eligibility is
+	-- deliberately false in the template and is flipped only when
+	-- PlayerDataHandler proves this is a genuinely new save; otherwise every
+	-- veteran whose save predates this feature would be mistaken for a new
+	-- player when the merge supplies these defaults.
+	--
+	-- ActiveSeconds advances only while the player is actually in a server.
+	-- The rest of the fields are cumulative facts, so leaving/rejoining can
+	-- never erase an objective or pay a stage twice.
+	FirstJourney = {
+		Eligible = false,
+		Completed = false,
+		ActiveSeconds = 0,
+		StageIndex = 1,
+		TotalCollections = 0,
+		TotalClicks = 0,
+		TotalUpgrades = 0,
+		RushCollections = 0,
+		ShadowDiscovered = false,
+		ProphecyRead = false,
+		RushAnnounced = false,
+		StartedLogged = false,
+		LastMinuteLogged = 0,
+	},
 	-- Forces the very first orb a player ever spawns to land as a
 	-- guaranteed critical (see OrbClicker.client.luau). A new player's
 	-- first click otherwise had a real chance of landing on the single
@@ -80,31 +111,31 @@ local DefaultPlayerData = {
 	},
 	Gamepasses = {
 		--Dedicated Essence
-		[1907077899] = {
+		["1907077899"] = {
 			Owned = false,
 		},
 		--Material Alchemist (Offline Collection)
-		[1907863864] = {
+		["1907863864"] = {
 			Owned = false,
 		},
 		--Auto Absorbtion
-		[1907677938] = {
+		["1907677938"] = {
 			Owned = false,
 		},
 		--Ultra Luck (+300%)
-		[1906063939] = {
+		["1906063939"] = {
 			Owned = false,
 		},
 		--Lucky Finder (+50% Luck)
-		[1907239833] = {
+		["1907239833"] = {
 			Owned = false,
 		},
 		--VIP Rank
-		[1909291891] = {
+		["1909291891"] = {
 			Owned = false,
 		},
 		--2x Essence Multiplier
-		[1907605899] = {
+		["1907605899"] = {
 			Owned = false,
 		},
 	},
@@ -131,8 +162,13 @@ local DefaultPlayerData = {
 			DisplayName = "Shadow Essence",
 			savedEPM = 0
 		},
-		-- Add more essence types here later, e.g.:
-		-- FireEssence = { Quantity = 0 },
+		SolarEssence = {
+			Quantity = 0,
+			Discovered = false,
+			Rarity = 2,
+			DisplayName = "Solar Essence",
+			savedEPM = 0,
+		},
 	},
 	
 	Upgrades = {},
@@ -149,6 +185,12 @@ local DefaultPlayerData = {
 	-- whose lifetime total is behind their current balance has it raised to
 	-- match, so nobody loses multiplier when this field first appears.
 	LifetimeShadowEssence = 0,
+
+	-- Solar Radiance reads a lifetime total for the same player-friendly
+	-- reason as Shadow synergy: spending Solar on endgame upgrades must not
+	-- reduce the permanent power earned by finding it. Returning saves are
+	-- automatically migrated to at least their current Solar balance.
+	LifetimeSolarEssence = 0,
 
 	-- [upgradeId] = level, for the Shadow Sanctum (see SanctumUpgrades).
 	-- Kept separate from Upgrades so a rebirth, which wipes the Earth
@@ -211,9 +253,33 @@ local DefaultPlayerData = {
 		LastSpinAt = 0,
 	},
 
+	-- Prophecy Crystal state, driven by ProphecyService. The first reading
+	-- is immediately available (NextRollAt = 0); timestamps preserve both
+	-- the ten-minute reading cooldown and a temporary active omen across
+	-- reconnects. RollsSinceRare powers the eight-reading Fate guarantee.
+	Prophecy = {
+		NextRollAt = 0,
+		ActiveId = "",
+		ExpiresAt = 0,
+		TotalRolls = 0,
+		RollsSinceRare = 0,
+	},
+
+	-- Astral Forge state. Mastery is permanent account progression, while
+	-- the active infusion uses an absolute timestamp so logging out cannot
+	-- pause or extend it. Rebirth deliberately leaves this entire table
+	-- untouched: the Forge is a long-term sink for all three Essence types.
+	Forge = {
+		ActiveRecipeId = "",
+		ExpiresAt = 0,
+		ActiveDuration = 0,
+		TotalCrafts = 0,
+		RecipeCrafts = {},
+	},
+
 	-- Zones state, driven by ZoneService (see ZonesConfig for what a zone
-	-- actually changes -- essentially just the Earth/Shadow essence roll
-	-- weighting). earth_zone is the only zone ever unlocked by default --
+	-- actually changes -- the Earth/Shadow/Solar essence roll weighting).
+	-- earth_zone is the only zone ever unlocked by default --
 	-- everything else has to be bought with essence, once, permanently.
 	-- Switching between already-unlocked zones is free and unlimited.
 	Zones = {

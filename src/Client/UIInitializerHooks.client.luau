@@ -1,8 +1,11 @@
 
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+
+local MonetizationConfig = require(ReplicatedStorage:WaitForChild("MonetizationConfig"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -65,6 +68,9 @@ end
 -- Generic hover-grow + press-shrink "button feel" animation.
 local function applyButtonFeel(button, hoverScale, baseColor, hoverColor, parent, highlight, highlightColor)
 	hoverScale = hoverScale or 1.05
+	if button:GetAttribute("JuiceFeelApplied") then
+		return
+	end
 
 	-- Marks this button as already having a bespoke hover animation, so
 	-- the global Juice.ButtonFeel pass in UIManagement skips it instead of
@@ -147,6 +153,11 @@ local CLOSE_INFO = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirectio
 local openPopup, closePopup -- forward declared, bodies assigned further down
 
 local backdrop = GUI:WaitForChild("Backdrop")
+-- The authored backdrop is transparent in Studio but its Visible property can
+-- still default to true. Give the shared popup system one explicit closed
+-- state; openPopup is the only path that makes it visible again.
+backdrop.Visible = false
+backdrop:SetAttribute("PresentationModal", true)
 -------------------------------------------------------------------
 -- OPEN / CLOSE IMPLEMENTATION
 -------------------------------------------------------------------
@@ -295,26 +306,82 @@ _G.PopupUI = {
 }
 
 -------------------------------------------------------------------
--- DEMO NAV BAR (delete this block once you wire up your real buttons)
+-- MAIN NAVIGATION
+--
+-- The visual buttons live in Studio, but their exact wrapper shape is not
+-- guaranteed by syncback: some are Frames containing a TextButton, while a
+-- replacement may be a GuiButton directly. Resolve either shape and route by
+-- a normalized name so a harmless "Button" suffix never breaks the menu.
 -------------------------------------------------------------------
 
 local OGUI = playerGui:WaitForChild("MainGui")
 local right = OGUI:WaitForChild("Right"):WaitForChild('Holder')
-for _, btn in pairs(right:GetChildren()) do
-	if btn.Name ~= "Divider" and btn:IsA("Frame") then
-		applyButtonFeel(btn:WaitForChild("TextButton"), 1.03,nil,nil,btn,true)
-		btn:WaitForChild("TextButton").MouseButton1Click:Connect(function()
-			openPopup(btn.name.."Popup")
-		end)
+
+local NAV_POPUPS = {
+	upgrades = "UpgradesPopup",
+	rebirth = "RebirthPopup",
+	index = "IndexPopup",
+	inventory = "InventoryPopup",
+	settings = "SettingsPopup",
+}
+
+local function navKey(name)
+	return string.lower(tostring(name)):gsub("button", ""):gsub("%s+", "")
+end
+
+local function resolveNavTrigger(container)
+	if container:IsA("GuiButton") then
+		return container
+	end
+	return container:FindFirstChildWhichIsA("TextButton", true)
+		or container:FindFirstChildWhichIsA("ImageButton", true)
+end
+
+for _, container in pairs(right:GetChildren()) do
+	if container.Name ~= "Divider" and container:IsA("GuiObject") then
+		local trigger = resolveNavTrigger(container)
+		local key = navKey(container.Name)
+		if trigger then
+			applyButtonFeel(trigger, 1.03, nil, nil, container, true)
+
+			if key == "shop" then
+				-- MonetizationStore uses this same tag. Whichever script starts
+				-- first owns the single click connection, preventing the legacy
+				-- ShopPopup and the new market from opening on top of each other.
+				if not trigger:GetAttribute("EssenceMarketBound") then
+					trigger:SetAttribute("EssenceMarketBound", true)
+					trigger.Activated:Connect(function()
+						local market = _G.EssenceboundStore
+						if market and market.Open then
+							market.Open()
+						else
+							openPopup("ShopPopup")
+						end
+					end)
+				end
+			elseif key ~= "zones" then
+				-- ZonePanel owns the Zones trigger because its panel is built in
+				-- code rather than living in PopupHolder.
+				local popupName = NAV_POPUPS[key]
+				if popupName then
+					trigger.Activated:Connect(function()
+						openPopup(popupName)
+					end)
+				end
+			end
+		end
 	end
 end
 
 for _, btn in pairs(PopupHolder:GetChildren()) do
-	local btn2 = btn:WaitForChild("TitleBar"):WaitForChild("CloseButton")
-	applyButtonFeel(btn2, 1.03)
-	btn2.MouseButton1Click:Connect(function()
-		closePopup(btn.Name)
-	end)
+	local titleBar = btn:FindFirstChild("TitleBar")
+	local btn2 = titleBar and titleBar:FindFirstChild("CloseButton")
+	if btn2 and btn2:IsA("GuiButton") then
+		applyButtonFeel(btn2, 1.03)
+		btn2.Activated:Connect(function()
+			closePopup(btn.Name)
+		end)
+	end
 end
 
 local Left = OGUI:WaitForChild("Left")
@@ -323,9 +390,22 @@ local PlayerInfo = Left:WaitForChild("Currencys"):WaitForChild("Player")
 local name = PlayerInfo:WaitForChild("Name")
 local Icon = PlayerInfo:WaitForChild("Icon")
 
-if player:GetAttribute("1909291891") then
-	name:WaitForChild("UIStroke").Color = Color3.fromRGB(255, 215, 0)
-	Icon:WaitForChild("UIStroke").Color = Color3.fromRGB(255, 215, 0)
+-- VIP can be bought while this session is already running. Previously its
+-- gold identity treatment was checked only once during script startup, so a
+-- successful purchase appeared to do nothing until the next join.
+local VIP_PASS_ID = 1909291891
+local nameStroke = name:WaitForChild("UIStroke")
+local iconStroke = Icon:WaitForChild("UIStroke")
+local defaultNameStrokeColor = nameStroke.Color
+local defaultIconStrokeColor = iconStroke.Color
+
+local function refreshVipTreatment()
+	local ownsVip = player:GetAttribute(MonetizationConfig.GetOwnershipAttribute(VIP_PASS_ID)) == true
+	nameStroke.Color = ownsVip and Color3.fromRGB(255, 215, 0) or defaultNameStrokeColor
+	iconStroke.Color = ownsVip and Color3.fromRGB(255, 215, 0) or defaultIconStrokeColor
 end
+
+player:GetAttributeChangedSignal(MonetizationConfig.GetOwnershipAttribute(VIP_PASS_ID)):Connect(refreshVipTreatment)
+refreshVipTreatment()
 Icon.Image = game:GetService("Players"):GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420)
 name.Text = player.DisplayName

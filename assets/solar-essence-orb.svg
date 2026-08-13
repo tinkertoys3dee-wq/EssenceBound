@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none">
+  <title>Solar Essence Orb</title>
+  <desc>A mythic molten essence sphere with a blazing corona, orbiting plasma, and a white-hot stellar heart.</desc>
+
+  <defs>
+    <radialGradient id="coronaGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(512 512) rotate(90) scale(470)">
+      <stop offset="0.48" stop-color="#FFF8C9" stop-opacity="0.76"/>
+      <stop offset="0.67" stop-color="#FFC53D" stop-opacity="0.48"/>
+      <stop offset="0.84" stop-color="#FF6B19" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#FF3D0A" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="sunBody" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(404 376) rotate(47) scale(510)">
+      <stop offset="0" stop-color="#FFFFEA"/>
+      <stop offset="0.16" stop-color="#FFF4A4"/>
+      <stop offset="0.42" stop-color="#FFD33F"/>
+      <stop offset="0.72" stop-color="#FF7B1C"/>
+      <stop offset="0.91" stop-color="#D52B15"/>
+      <stop offset="1" stop-color="#6B1117"/>
+    </radialGradient>
+    <radialGradient id="innerHeat" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(466 444) rotate(54) scale(292)">
+      <stop offset="0" stop-color="#FFFDE4" stop-opacity="0.96"/>
+      <stop offset="0.33" stop-color="#FFE35A" stop-opacity="0.82"/>
+      <stop offset="0.72" stop-color="#FF7A1E" stop-opacity="0.23"/>
+      <stop offset="1" stop-color="#9C1C17" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="rimStroke" x1="286" y1="276" x2="783" y2="782" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFBD0"/>
+      <stop offset="0.25" stop-color="#FFD65B"/>
+      <stop offset="0.67" stop-color="#FF6B1B"/>
+      <stop offset="1" stop-color="#8E1718"/>
+    </linearGradient>
+    <linearGradient id="plasmaGold" x1="240" y1="370" x2="792" y2="640" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFDE1" stop-opacity="0.12"/>
+      <stop offset="0.2" stop-color="#FFF3A0" stop-opacity="0.94"/>
+      <stop offset="0.55" stop-color="#FFBE32" stop-opacity="0.42"/>
+      <stop offset="0.82" stop-color="#FF6B1A" stop-opacity="0.84"/>
+      <stop offset="1" stop-color="#D72D15" stop-opacity="0.08"/>
+    </linearGradient>
+    <linearGradient id="plasmaRed" x1="320" y1="690" x2="748" y2="352" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8B141B" stop-opacity="0.1"/>
+      <stop offset="0.25" stop-color="#DA2E16" stop-opacity="0.82"/>
+      <stop offset="0.62" stop-color="#FF8120" stop-opacity="0.46"/>
+      <stop offset="0.86" stop-color="#FFF1A1" stop-opacity="0.88"/>
+      <stop offset="1" stop-color="#FFFBE1" stop-opacity="0.08"/>
+    </linearGradient>
+    <linearGradient id="orbitStroke" x1="178" y1="245" x2="858" y2="778" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF7120" stop-opacity="0"/>
+      <stop offset="0.22" stop-color="#FFB52C" stop-opacity="0.84"/>
+      <stop offset="0.52" stop-color="#FFF8B9" stop-opacity="0.34"/>
+      <stop offset="0.78" stop-color="#FF7C20" stop-opacity="0.78"/>
+      <stop offset="1" stop-color="#FF4717" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="starCore" x1="428" y1="422" x2="596" y2="602" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="0.34" stop-color="#FFFDE4"/>
+      <stop offset="0.68" stop-color="#FFE46C"/>
+      <stop offset="1" stop-color="#FF8B22"/>
+    </linearGradient>
+
+    <filter id="blur24" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="24"/>
+    </filter>
+    <filter id="blur10" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+    <filter id="orbGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="9" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0.25  0 0.72 0 0 0.05  0 0 0.24 0 0  0 0 0 1 0" result="warmBlur"/>
+      <feMerge>
+        <feMergeNode in="warmBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="coreGlow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="14" result="coreBlur"/>
+      <feMerge>
+        <feMergeNode in="coreBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="surfaceTexture" x="-25%" y="-25%" width="150%" height="150%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.012 0.026" numOctaves="3" seed="41" result="noise"/>
+      <feColorMatrix in="noise" type="matrix" values="1 0 0 0 0.15  0 0.5 0 0 0.02  0 0 0.08 0 0  0 0 0 0.36 0"/>
+    </filter>
+    <clipPath id="sphereClip">
+      <circle cx="512" cy="512" r="305"/>
+    </clipPath>
+    <mask id="edgeFade">
+      <radialGradient id="edgeMask" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(512 512) rotate(90) scale(305)">
+        <stop offset="0.74" stop-color="white"/>
+        <stop offset="1" stop-color="#202020"/>
+      </radialGradient>
+      <circle cx="512" cy="512" r="305" fill="url(#edgeMask)"/>
+    </mask>
+
+    <path id="longRay" d="M492 201L512 61L532 201L512 248Z"/>
+    <path id="shortRay" d="M500 205L512 116L524 205L512 239Z"/>
+    <circle id="spark" cx="512" cy="512" r="8"/>
+  </defs>
+
+  <!-- Wide, soft corona keeps the silhouette readable on dark and light UI. -->
+  <circle cx="512" cy="512" r="474" fill="url(#coronaGlow)"/>
+  <circle cx="512" cy="512" r="364" fill="#FF8D20" fill-opacity="0.26" filter="url(#blur24)"/>
+
+  <!-- Alternating corona blades. Their uneven opacity makes the orb feel energetic, not geometric. -->
+  <g fill="#FFD95E" filter="url(#orbGlow)">
+    <use href="#longRay" opacity="0.92"/>
+    <use href="#longRay" transform="rotate(45 512 512)" opacity="0.72"/>
+    <use href="#longRay" transform="rotate(90 512 512)" opacity="0.9"/>
+    <use href="#longRay" transform="rotate(135 512 512)" opacity="0.67"/>
+    <use href="#longRay" transform="rotate(180 512 512)" opacity="0.86"/>
+    <use href="#longRay" transform="rotate(225 512 512)" opacity="0.68"/>
+    <use href="#longRay" transform="rotate(270 512 512)" opacity="0.94"/>
+    <use href="#longRay" transform="rotate(315 512 512)" opacity="0.73"/>
+  </g>
+  <g fill="#FF741D" filter="url(#blur10)">
+    <use href="#shortRay" transform="rotate(22.5 512 512)" opacity="0.92"/>
+    <use href="#shortRay" transform="rotate(67.5 512 512)" opacity="0.78"/>
+    <use href="#shortRay" transform="rotate(112.5 512 512)" opacity="0.88"/>
+    <use href="#shortRay" transform="rotate(157.5 512 512)" opacity="0.72"/>
+    <use href="#shortRay" transform="rotate(202.5 512 512)" opacity="0.9"/>
+    <use href="#shortRay" transform="rotate(247.5 512 512)" opacity="0.77"/>
+    <use href="#shortRay" transform="rotate(292.5 512 512)" opacity="0.86"/>
+    <use href="#shortRay" transform="rotate(337.5 512 512)" opacity="0.74"/>
+  </g>
+
+  <!-- Detached prominences break the perfect circle and suggest a living miniature sun. -->
+  <g stroke-linecap="round" fill="none" filter="url(#orbGlow)">
+    <path d="M250 346C176 289 173 220 226 194C272 171 311 210 298 251C289 279 258 285 240 267" stroke="#FF7C1D" stroke-width="18" opacity="0.7"/>
+    <path d="M741 291C790 215 862 210 890 257C916 301 878 340 839 329C808 320 805 287 823 267" stroke="#FFC33D" stroke-width="15" opacity="0.72"/>
+    <path d="M736 760C795 834 772 899 718 908C672 916 647 872 671 838C688 813 718 820 730 844" stroke="#FF6A19" stroke-width="17" opacity="0.64"/>
+  </g>
+
+  <!-- Thin plasma orbits pass behind and in front of the sphere. -->
+  <g fill="none" stroke-linecap="round">
+    <ellipse cx="512" cy="512" rx="390" ry="246" transform="rotate(-17 512 512)" stroke="url(#orbitStroke)" stroke-width="10" stroke-dasharray="360 70 120 90" opacity="0.76" filter="url(#blur10)"/>
+    <ellipse cx="512" cy="512" rx="370" ry="219" transform="rotate(29 512 512)" stroke="url(#orbitStroke)" stroke-width="4" stroke-dasharray="190 42 80 50" opacity="0.86"/>
+    <ellipse cx="512" cy="512" rx="351" ry="192" transform="rotate(-54 512 512)" stroke="#FFF0A0" stroke-width="3" stroke-dasharray="88 42" opacity="0.42"/>
+  </g>
+
+  <!-- Main stellar sphere. -->
+  <circle cx="512" cy="512" r="316" fill="#FF8A20" fill-opacity="0.44" filter="url(#blur24)"/>
+  <circle cx="512" cy="512" r="307" fill="url(#sunBody)" stroke="url(#rimStroke)" stroke-width="14" filter="url(#orbGlow)"/>
+  <circle cx="512" cy="512" r="294" fill="url(#innerHeat)"/>
+
+  <!-- Granulation and flowing plasma stay clipped to the orb. -->
+  <g clip-path="url(#sphereClip)" mask="url(#edgeFade)">
+    <rect x="190" y="190" width="644" height="644" filter="url(#surfaceTexture)" opacity="0.62"/>
+
+    <path d="M172 391C294 306 388 350 488 388C596 430 680 424 850 320" stroke="url(#plasmaGold)" stroke-width="39" stroke-linecap="round" opacity="0.76"/>
+    <path d="M162 431C289 353 398 414 482 441C604 481 728 447 858 379" stroke="#FFF1A0" stroke-width="8" stroke-linecap="round" opacity="0.54"/>
+    <path d="M192 640C299 534 406 585 496 629C612 686 713 673 844 553" stroke="url(#plasmaRed)" stroke-width="46" stroke-linecap="round" opacity="0.72"/>
+    <path d="M177 683C287 596 380 630 487 680C615 740 721 698 853 608" stroke="#8F1519" stroke-width="15" stroke-linecap="round" opacity="0.42"/>
+
+    <path d="M310 232C354 299 339 341 294 375C257 403 239 451 277 492" stroke="#FFF5B8" stroke-width="17" stroke-linecap="round" opacity="0.66"/>
+    <path d="M719 276C650 327 655 386 705 422C760 461 773 519 724 572" stroke="#FF5C17" stroke-width="27" stroke-linecap="round" opacity="0.54"/>
+    <path d="M641 715C602 657 558 642 508 666C450 694 399 677 367 629" stroke="#FFE36B" stroke-width="12" stroke-linecap="round" opacity="0.72"/>
+
+    <g fill="#FFF4A1" opacity="0.76">
+      <circle cx="348" cy="459" r="20"/>
+      <circle cx="677" cy="495" r="14"/>
+      <circle cx="606" cy="326" r="11"/>
+      <circle cx="420" cy="704" r="9"/>
+    </g>
+    <g fill="#A91D17" opacity="0.48">
+      <circle cx="407" cy="337" r="17"/>
+      <circle cx="665" cy="623" r="22"/>
+      <circle cx="307" cy="585" r="12"/>
+      <circle cx="738" cy="407" r="8"/>
+    </g>
+  </g>
+
+  <!-- Gloss and concentric energy rings give the sphere gem-like depth at HUD scale. -->
+  <ellipse cx="410" cy="366" rx="116" ry="60" transform="rotate(-28 410 366)" fill="#FFFFF4" fill-opacity="0.28" filter="url(#blur10)"/>
+  <ellipse cx="390" cy="341" rx="73" ry="26" transform="rotate(-28 390 341)" fill="#FFFFFF" fill-opacity="0.52"/>
+  <circle cx="512" cy="512" r="219" stroke="#FFF5B3" stroke-width="7" stroke-dasharray="320 108" opacity="0.35"/>
+  <circle cx="512" cy="512" r="168" stroke="#FF761B" stroke-width="11" stroke-dasharray="122 58 250 94" opacity="0.42"/>
+  <circle cx="512" cy="512" r="111" stroke="#FFFAD1" stroke-width="5" stroke-dasharray="92 40" opacity="0.68"/>
+
+  <!-- White-hot stellar heart, the visual signature shared by the runtime fallback. -->
+  <g filter="url(#coreGlow)">
+    <path d="M512 398L536 474L610 448L550 500L614 542L538 525L528 610L498 532L420 568L480 511L409 472L493 492L512 398Z" fill="url(#starCore)"/>
+    <circle cx="512" cy="512" r="49" fill="#FFFDED"/>
+    <circle cx="512" cy="512" r="25" fill="#FFFFFF"/>
+  </g>
+
+  <!-- Foreground orbit sparks. -->
+  <g filter="url(#orbGlow)">
+    <use href="#spark" transform="translate(330 -216)" fill="#FFF8C2"/>
+    <use href="#spark" transform="translate(-318 168) scale(0.72)" fill="#FF9A24"/>
+    <use href="#spark" transform="translate(260 266) scale(0.58)" fill="#FFE16A"/>
+    <use href="#spark" transform="translate(-262 -252) scale(0.48)" fill="#FFFDE1"/>
+  </g>
+  <g fill="#FFF6B2">
+    <circle cx="804" cy="360" r="5"/>
+    <circle cx="223" cy="560" r="6"/>
+    <circle cx="661" cy="819" r="4"/>
+    <circle cx="387" cy="184" r="4"/>
+  </g>
+</svg>

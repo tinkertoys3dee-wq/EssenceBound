@@ -4,6 +4,9 @@ local gui = player:WaitForChild("PlayerGui"):WaitForChild("MainGui")
 local Left = gui:WaitForChild("Left")
 local currencys = Left:WaitForChild("Currencys"):WaitForChild("ScrollingFrame")
 local RP = game:GetService("ReplicatedStorage")
+local EssenceConfig = require(RP:WaitForChild("EssenceConfig"))
+local EssenceVisuals = require(RP:WaitForChild("EssenceVisuals"))
+local PresentationCoordinator = require(RP:WaitForChild("PresentationCoordinator"))
 local PlayerStats = Left:WaitForChild("Playerstats")
 
 
@@ -69,6 +72,16 @@ local Bar = essenceGui:WaitForChild("Frame")
 local Progress = Bar:WaitForChild("TextLabel")
 local PBar =  Bar:WaitForChild("Frame"):WaitForChild("Frame")
 
+local function UpdateRobuxSpent()
+	-- The server mirrors this attribute immediately after a successful
+	-- receipt. Fall back to the periodic data snapshot for older servers.
+	local liveAmount = player:GetAttribute("RobuxSpent")
+	if liveAmount == nil then
+		liveAmount = data.RobuxSpent
+	end
+	RobuxSpentText.Text = "Robux Spent : " .. tostring(math.max(0, tonumber(liveAmount) or 0))
+end
+
 local function UpdateStats()
 	local discovered = 0
 	local total = 0
@@ -76,7 +89,7 @@ local function UpdateStats()
 	RarestEssenceText.Text = "Rarest Essence : "..data.RarestEssence
 	RebirthsText.Text = "Rebirths : "..data.Rebirths
 	EssenceGatheredText.Text = "Essence Gathered : "..formatNumber(data.TotalEssenceGathered)
-	RobuxSpentText.Text = "Robux Spent : "..data.RobuxSpent
+	UpdateRobuxSpent()
 	CriticalEssenceText.Text = "Critical Essence : "..formatNumber(data.CriticalEssence)
 	UniqueEssencesText.Text = "Unique Essences : "..data.UniqueEssences
 	
@@ -110,6 +123,89 @@ local EarthEssenceDisplayText= EarthEssenceDisplay:WaitForChild("Value")
 local ShadowEssenceleaderstat = leaderstats:WaitForChild("Shadow Essence")
 local ShadowEssenceDisplay = currencys:WaitForChild("Shadow Essence")
 local ShadowEssenceDisplayText= ShadowEssenceDisplay:WaitForChild("Value")
+
+local SolarEssenceleaderstat = leaderstats:WaitForChild("Solar Essence")
+
+-- Solar has no legacy Studio-authored row. Clone Shadow's existing row so
+-- the three counters share the exact same dimensions, padding, typography,
+-- and alignment; only the icon and Solar palette should differ.
+local previousSolarDisplay = currencys:FindFirstChild("Solar Essence")
+if previousSolarDisplay then
+	previousSolarDisplay:Destroy()
+end
+
+local SolarEssenceDisplay = ShadowEssenceDisplay:Clone()
+SolarEssenceDisplay.Name = "Solar Essence"
+SolarEssenceDisplay.LayoutOrder = ShadowEssenceDisplay.LayoutOrder + 1
+SolarEssenceDisplay:SetAttribute("AstralAccentColor", EssenceConfig.GetColor("Solar Essence"))
+
+-- A currency row should be presentation only. If the authored template ever
+-- gains a LocalScript, cloning it must not duplicate behavior or connections.
+for _, descendant in ipairs(SolarEssenceDisplay:GetDescendants()) do
+	if descendant:IsA("LocalScript") or descendant:IsA("Script") then
+		descendant:Destroy()
+	end
+end
+
+SolarEssenceDisplay.Parent = currencys
+local SolarEssenceDisplayText = SolarEssenceDisplay:WaitForChild("Value")
+
+local solarColor = EssenceConfig.GetColor("Solar Essence", Color3.fromRGB(255, 196, 64))
+local solarHighlight = Color3.fromRGB(255, 235, 142)
+SolarEssenceDisplayText.TextColor3 = solarColor
+SolarEssenceDisplayText.TextStrokeColor3 = EssenceConfig.Get("Solar Essence").DeepColor
+
+-- UIGradient overrides TextColor3, so recolor any gradient inherited from
+-- the Shadow value instead of allowing the Solar number to remain purple.
+for _, child in ipairs(SolarEssenceDisplayText:GetChildren()) do
+	if child:IsA("UIGradient") then
+		child.Color = ColorSequence.new(solarHighlight, solarColor)
+	end
+end
+
+local function findCurrencyIcon(row)
+	local bestIcon = nil
+	local bestScore = -math.huge
+	local shadowIconId = tostring(EssenceConfig.Get("Shadow Essence").IconAssetId)
+	for _, descendant in ipairs(row:GetDescendants()) do
+		if descendant:IsA("ImageLabel") or descendant:IsA("ImageButton") then
+			local lowerName = string.lower(descendant.Name)
+			local score = 0
+			if string.find(descendant.Image, shadowIconId, 1, true) then score += 100 end
+			if string.find(lowerName, "icon", 1, true) then score += 12 end
+			if string.find(lowerName, "orb", 1, true) then score += 12 end
+			if string.find(lowerName, "essence", 1, true) then score += 6 end
+			if descendant.Parent == row then score += 3 end
+			if descendant.Image ~= "" then score += 1 end
+			if score > bestScore then
+				bestScore = score
+				bestIcon = descendant
+			end
+		end
+	end
+	return bestIcon
+end
+
+local solarIcon = findCurrencyIcon(SolarEssenceDisplay)
+if solarIcon then
+	solarIcon.Name = "Solar Essence Icon"
+	solarIcon.ImageColor3 = Color3.new(1, 1, 1)
+	solarIcon.ImageRectOffset = Vector2.zero
+	solarIcon.ImageRectSize = Vector2.zero
+	solarIcon.ScaleType = Enum.ScaleType.Fit
+	EssenceVisuals.ApplyToImage(solarIcon, "Solar Essence")
+end
+
+-- The authored rail was sized for two currencies. Let its existing layout
+-- drive the vertical canvas so the new third row is scrollable on small
+-- screens instead of being created correctly but clipped below the fold.
+if currencys:FindFirstChildWhichIsA("UIListLayout") or currencys:FindFirstChildWhichIsA("UIGridLayout") then
+	if currencys.AutomaticCanvasSize == Enum.AutomaticSize.None then
+		currencys.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	elseif currencys.AutomaticCanvasSize == Enum.AutomaticSize.X then
+		currencys.AutomaticCanvasSize = Enum.AutomaticSize.XY
+	end
+end
 
 -- =========================================================================
 -- CURRENCY DISPLAY
@@ -154,6 +250,11 @@ local function highestPassed(value)
 end
 
 local function celebrateMilestone(threshold, label)
+	-- The balance and milestone state still advance while a tutorial or
+	-- cinematic is active; only the redundant full-screen flourish is skipped.
+	if PresentationCoordinator.HasPendingPresentation() then
+		return
+	end
 	Juice.PulseColor(label, MILESTONE_COLOR, 0.8)
 	Juice.Punch(Juice.GetScale(label), 0.3, 0.5)
 
@@ -258,6 +359,7 @@ end
 
 bindCurrencyDisplay(EarthEsseceleaderstat, EarthEssenceDisplayText, true)
 bindCurrencyDisplay(ShadowEssenceleaderstat, ShadowEssenceDisplayText, false)
+bindCurrencyDisplay(SolarEssenceleaderstat, SolarEssenceDisplayText, false)
 
 local UpdateTimer = Left:WaitForChild("UpdateTimer")
 -- Internal refresh countdown, not something a player needs to see ("Next
@@ -267,6 +369,7 @@ UpdateTimer.Visible = false
 local updateValue = 60
 
 UpdateStats()
+player:GetAttributeChangedSignal("RobuxSpent"):Connect(UpdateRobuxSpent)
 
 -- =========================================================================
 -- GLOBAL BUTTON FEEL + SOUND

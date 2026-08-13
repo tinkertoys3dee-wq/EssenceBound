@@ -41,6 +41,7 @@ local UserInputService = game:GetService("UserInputService")
 
 local WhatsNewConfig = require(ReplicatedStorage:WaitForChild("WhatsNewConfig"))
 local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
+local PresentationCoordinator = require(ReplicatedStorage:WaitForChild("PresentationCoordinator"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -127,12 +128,13 @@ local backdrop = new("TextButton", {
 	Text = "",
 	ZIndex = 100,
 }, screenGui)
+backdrop:SetAttribute("PresentationModal", true)
 
 local panel = new("Frame", {
 	Name = "Panel",
 	AnchorPoint = Vector2.new(0.5, 0.5),
 	Position = UDim2.fromScale(0.5, 0.5),
-	Size = UDim2.fromScale(0.4, 0.5),
+	Size = UDim2.fromScale(0.88, 0.82),
 	BackgroundColor3 = THEME.Background,
 	BorderSizePixel = 0,
 	ZIndex = 110,
@@ -149,6 +151,10 @@ new("UIGradient", {
 }, panel)
 
 local panelScale = new("UIScale", { Scale = 0.85 }, panel)
+new("UISizeConstraint", {
+	MinSize = Vector2.new(0, 0),
+	MaxSize = Vector2.new(620, 560),
+}, panel)
 
 local glow = new("ImageLabel", {
 	Name = "Glow",
@@ -208,6 +214,7 @@ local closeButton = new("TextButton", {
 }, titleBar)
 corner(closeButton, UDim.new(0.3, 0))
 new("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Height }, closeButton)
+new("UISizeConstraint", { MinSize = Vector2.new(34, 34) }, closeButton)
 addButtonFeel(closeButton)
 
 local list = new("ScrollingFrame", {
@@ -398,11 +405,25 @@ task.spawn(function()
 		return
 	end
 
-	-- Longer than ProgressionHud's ~2s first-session nudge delay, so on the
-	-- rare join where a Daily-reward nudge is ALSO pending, that one settles
-	-- first rather than two modals fighting for the same moment.
-	task.wait(6)
-	if not isOpen then
-		openPopup()
+	local lease = PresentationCoordinator.Acquire("WhatsNew", {
+		Priority = 58,
+		QuietAfter = 0.8,
+	})
+	if not lease then
+		return
 	end
+	local ok, err = xpcall(function()
+		if not isOpen then
+			openPopup()
+		end
+		while isOpen and screenGui.Parent do
+			task.wait(0.1)
+		end
+	end, debug.traceback)
+	if not ok then
+		isOpen = false
+		screenGui.Enabled = false
+		warn("[WhatsNewPopup] Presentation failed: " .. tostring(err))
+	end
+	PresentationCoordinator.Release(lease, 0.8)
 end)

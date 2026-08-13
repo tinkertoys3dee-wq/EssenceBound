@@ -15,13 +15,11 @@
 	Ultra Luck: "Stacks with regular luck to give a massive boost
 	(x3 luck)."
 
-	"Rarer essences" means Shadow Essence specifically -- the only two
-	essence types in the game are EarthEssence (Rarity 0) and Shadow
-	Essence (Rarity 1), see DefaultPlayerData.luau. Hardcoded to Shadow
-	Essence by name rather than built as a generic "find the highest-
-	Rarity type" lookup, since there are only ever two types right now --
-	the same "don't build generality nothing needs yet" call ZonesConfig
-	already makes for its own two zones.
+	"Rarer essences" means every catalog entry above common rarity. That
+	now includes Shadow Essence (Rare) and Solar Essence (Mythic). The
+	multiplier is applied to each rare weight before the table is
+	renormalized, so it improves both finds without changing the meaning of
+	a zone's specialty bias.
 
 	THE MATH BEHIND x1.5 / x2 / x3
 	------------------------------------
@@ -37,13 +35,14 @@
 
 	WHERE THIS APPLIES
 	--------------------
-	Multiplies the Shadow Essence WEIGHT ZonesConfig.GetEssenceWeights
-	returns, whichever zone the player is currently in -- not a fixed
-	target probability. Both the real roll (GetEssence.luau) and the
-	odds preview (ZonePanel.client.luau) read that one function, so
-	wiring it there once means neither can ever show a number the other
-	doesn't actually roll against.
+	Multiplies every non-common essence WEIGHT ZonesConfig returns,
+	whichever zone the player is currently in -- not a fixed target
+	probability. Both the real roll and every zone preview use the same
+	shared helper, so the displayed percentages remain the actual odds.
 ]]
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local MonetizationConfig = require(ReplicatedStorage:WaitForChild("MonetizationConfig"))
 
 local LuckGamepassConfig = {}
 
@@ -58,12 +57,30 @@ LuckGamepassConfig.UltraLuckMultiplier = 2.0    -- combines with Lucky Finder's 
 -- STACKING with another, not two separate bonuses summing into one pool.
 function LuckGamepassConfig.GetRareEssenceMultiplier(player: Instance): number
 	local multiplier = 1
-	if player:GetAttribute(LuckGamepassConfig.LuckyFinderGamepassId) then
+	if player:GetAttribute(MonetizationConfig.GetOwnershipAttribute(LuckGamepassConfig.LuckyFinderGamepassId)) then
 		multiplier *= LuckGamepassConfig.LuckyFinderMultiplier
 	end
-	if player:GetAttribute(LuckGamepassConfig.UltraLuckGamepassId) then
+	if player:GetAttribute(MonetizationConfig.GetOwnershipAttribute(LuckGamepassConfig.UltraLuckGamepassId)) then
 		multiplier *= LuckGamepassConfig.UltraLuckMultiplier
 	end
+
+	-- ProphecyService supplies a temporary server-owned luck multiplier.
+	-- It stacks with paid luck (rather than replacing something a player
+	-- bought) and is clamped to the strongest catalogued 2x omen.
+	multiplier *= math.clamp(
+		tonumber(player:GetAttribute("ProphecyRareWeightMultiplier")) or 1,
+		1,
+		2
+	)
+
+	-- Astral Forge luck is a separately timed, chosen infusion. Multiplying
+	-- it here makes the real roll and every zone preview inherit the exact
+	-- same effect while still stacking with paid luck and a lucky Prophecy.
+	multiplier *= math.clamp(
+		tonumber(player:GetAttribute("ForgeRareWeightMultiplier")) or 1,
+		1,
+		2.25
+	)
 	return multiplier
 end
 

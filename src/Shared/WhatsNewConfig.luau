@@ -31,16 +31,16 @@
 
 local WhatsNewConfig = {}
 
-WhatsNewConfig.CurrentVersion = 1
+WhatsNewConfig.CurrentVersion = 2
 
 WhatsNewConfig.Title = "What's New"
 
 WhatsNewConfig.Highlights = {
+	{ Icon = "⚒", Text = "The Astral Forge is open -- spend Earth, Shadow, and Solar Essence on a chosen temporary infusion." },
+	{ Icon = "★", Text = "A featured Forge recipe rotates daily with 20% cheaper costs and 25% longer duration." },
+	{ Icon = "🔥", Text = "Every craft builds permanent Forge Mastery, unlocking up to 25% longer infusions." },
 	{ Icon = "🏆", Text = "Global leaderboards -- Top Essence, Top Rebirths, and a weekly essence race that resets every week." },
-	{ Icon = "🏅", Text = "An Achievements panel tracking Roblox badges and 10 new Milestones with real essence/Shard rewards." },
-	{ Icon = "🌩️", Text = "Essence Rush -- a random server-wide event boosting everyone's essence gain for a few minutes." },
-	{ Icon = "🎉", Text = "A Welcome Back bonus for returning after time away -- the longer you were gone, the bigger it is." },
-	{ Icon = "🎁", Text = "Daily login streaks, daily quests and playtime chests, if you haven't found the side buttons yet." },
+	{ Icon = "🔮", Text = "Prophecies, the upgraded Daily Wheel, Essence Storms, quests, and playtime rewards all remain live." },
 }
 
 return WhatsNewConfig

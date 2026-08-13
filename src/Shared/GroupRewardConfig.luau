@@ -1,45 +1,30 @@
 --[[
 	GroupRewardConfig (ModuleScript -> ReplicatedStorage)
 	======================================================
-	Pure data + one placeholder for a standard Roblox mechanic: a modest,
-	permanent essence bonus for players who've joined the game's Roblox
-	group. Free, social, and (unlike a gamepass) actively helps the game
-	itself -- group members see the game's shouts and wall posts, which is
-	real, ongoing marketing reach the game doesn't currently have any way
-	to earn.
+	Pure data for a standard Roblox mechanic: permanent gameplay benefits
+	for players who've joined the game's Roblox group. Free, social, and
+	(unlike a gamepass) actively helps the game itself -- group members see
+	the game's shouts and wall posts, which gives the game ongoing community
+	reach it otherwise has no way to earn.
 
-	SAFE TO SHIP UNCONFIGURED
-	----------------------------
-	GroupId starts at 0, which every piece of this feature (the server
-	membership check, the client's join-prompt button) treats as "feature
-	disabled" -- no GroupService calls are made, no attribute is set, no
-	button is shown, nothing in CalculateMultiplier changes. This is
-	deliberately NOT the same situation as the paid gamepasses documented
-	at the top of this file: those needed an actual product DESIGN
-	decision I can't make on the developer's behalf (what should "Lucky
-	Finder" even do?). This mechanic's design is just the genre standard
-	(flat % bonus for group membership) -- the only missing piece is a
-	literal numeric id, a copy-paste from the group's own URL, not a
-	judgment call.
-
-	TO ACTUALLY ENABLE THIS
-	--------------------------
-	Set GroupId below to your group's real id (visible in its URL:
-	roblox.com/groups/123456/Your-Group-Name -- 123456 is the id). That's
-	the entire setup step.
+	Configured for Mundane Studios. Membership is always verified by the
+	server; the client UI can advertise the reward, but cannot grant it.
 ]]
 
 local GroupRewardConfig = {}
 
--- 0 = feature disabled. Set to your real Roblox Group ID to enable.
-GroupRewardConfig.GroupId = 0
+GroupRewardConfig.GroupId = 15575113
+GroupRewardConfig.GroupName = "Mundane Studios"
 
--- Permanent and free, so deliberately more modest than the paid 2x Essence
--- Multiplier gamepass (EssenceMultiplier.luau) -- this must never make
--- that gamepass a worse deal than a free group join.
-GroupRewardConfig.BonusMultiplier = 1.1
+-- Permanent and free, so every benefit is deliberately modest and stacks
+-- with the player's paid/permanent upgrades instead of replacing them.
+-- Keep these values in this shared config so the real gameplay hooks and
+-- the client benefit cards can never advertise different numbers.
+GroupRewardConfig.BonusMultiplier = 1.35
+GroupRewardConfig.CritChanceBonus = 0.05
+GroupRewardConfig.OfflineEarningsMultiplier = 1.15
 
-GroupRewardConfig.GroupUrl = "https://www.roblox.com/groups/%d"
+GroupRewardConfig.GroupUrl = "https://www.roblox.com/communities/%d/Mundane-Studios#!/about"
 
 function GroupRewardConfig.IsEnabled(): boolean
 	return GroupRewardConfig.GroupId > 0

@@ -112,6 +112,7 @@ local backdrop = new("TextButton", {
 	Visible = false,
 	ZIndex = 120,
 }, screenGui)
+backdrop:SetAttribute("PresentationModal", true)
 
 -- =========================================================================
 -- STATE

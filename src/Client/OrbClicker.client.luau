@@ -18,26 +18,24 @@ local UpdData = Events:WaitForChild("UpdateData")
 local EssenceUpgrades = require(ReplicatedStorage:WaitForChild("TreeUpgrades"))
 local CollectionUpgrades = require(ReplicatedStorage:WaitForChild("CollectionUpgrades"))
 local Criticals = require(ReplicatedStorage:WaitForChild("CriticalsController"))
+local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
+local EssenceVisuals = require(ReplicatedStorage:WaitForChild("EssenceVisuals"))
+local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
 
 local cloneables = ReplicatedStorage:WaitForChild("Cloneables")
 local ClickOrbEvent = Events:WaitForChild("ClickOrb")
 
 local returnEvent = Events:WaitForChild("Return")
-local IconIDS = {
-	["EarthEssenceRegular"] = 79479049281587,
-	["ShadowEssenceRegular"] = 106130917603943
-}
-
 local EssenceTypes = {
-	["Earth Essence"] = {
-		["Icon"] = IconIDS["EarthEssenceRegular"],
-		["Name"] = "Earth Essence",
-	},
-	["Shadow Essence"] = {
-		["Icon"] = IconIDS["ShadowEssenceRegular"],
-		["Name"] = "Shadow Essence",
-	},
 }
+for _, definition in ipairs(EssenceConfig.Ordered) do
+	EssenceTypes[definition.Name] = {
+		Icon = definition.IconAssetId,
+		Image = definition.IconImage,
+		Name = definition.Name,
+		Color = definition.Color,
+	}
+end
 local GetEssenceModule = require(ReplicatedStorage:WaitForChild("GetEssence"))
 local Template = cloneables:WaitForChild("OrbClickableTemplate")
 
@@ -321,6 +319,23 @@ local function GetOrbFXColor(EssenceType)
 	return Color3.fromRGB(255, 245, 200)
 end
 
+-- Mirrors ImageTransparency onto Solar's generated CanvasGroup. Earth and
+-- Shadow have no generated child, so this remains one ordinary tween for
+-- them; callers never need to know which presentation path an essence uses.
+local function TweenEssenceTransparency(imageObject, tweenInfo, targetTransparency)
+	local imageTween = TweenService:Create(imageObject, tweenInfo, {
+		ImageTransparency = targetTransparency,
+	})
+	imageTween:Play()
+	local generated = imageObject:FindFirstChild("GeneratedEssenceOrb")
+	if generated and generated:IsA("CanvasGroup") then
+		TweenService:Create(generated, tweenInfo, {
+			GroupTransparency = targetTransparency,
+		}):Play()
+	end
+	return imageTween
+end
+
 -- Soft radial glow, built the classic UI way: several stacked,
 -- increasingly-transparent circles. Parented under the orb so it moves
 -- and gets destroyed along with it automatically — caller just needs to
@@ -404,6 +419,16 @@ local function SpawnTrailGhost(sourceImageLabel, position, size, zIndex, parent)
 	ghost.ImageTransparency = ORB_FX.TrailStartTransparency
 	ghost.ZIndex = math.max(zIndex - 1, 1)
 	ghost.Parent = parent
+	-- Uploaded-art ghosts inherit Image directly. Only rebuild a native
+	-- presentation when the source actually owns one; fragment drops also
+	-- carry an EssenceName for payout purposes, but must keep their fragment
+	-- icon instead of turning into a full Solar orb in the trail.
+	local essenceName = sourceImageLabel:GetAttribute("EssenceName")
+	if essenceName and sourceImageLabel:FindFirstChild("GeneratedEssenceOrb") then
+		EssenceVisuals.ApplyToImage(ghost, essenceName, {
+			Transparency = ORB_FX.TrailStartTransparency,
+		})
+	end
 
 	local shrunkSize = UDim2.new(
 		size.X.Scale * ORB_FX.TrailShrinkTo, size.X.Offset * ORB_FX.TrailShrinkTo,
@@ -416,6 +441,14 @@ local function SpawnTrailGhost(sourceImageLabel, position, size, zIndex, parent)
 		{ ImageTransparency = 1, Size = shrunkSize }
 	)
 	tween:Play()
+	local generated = ghost:FindFirstChild("GeneratedEssenceOrb")
+	if generated and generated:IsA("CanvasGroup") then
+		TweenService:Create(
+			generated,
+			TweenInfo.new(ORB_FX.TrailLifetime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ GroupTransparency = 1 }
+		):Play()
+	end
 	tween.Completed:Connect(function()
 		ghost:Destroy()
 	end)
@@ -664,9 +697,12 @@ local firstCritLocked = false
 local function SpawnOrb(EssenceType, isFragment)
 	local Orb = Template:Clone()
 	Orb.Name = EssenceTypes[EssenceType]["Name"]
-	Orb.MainClickable.Image = isFragment
-		and ("rbxassetid://" .. FRAGMENT_ICON_ID)
-		or ("rbxassetid://" .. EssenceTypes[EssenceType]["Icon"])
+	Orb.MainClickable:SetAttribute("EssenceName", EssenceTypes[EssenceType].Name)
+	if isFragment then
+		Orb.MainClickable.Image = "rbxassetid://" .. FRAGMENT_ICON_ID
+	else
+		EssenceVisuals.ApplyToImage(Orb.MainClickable, EssenceType)
+	end
 
 	-- 1. Setup starting state (Centered and tiny)
 	Orb.Parent = EssenceParent
@@ -750,7 +786,7 @@ local function SpawnOrb(EssenceType, isFragment)
 	Orb.ZIndex = 50 - math.floor(depth * 9)
 
 	Orb.Size = UDim2.new(0, 0, 0, 0)
-	Orb.MainClickable.ImageTransparency = 1 -- fade in from invisible
+	EssenceVisuals.SetTransparency(Orb.MainClickable, 1) -- fade in from invisible
 
 	-- === FX: glow + shimmer — skipped entirely for fragments ===
 	if isFragment then
@@ -778,6 +814,28 @@ local function SpawnOrb(EssenceType, isFragment)
 	local minX, maxX = -0.65, 1.65
 	local minY, maxY = -.15, 1.8
 	local exclusionRadius = 0.45
+	if Gui:GetAttribute("TutorialActive") == true then
+		-- The tutorial requires the player to collect this first real drop. Keep
+		-- it in the unobstructed center band instead of letting the normal wide
+		-- scatter roll place the only teaching target under its dialogue card or
+		-- beyond a screen edge. Normal spawning resumes as soon as onboarding ends.
+		minX, maxX = 0.2, 0.8
+		local camera = workspace.CurrentCamera
+		local compactLandscape = camera ~= nil and camera.ViewportSize.Y < 520
+		if compactLandscape then
+			-- Tutorial's compact card begins at 12% of the viewport and is
+			-- 104px tall. Derive the first safe landing row from that footprint
+			-- (plus room for the drop itself) so a 320x240 device cannot roll the
+			-- required collectible a few pixels underneath the instruction card.
+			local viewportHeight = math.max(1, camera.ViewportSize.Y)
+			local dialogueBottom = viewportHeight * 0.12 + 104
+			minY = math.clamp((dialogueBottom + 44) / viewportHeight, 0.52, 0.72)
+			maxY = 0.82
+		else
+			minY, maxY = 0.2, 0.58
+		end
+		exclusionRadius = 0.16
+	end
 
 	local targetX, targetY
 	repeat
@@ -795,7 +853,7 @@ local function SpawnOrb(EssenceType, isFragment)
 	local bounceElasticity = -0.55
 
 	TweenService:Create(Orb, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = finalSize}):Play()
-	TweenService:Create(Orb.MainClickable, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {ImageTransparency = targetTransparency}):Play()
+	TweenEssenceTransparency(Orb.MainClickable, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), targetTransparency)
 
 	-- === IDLE ORBIT SETTINGS ===
 	local orbitRadiusX = (0.03 + math.random() * 0.02) * depthScale
@@ -938,14 +996,13 @@ local function SpawnOrb(EssenceType, isFragment)
 					TweenInfo.new(returnDuration, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
 					{Position = UDim2.new(0.5, 0, 0.5, 0), Size = UDim2.new(0, 0, 0, 0)}
 				)
-				local fadeTween = TweenService:Create(
+				local fadeTween = TweenEssenceTransparency(
 					Orb.MainClickable,
 					TweenInfo.new(returnDuration, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
-					{ImageTransparency = 1}
+					1
 				)
 
 				returnTween:Play()
-				fadeTween:Play()
 
 				returnTween.Completed:Connect(function()
 					returnEvent:FireServer(1)
@@ -1103,6 +1160,12 @@ local function FlashDenied()
 	local now = os.clock()
 	if (now - lastDeniedMessageAt) > 1.6 then
 		lastDeniedMessageAt = now
+		NotificationService.Warning("Your Essence Core needs a moment to recharge before it can shatter again.", {
+			Title = "Essence Core Recharging",
+			Icon = "⚡",
+			Duration = 2.8,
+			Key = "orb-energy-recharging",
+		})
 
 		if clickSound then
 			-- Dropped well below the normal click pitch so a refusal is
@@ -1127,6 +1190,12 @@ LargeOrbButton.Activated:Connect(function()
 	local shotHPCost = player:GetAttribute("OrbShotHPCost") or 0
 
 	if not CanSpawnOrb() then
+		NotificationService.Info("Collect some active essence orbs before creating more.", {
+			Title = "Orb Field Full",
+			Icon = "◆",
+			Duration = 2.6,
+			Key = "orb-field-full",
+		})
 		return
 	end
 
@@ -1264,7 +1333,8 @@ local OUT_OF_BOUNDS_MARGIN = 1.5 -- how far past an edge before it's considered 
 local function SpawnFallingOrb(EssenceType, isGolden)
 	local Orb = Template:Clone()
 	Orb.Name = EssenceTypes[EssenceType]["Name"]
-	Orb.MainClickable.Image = "rbxassetid://" .. EssenceTypes[EssenceType]["Icon"]
+	Orb.MainClickable:SetAttribute("EssenceName", EssenceTypes[EssenceType].Name)
+	EssenceVisuals.ApplyToImage(Orb.MainClickable, EssenceType)
 
 	Orb.Parent = EssenceParent
 	Orb.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -1295,6 +1365,7 @@ local function SpawnFallingOrb(EssenceType, isGolden)
 		baseSize.X.Scale * sizeVariance, baseSize.X.Offset * sizeVariance,
 		baseSize.Y.Scale * sizeVariance, baseSize.Y.Offset * sizeVariance
 	)
+	local stormColor = isGolden and Color3.fromRGB(255, 215, 70) or GetOrbFXColor(EssenceType)
 
 	-- starting point: random spot along the top band, just off-screen
 	local currentX = FALL_AREA_MIN_X + math.random() * (FALL_AREA_MAX_X - FALL_AREA_MIN_X)
@@ -1302,17 +1373,43 @@ local function SpawnFallingOrb(EssenceType, isGolden)
 
 	Orb.Position = UDim2.new(currentX, 0, currentY, 0)
 	Orb.Size = UDim2.new(0, 0, 0, 0)
-	Orb.MainClickable.ImageTransparency = 1
+	EssenceVisuals.SetTransparency(Orb.MainClickable, 1)
 
-	-- === FX: crit tint + glow, so a crit is spottable mid-fall in a busy storm ===
-	local fxGlow
+	-- === FX: every storm orb gets a color-matched aura and comet tail. ===
+	-- Previously only critical drops had any silhouette treatment, so the
+	-- majority of the rain looked like ordinary UI icons drifting through
+	-- empty space. The trail is parented to the orb (automatic cleanup) and
+	-- counter-rotated below so it continues pointing against the fall even
+	-- while the collectible itself tumbles.
+	local fxGlow = CreateOrbGlow(isCrit and CRIT_COLOR or stormColor, finalSize)
+	fxGlow.Name = "FX_StormAura"
+	fxGlow.ZIndex = 0
+	fxGlow.Parent = Orb
+
+	local fallTrail = Instance.new("Frame")
+	fallTrail.Name = "FX_StormTrail"
+	fallTrail.AnchorPoint = Vector2.new(0.5, 1)
+	fallTrail.Position = UDim2.fromScale(0.5, 0.38)
+	fallTrail.Size = UDim2.fromScale(isGolden and 0.15 or 0.1, isGolden and 1.75 or 1.35)
+	fallTrail.BackgroundColor3 = isCrit and CRIT_COLOR or stormColor
+	fallTrail.BackgroundTransparency = isGolden and 0.16 or 0.28
+	fallTrail.BorderSizePixel = 0
+	fallTrail.ZIndex = math.max(Orb.MainClickable.ZIndex - 1, 1)
+	fallTrail.Parent = Orb
+	local trailCorner = Instance.new("UICorner")
+	trailCorner.CornerRadius = UDim.new(1, 0)
+	trailCorner.Parent = fallTrail
+	local trailGradient = Instance.new("UIGradient")
+	trailGradient.Rotation = 90
+	trailGradient.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(0.58, 0.48),
+		NumberSequenceKeypoint.new(1, 0.04),
+	})
+	trailGradient.Parent = fallTrail
+
 	if isCrit then
 		Orb.MainClickable.ImageColor3 = CRIT_COLOR
-		if ORB_FX.GlowEnabled then
-			fxGlow = CreateOrbGlow(CRIT_COLOR, finalSize)
-			fxGlow.ZIndex = 0
-			fxGlow.Parent = Orb
-		end
 	end
 
 	-- fall direction: mostly downward, drifting sideways at an angle
@@ -1322,14 +1419,26 @@ local function SpawnFallingOrb(EssenceType, isGolden)
 	local velocityX = math.sin(angleRad) * speed
 	local velocityY = math.cos(angleRad) * speed
 	local rotationSpeed = FALL_ROTATION_SPEED_MIN + math.random() * (FALL_ROTATION_SPEED_MAX - FALL_ROTATION_SPEED_MIN)
+	fallTrail.Rotation = -Orb.Rotation - angleDeg
+
+	-- Occasional ripples at the cloud line make each wave feel emitted by
+	-- the storm eye instead of simply instantiated off-screen. Kept sparse
+	-- and guarded by Juice's global particle cap.
+	if juiceLayer and currentX >= 0.02 and currentX <= 0.98 and math.random() < (isGolden and 0.32 or 0.18) then
+		Juice.Ring(juiceLayer, UDim2.fromScale(currentX, 0.025), {
+			Color = stormColor,
+			StartSize = 18,
+			EndSize = isGolden and 100 or 72,
+			Duration = 0.42,
+			Thickness = isGolden and 2.5 or 1.5,
+		})
+	end
 
 	-- pop in: scale + fade from nothing
 	TweenService:Create(Orb, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 		Size = finalSize,
 	}):Play()
-	TweenService:Create(Orb.MainClickable, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		ImageTransparency = 0,
-	}):Play()
+	TweenEssenceTransparency(Orb.MainClickable, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), 0)
 
 	-- only clickable once it's actually visible
 	task.delay(0.3, function()
@@ -1382,6 +1491,7 @@ local function SpawnFallingOrb(EssenceType, isGolden)
 		currentY = currentY + velocityY * deltaTime
 		Orb.Position = UDim2.new(currentX, 0, currentY, 0)
 		Orb.Rotation = Orb.Rotation + rotationSpeed * deltaTime
+		fallTrail.Rotation = -Orb.Rotation - angleDeg
 
 		-- === FX: crit glow pulse while falling ===
 		if fxGlow then
@@ -1407,15 +1517,10 @@ end
 local function StartEssenceFallEvent(duration, spawnInterval, essenceTypePool, isGolden)
 	spawnInterval = spawnInterval or 0.4
 
-	local typeKeys = essenceTypePool
-	if not typeKeys then
-		typeKeys = {}
-		for key in pairs(EssenceTypes) do
-			table.insert(typeKeys, key)
-		end
-	end
+	local typeKeys = essenceTypePool or {}
+	local useZoneWeights = essenceTypePool == nil
 
-	if #typeKeys == 0 then
+	if not useZoneWeights and #typeKeys == 0 then
 		warn("StartEssenceFallEvent: no essence types available to spawn")
 		return
 	end
@@ -1429,7 +1534,12 @@ local function StartEssenceFallEvent(duration, spawnInterval, essenceTypePool, i
 		-- overflow_capacity: skip this tick's spawn if the screen's already
 		-- at the active-orb cap, rather than spawning over it.
 		if CanSpawnOrb() then
-			local randomType = typeKeys[math.random(1, #typeKeys)]
+			-- A storm now respects the same zone/luck table as an ordinary
+			-- click. This keeps Solar mythic in the original zones and makes
+			-- the Sunforge's specialty matter during the game's biggest event.
+			local randomType = useZoneWeights
+				and GetEssenceModule.GetRandomEssence(player)
+				or typeKeys[math.random(1, #typeKeys)]
 			SpawnFallingOrb(randomType, isGolden)
 		end
 	end
@@ -1475,8 +1585,10 @@ local waitingColor = ColorSequence.new({
 })
 
 local activeColor = ColorSequence.new({
-	ColorSequenceKeypoint.new(0, Color3.fromRGB(34, 139, 34)),
-	ColorSequenceKeypoint.new(1, Color3.fromRGB(50, 205, 50))
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(84, 211, 255)),
+	ColorSequenceKeypoint.new(0.34, Color3.fromRGB(100, 231, 160)),
+	ColorSequenceKeypoint.new(0.68, Color3.fromRGB(188, 104, 255)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 184, 55))
 })
 
 -- storm_mastery: a golden storm gets its own gradient so it visibly reads
@@ -1498,6 +1610,7 @@ end
 -- estimate against the unupgraded base. Mirror StormMaxCooldown as its own
 -- attribute from StormController if you want an exact fill percentage.
 local ESTIMATED_MAX_COOLDOWN = 300
+local currentStormDuration = 60
 local currentEventThread = nil
 
 local function refreshWaitingUI()
@@ -1510,10 +1623,13 @@ end
 local function refreshActiveUI()
 	local timeRemaining = player:GetAttribute("StormTimeRemaining") or 0
 	local isGolden = player:GetAttribute("StormIsGolden")
-	local scale = math.clamp(timeRemaining / ESTIMATED_MAX_COOLDOWN, 0, 1)
+	-- Storms used the 300-second COOLDOWN as their active bar denominator,
+	-- making a fresh 60-second storm begin only 20% full. The confirmed
+	-- duration from StormStart is the correct visual denominator.
+	local scale = math.clamp(timeRemaining / math.max(currentStormDuration, 1), 0, 1)
 	local label = isGolden
 		and ("\u{2728} GOLDEN ESSENCE STORM: " .. formatTime(timeRemaining))
-		or ("\u{26A0}\u{FE0F} EARTH STORM ACTIVE: " .. formatTime(timeRemaining))
+		or ("\u{26A1} ESSENCE STORM ACTIVE: " .. formatTime(timeRemaining))
 	updateUI(scale, isGolden and goldenColor or activeColor, label)
 end
 
@@ -1523,7 +1639,7 @@ local function refreshManualButton()
 	local unlocked = player:GetAttribute("ManualStormUnlocked")
 	local cooldownRemaining = player:GetAttribute("ManualStormCooldownRemaining") or 0
 	manualSummonButton.Visible = unlocked and true or false
-	manualSummonButton.Active = unlocked and cooldownRemaining <= 0
+	manualSummonButton.Active = unlocked and true or false
 
 end
 
@@ -1535,6 +1651,23 @@ player:GetAttributeChangedSignal("ManualStormCooldownRemaining"):Connect(refresh
 
 if manualSummonButton then
 	manualSummonButton.Activated:Connect(function()
+		if player:GetAttribute("StormActive") then
+			NotificationService.Info("Ride this storm before summoning another one.", {
+				Title = "Storm Already Active",
+				Icon = "⚡",
+				Key = "manual-storm-active",
+			})
+			return
+		end
+		local remaining = tonumber(player:GetAttribute("ManualStormCooldownRemaining")) or 0
+		if remaining > 0 then
+			NotificationService.Warning("Manual summoning is ready again in " .. formatTime(remaining) .. ".", {
+				Title = "Storm Focus Recharging",
+				Icon = "⚡",
+				Key = "manual-storm-cooldown",
+			})
+			return
+		end
 		Events:WaitForChild("ManualStormSummon"):FireServer()
 	end)
 end
@@ -1547,48 +1680,17 @@ EssenceStormEvent.OnClientEvent:Connect(function(action, payload)
 		local duration = payload.Duration or 60
 		local spawnInterval = payload.SpawnInterval or 0.4
 		local IsGolden = payload.IsGolden or false
+		currentStormDuration = math.max(duration, 1)
 		refreshActiveUI()
-
-		-- Storm arrival announcement: a real event happening rather than a
-		-- text label quietly updating in the corner. This is the game's
-		-- biggest recurring moment -- free bonus orbs raining from the sky
-		-- -- and landing with nothing but a status label was a big missed
-		-- beat. Purely cosmetic: the storm's actual duration/spawn
-		-- rate/golden roll are unchanged, this only reacts to what the
-		-- server already decided.
-		do
-			local stormColor = IsGolden and Color3.fromRGB(255, 215, 0) or Color3.fromRGB(120, 200, 255)
-
-			if juiceLayer then
-				Juice.Flash(juiceLayer, {
-					Color = stormColor,
-					Peak = IsGolden and 0.5 or 0.35,
-					Duration = 0.6,
-				})
-				Juice.FloatText(juiceLayer, UDim2.fromScale(0.5, 0.22),
-					IsGolden and "✨ GOLDEN STORM! ✨" or "⚡ ESSENCE STORM! ⚡",
-					{
-						Color = stormColor,
-						Duration = 1.6,
-						Rise = 50,
-						TextSize = IsGolden and 40 or 34,
-					}
-				)
-			end
-
-			local sound = Juice.FindSound("SFX/UI/UIPop")
-			if sound then
-				-- Golden storms ring higher than a normal one so the rarer
-				-- version is audibly distinct even before the label is read.
-				Juice.PlaySound(sound, { Pitch = IsGolden and 1.5 or 0.75, Volume = 0.6 })
-			end
-		end
+		-- StormVisuals.client.luau owns the cinematic arrival/atmosphere.
+		-- Keeping that long-running presentation out of this spawner means
+		-- canceling a visual can never cancel or delay collectible creation.
 
 		if currentEventThread then
 			task.cancel(currentEventThread)
 		end
 		currentEventThread = task.spawn(function()
-			StartEssenceFallEvent(duration, spawnInterval, {"Earth Essence","Shadow Essence"}, IsGolden)
+			StartEssenceFallEvent(duration, spawnInterval, nil, IsGolden)
 		end)
 
 	elseif action == "StormEnd" then
@@ -2102,4 +2204,3 @@ TwinAscensionRemote.OnClientEvent:Connect(function()
 		Juice.PlaySound(sound, { Pitch = 1.3, Volume = 0.7 })
 	end
 end)
-

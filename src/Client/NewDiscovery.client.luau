@@ -21,6 +21,9 @@
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
+local EssenceVisuals = require(ReplicatedStorage:WaitForChild("EssenceVisuals"))
+local PresentationCoordinator = require(ReplicatedStorage:WaitForChild("PresentationCoordinator"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -32,6 +35,8 @@ local playerGui = player:WaitForChild("PlayerGui")
 local POPUP_HOLD_TIME = 2.5      -- seconds fully visible before it starts leaving
 local TWEEN_IN_TIME = 0.45
 local TWEEN_OUT_TIME = 0.35
+local MAX_QUEUED_DISCOVERIES = 2
+local DISCOVERY_MAX_AGE = 20
 
 -- ============================================================
 -- Event other scripts fire to trigger this popup
@@ -102,12 +107,25 @@ glow.ImageTransparency = 0.55
 glow.ZIndex = 0
 glow.Parent = card
 
+local orbPreview = Instance.new("ImageLabel")
+orbPreview.Name = "DiscoveredOrb"
+orbPreview.AnchorPoint = Vector2.new(0, 0.5)
+orbPreview.Position = UDim2.fromScale(0.035, 0.55)
+orbPreview.Size = UDim2.fromScale(0.2, 0.62)
+orbPreview.BackgroundTransparency = 1
+orbPreview.ZIndex = 3
+orbPreview.Parent = card
+local orbAspect = Instance.new("UIAspectRatioConstraint")
+orbAspect.AspectRatio = 1
+orbAspect.DominantAxis = Enum.DominantAxis.Height
+orbAspect.Parent = orbPreview
+
 -- top label: "New essence discovered!"
 local header = Instance.new("TextLabel")
 header.Name = "Header"
 header.BackgroundTransparency = 1
-header.Position = UDim2.new(0, 12, 0, 10)
-header.Size = UDim2.new(1, -24, 0, 22)
+header.Position = UDim2.new(0.23, 0, 0, 10)
+header.Size = UDim2.new(0.73, 0, 0, 22)
 header.Font = Enum.Font.GothamBold
 header.Text = "NEW ESSENCE DISCOVERED"
 header.TextColor3 = Color3.fromRGB(200, 160, 255)
@@ -120,8 +138,8 @@ header.Parent = card
 local nameLabel = Instance.new("TextLabel")
 nameLabel.Name = "EssenceName"
 nameLabel.BackgroundTransparency = 1
-nameLabel.Position = UDim2.new(0, 12, 0, 36)
-nameLabel.Size = UDim2.new(1, -24, 0, 34)
+nameLabel.Position = UDim2.new(0.23, 0, 0, 36)
+nameLabel.Size = UDim2.new(0.73, 0, 0, 34)
 nameLabel.TextScaled = true
 nameLabel.Font = Enum.Font.GothamBlack
 nameLabel.Text = "Essence Name"
@@ -140,8 +158,8 @@ nameSizeConstraint.Parent = nameLabel
 local oddsLabel = Instance.new("TextLabel")
 oddsLabel.Name = "Odds"
 oddsLabel.BackgroundTransparency = 1
-oddsLabel.Position = UDim2.new(0, 12, 0, 76)
-oddsLabel.Size = UDim2.new(1, -24, 0, 22)
+oddsLabel.Position = UDim2.new(0.23, 0, 0, 76)
+oddsLabel.Size = UDim2.new(0.73, 0, 0, 22)
 oddsLabel.Font = Enum.Font.Gotham
 oddsLabel.Text = "Odds: 1 in 1"
 oddsLabel.TextColor3 = Color3.fromRGB(170, 170, 180)
@@ -155,11 +173,34 @@ oddsLabel.Parent = card
 -- ============================================================
 
 local queue = {}
+local queuedNames = {}
 local isShowing = false
 
-local function playPopup(essenceName, oddsText)
+local function playPopup(essenceName, oddsText, queuedAt)
+	local lease = PresentationCoordinator.Acquire("EssenceDiscovery", {
+		Priority = 55,
+		QuietAfter = 1.25,
+	})
+	if not lease then
+		return
+	end
+	-- The first item leaves this script's local queue while it waits for the
+	-- global foreground slot. Re-check its age after that wait too, otherwise
+	-- a discovery made under a long tutorial would still replay afterward.
+	if os.clock() - (queuedAt or os.clock()) > DISCOVERY_MAX_AGE then
+		PresentationCoordinator.Release(lease, 0)
+		return
+	end
+
+	local definition = EssenceConfig.Get(essenceName) or EssenceConfig.Get("Earth Essence")
 	nameLabel.Text = essenceName
 	oddsLabel.Text = "Odds: " .. oddsText
+	card:SetAttribute("AstralAccentColor", definition.Color)
+	cardStroke.Color = definition.Color
+	glow.ImageColor3 = definition.Color
+	header.TextColor3 = definition.Color:Lerp(Color3.fromRGB(255, 255, 255), 0.28)
+	nameLabel.TextColor3 = definition.Color:Lerp(Color3.fromRGB(255, 255, 255), 0.58)
+	EssenceVisuals.ApplyToImage(orbPreview, essenceName)
 
 	card.Position = UDim2.new(0.5, 0, 0, -140)
 	card.Visible = true
@@ -183,6 +224,7 @@ local function playPopup(essenceName, oddsText)
 	tweenOut.Completed:Wait()
 
 	card.Visible = false
+	PresentationCoordinator.Release(lease, 1.25)
 end
 
 local function processQueue()
@@ -193,14 +235,44 @@ local function processQueue()
 
 	while #queue > 0 do
 		local next = table.remove(queue, 1)
-		playPopup(next.name, next.odds)
+		if os.clock() - next.queuedAt > DISCOVERY_MAX_AGE then
+			queuedNames[next.name] = nil
+			continue
+		end
+		local ok, err = xpcall(function()
+			playPopup(next.name, next.odds, next.queuedAt)
+		end, debug.traceback)
+		queuedNames[next.name] = nil
+		if not ok then
+			card.Visible = false
+			PresentationCoordinator.ForceRelease("EssenceDiscovery", 1.25)
+			warn("[NewDiscovery] Presentation failed: " .. tostring(err))
+		end
 	end
 
 	isShowing = false
 end
 
 local function Show(essenceName, oddsText)
-	table.insert(queue, { name = essenceName, odds = oddsText or "1 in 1" })
+	if type(essenceName) ~= "string" or essenceName == "" or queuedNames[essenceName] then
+		return
+	end
+
+	-- A lucky burst can discover several essences during Tutorial or another
+	-- foreground beat. Their Index entries are already saved server-side, so
+	-- showing an old avalanche after the player regains control only creates
+	-- clutter. Keep at most two fresh, unique cards waiting behind the active
+	-- one and quietly discard stale presentation work.
+	if #queue >= MAX_QUEUED_DISCOVERIES then
+		return
+	end
+
+	queuedNames[essenceName] = true
+	table.insert(queue, {
+		name = essenceName,
+		odds = oddsText or "1 in 1",
+		queuedAt = os.clock(),
+	})
 	processQueue()
 end
 

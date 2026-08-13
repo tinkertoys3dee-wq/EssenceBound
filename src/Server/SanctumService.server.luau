@@ -27,6 +27,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local SanctumUpgrades = require(ReplicatedStorage:WaitForChild("SanctumUpgrades"))
+local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
+local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
 
 -- =========================================================================
 -- REMOTES
@@ -202,6 +204,12 @@ PurchaseRemote.OnServerEvent:Connect(function(player, upgradeId)
 
 	local data = getData(player)
 	if not data then
+		NotificationService.Send(player, {
+			Kind = "Error",
+			Title = "Sanctum Still Loading",
+			Message = "Your Shadow relics are still loading. Try again in a moment.",
+			Key = "sanctum-loading",
+		})
 		return
 	end
 
@@ -211,17 +219,36 @@ PurchaseRemote.OnServerEvent:Connect(function(player, upgradeId)
 
 	if level >= def.MaxLevel then
 		pushState(player)
+		NotificationService.Send(player, {
+			Kind = "Info",
+			Title = "Relic Maxed",
+			Message = def.Name .. " is already fully awakened.",
+			Icon = "★",
+			Key = "sanctum-maxed:" .. upgradeId,
+		})
 		return
 	end
 
 	local cost = SanctumUpgrades.GetCostForNextLevel(upgradeId, level)
 	if not cost then
 		pushState(player)
+		NotificationService.Send(player, {
+			Kind = "Error",
+			Title = "Price Unavailable",
+			Message = "That relic's next price could not be loaded. Try again in a moment.",
+			Key = "sanctum-price:" .. upgradeId,
+		})
 		return
 	end
 
 	local stat = getShadowStat(player)
 	if not stat then
+		NotificationService.Send(player, {
+			Kind = "Error",
+			Title = "Shadow Essence Still Loading",
+			Message = "Your Shadow Essence balance is still loading. Try again in a moment.",
+			Key = "sanctum-balance-loading",
+		})
 		return
 	end
 
@@ -229,6 +256,16 @@ PurchaseRemote.OnServerEvent:Connect(function(player, upgradeId)
 	if balance < cost then
 		-- Re-sync so a client showing a stale price corrects itself.
 		pushState(player)
+		NotificationService.Send(player, {
+			Kind = "Warning",
+			Title = "Not Enough Shadow Essence",
+			Message = ("You need %s more Shadow Essence for %s."):format(
+				ProgressionConfig.FormatNumber(cost - balance),
+				def.Name
+			),
+			Icon = "☾",
+			Key = "sanctum-currency",
+		})
 		return
 	end
 
@@ -247,6 +284,14 @@ PurchaseRemote.OnServerEvent:Connect(function(player, upgradeId)
 	player:SetAttribute(upgradeId, newLevel)
 
 	pushState(player)
+	NotificationService.Send(player, {
+		Kind = "Success",
+		Title = "Sanctum Relic Awakened",
+		Message = ("%s reached level %d."):format(def.Name, newLevel),
+		Icon = "☾",
+		Duration = 2.8,
+		Key = "sanctum-success:" .. upgradeId,
+	}, { Cooldown = 0 })
 end)
 
 local requestSyncDebounce = {}

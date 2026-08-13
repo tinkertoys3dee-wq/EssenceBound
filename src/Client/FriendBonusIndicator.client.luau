@@ -19,6 +19,7 @@ local TweenService = game:GetService("TweenService")
 
 local FriendBonusConfig = require(ReplicatedStorage:WaitForChild("FriendBonusConfig"))
 local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
+local PresentationCoordinator = require(ReplicatedStorage:WaitForChild("PresentationCoordinator"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -202,3 +203,13 @@ end
 
 player:GetAttributeChangedSignal("FriendsInServer"):Connect(update)
 update()
+
+-- Ambient status remains current in the background, but disappears while a
+-- guided or automatic presentation owns the player's attention. Re-enabling
+-- the ScreenGui reveals the already-updated value without rebuilding it.
+local function updatePresentationVisibility()
+	screenGui.Enabled = not PresentationCoordinator.HasPendingPresentation()
+end
+
+PresentationCoordinator.Changed:Connect(updatePresentationVisibility)
+updatePresentationVisibility()

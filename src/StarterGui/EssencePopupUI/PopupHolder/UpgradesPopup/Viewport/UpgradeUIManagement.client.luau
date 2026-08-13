@@ -1,14 +1,13 @@
 local RP = game:GetService("ReplicatedStorage")
 local remotes = RP:WaitForChild("Remotes")
 local TreeUpgrades = require(RP:WaitForChild("TreeUpgrades"))
+local NotificationService = require(RP:WaitForChild("NotificationService"))
 
 local UserInputService = game:GetService("UserInputService")
 
 local viewport = script.Parent
 local canvas = viewport:WaitForChild("Canvas")
 local revert = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("Revert")
-local loadingscreen = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("LoadingDone")
-loadingscreen.Event:Wait()
 -- === ZOOM SETTINGS ===
 local MIN_ZOOM = 0.5
 local MAX_ZOOM = 3.0
@@ -181,9 +180,39 @@ for _, child in ipairs(frame:GetChildren()) do
 			end
 			
 			button.Activated:Connect(function()
-				if TreeUpgrades.GetUpgrade(child.Name).MaxLevel > child:GetAttribute("Tier") and TreeUpgrades.GetUpgrade(child.Name).RebirthRequired <= player:GetAttribute("Rebirths") and TreeUpgrades.GetCostForNextLevel(child.Name,child:GetAttribute("Tier")) then
-					BuyRemote:FireServer(child.Name)
+				local definition = TreeUpgrades.GetUpgrade(child.Name)
+				if not definition then
+					return
 				end
+
+				local tier = tonumber(child:GetAttribute("Tier")) or 0
+				local rebirths = tonumber(player:GetAttribute("Rebirths")) or 0
+				if tier >= definition.MaxLevel then
+					NotificationService.Info(definition.Name .. " is already at its final level.", {
+						Title = "Upgrade Maxed",
+						Icon = "★",
+						Key = "upgrade-maxed:" .. child.Name,
+					})
+					return
+				end
+				if rebirths < definition.RebirthRequired then
+					NotificationService.Warning(("Reach Rebirth %d to unlock %s."):format(definition.RebirthRequired, definition.Name), {
+						Title = "Rebirth Locked",
+						Icon = "↻",
+						Key = "upgrade-rebirth:" .. child.Name,
+					})
+					return
+				end
+				if child:GetAttribute("Buyable") == false then
+					NotificationService.Info("Complete the connected upgrade path first.", {
+						Title = "Path Still Locked",
+						Icon = "◇",
+						Key = "upgrade-path:" .. child.Name,
+					})
+					return
+				end
+
+				BuyRemote:FireServer(child.Name)
 			end)
 		end
 	end
@@ -342,7 +371,7 @@ BuyRemote.OnClientEvent:Connect(function(upgradeName, tier, newdata)
 	-- 2. Format Costs (Renamed loop variable to avoid shadowing)
 	local costsText = ""
 	for currencyName, cost in pairs(TreeUpgrades.GetCostForNextLevel(upgradeName, tier)) do
-		costsText = costsText .. currencyName .. ": " .. cost .. "\n"
+		costsText = costsText .. TreeUpgrades.GetCurrencyDisplayName(currencyName) .. ": " .. cost .. "\n"
 	end
 
 	child:SetAttribute("Cost", costsText)
@@ -486,7 +515,7 @@ local function onRebirth(trueReset)
 			local Costs = ""
 			local requires = "\n"
 			for name, cost in pairs(TreeUpgrades.GetCostForNextLevel(IndexData.Id, IndexData.CurrentLevel)) do
-				Costs = Costs .. name .. ": " .. cost .. "\n"
+				Costs = Costs .. TreeUpgrades.GetCurrencyDisplayName(name) .. ": " .. cost .. "\n"
 			end
 			for indexx, prerequisite in pairs(IndexData.Prerequisites) do
 				if indexx == #IndexData.Prerequisites - 1 then
