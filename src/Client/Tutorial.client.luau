@@ -93,13 +93,27 @@ local LargeOrbFrame = main:WaitForChild("Center"):WaitForChild("LargeOrbFolder")
 local DEMO_COLOR_PRIMARY = Color3.fromRGB(255, 209, 70)
 local DEMO_COLOR_ACCENT = Color3.fromRGB(96, 205, 255)
 
-local function getGuiInsetOffset()
+-- Compensation is only correct if `frame`'s OWN ScreenGui does NOT ignore
+-- the inset (its AbsolutePosition then excludes the inset, and
+-- TutorialGui -- which DOES ignore it -- needs the inset added back to
+-- line up). If that ScreenGui also ignores the inset, AbsolutePosition is
+-- already true-screen pixels, and adding anything here throws the result
+-- off by the inset amount. Checked live per-target rather than assumed,
+-- same defensive pattern OrbClicker.client.luau and CursorCollection.
+-- client.luau already use for this exact problem (`if not MainGui.
+-- IgnoreGuiInset then ... end`) instead of hardcoding one answer that may
+-- not match how MainGui/EssencePopupUI are actually configured in Studio.
+local function getGuiInsetOffset(frame)
+	local screenGuiAncestor = frame and frame:FindFirstAncestorWhichIsA("ScreenGui")
+	if screenGuiAncestor and screenGuiAncestor.IgnoreGuiInset then
+		return 0, 0
+	end
 	local topInset = GuiService:GetGuiInset()
 	return topInset.X, topInset.Y
 end
 
 local function getFrameCenter(frame)
-	local xinset, yinset = getGuiInsetOffset()
+	local xinset, yinset = getGuiInsetOffset(frame)
 	local pos = frame.AbsolutePosition
 	local size = frame.AbsoluteSize
 	return Vector2.new(pos.X + size.X / 2 + xinset, pos.Y + size.Y / 2 + yinset)
@@ -1171,7 +1185,7 @@ local function positionHighlight(frame)
 	local absSize = frame.AbsoluteSize
 	local padding = 10
 
-	local xinset, yinset = getGuiInsetOffset()
+	local xinset, yinset = getGuiInsetOffset(frame)
 
 	highlight.Position = UDim2.new(0, absPos.X - padding + xinset, 0, absPos.Y - padding + yinset)
 	highlight.Size = UDim2.new(0, absSize.X + padding * 2, 0, absSize.Y + padding * 2)
@@ -1198,7 +1212,18 @@ end
 
 local function hideCurrentPopup()
 	if currentPopupFrame then
-		currentPopupFrame.Visible = false
+		-- Routed through the real popup system (_G.PopupUI, set up by
+		-- UIInitializerHooks.client.luau) rather than a bare Visible flip.
+		-- See the matching note where a popup is shown, below, for why: a
+		-- direct Visible poke never told that system a popup had
+		-- opened/closed, so its own state (Size/GroupTransparency tween
+		-- targets, Backdrop, currentOpen) drifted out of sync with what
+		-- the tutorial was showing.
+		if _G.PopupUI and _G.PopupUI.Close then
+			_G.PopupUI.Close(currentPopupFrame.Name)
+		else
+			currentPopupFrame.Visible = false
+		end
 		currentPopupFrame = nil
 	end
 end
@@ -1238,7 +1263,24 @@ local function goToStep(index)
 		hideCurrentPopup()
 	end
 	if isPopupFrame(step.Frame) then
-		step.Frame.Visible = true
+		-- Was a direct `step.Frame.Visible = true`, bypassing the popup
+		-- system (_G.PopupUI.Open) that every other path into a popup
+		-- goes through. That system owns more than visibility: it resets
+		-- the popup's Size/GroupTransparency and tweens them open, shows
+		-- the click-catching Backdrop, and records the popup as
+		-- currentOpen. Skipping straight to Visible=true left a popup
+		-- showing whatever Size/GroupTransparency it was last left at --
+		-- collapsed and fully transparent if it had ever been closed
+		-- before, since closePopup() only flips Visible off AFTER
+		-- shrinking/fading it, and nothing here ever set those back.
+		-- Routing through _G.PopupUI.Open fixes that and gets the normal
+		-- open animation (which the highlight ring below tracks live, via
+		-- the AbsolutePosition connection) for free.
+		if _G.PopupUI and _G.PopupUI.Open then
+			_G.PopupUI.Open(step.Frame.Name)
+		else
+			step.Frame.Visible = true
+		end
 		currentPopupFrame = step.Frame
 	end
 

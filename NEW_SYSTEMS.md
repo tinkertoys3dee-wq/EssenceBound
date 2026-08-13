@@ -2178,6 +2178,70 @@ function takes `player`/`playerData` as arguments and works on exactly
 what it's given, which is what makes it safe to share across however many
 players are on the server at once.
 
+## 43. Two tutorial bugs reported directly: buttons unclickable, highlight ring offset up
+
+Reported: "during the tutorial, I can't click on any buttons," plus the
+highlight ring appearing offset. Traced both to real, concrete bugs --
+one in `LoadingScreen.client.luau` and one in `Tutorial.client.luau`
+itself -- rather than one shared cause.
+
+**1. `LoadingScreen.client.luau` fired "done" before it was actually
+done, hiding the tutorial's real buttons under itself for ~0.8s.**
+`LoadingDone` (the BindableEvent `Tutorial.client.luau`'s `remote.Event
+:Wait()` gates on before building any tutorial UI at all) used to fire
+right after the music fade -- a full `CONFIG.FadeTime + 0.1` (~0.8
+seconds) *before* `gui:Destroy()` actually removed the loading screen.
+That screen sits on a ScreenGui with `DisplayOrder = 10000`, far above
+everything else in the game (Tutorial's own GUI is 1000). In that
+window, the tutorial had already built and shown its fully-interactive
+dialogue box, highlight ring, and Next/Skip buttons -- underneath a
+loading screen that was still visually mid-fade on top of all of it. A
+player's first click, right as control was handed over, could land
+while the real target was still buried under the old screen. Fixed by
+moving `ready:Fire("Done")` to after `gui:Destroy()`, so nothing
+downstream (Tutorial, plus SoundController/TheHollowGlitch/
+UpgradeUIManagement, which all wait on the same event) proceeds until
+the loading screen is verifiably gone, not just about to be.
+
+**2. The highlight ring's inset math assumed one fixed answer this
+codebase already knew not to assume.** `positionHighlight`/
+`getFrameCenter` unconditionally added `GuiService:GetGuiInset()` to a
+target frame's `AbsolutePosition` to convert it into TutorialGui's
+`IgnoreGuiInset = true` coordinate space. That conversion is only
+correct if the TARGET frame's own ScreenGui (`MainGui` for the orb/
+stats steps, `EssencePopupUI` for the popup steps) does NOT itself
+ignore the inset -- and this codebase already has an established,
+defensive answer for that exact ambiguity: `OrbClicker.client.luau` and
+`CursorCollection.client.luau` both check `MainGui.IgnoreGuiInset` LIVE
+before deciding whether to compensate at all, specifically because
+hardcoding one assumption isn't safe here. `Tutorial.client.luau` never
+checked anything -- it just always added the inset. Fixed by making
+`getGuiInsetOffset` take the target frame, walk up to its actual
+ScreenGui ancestor, and skip the compensation entirely if that
+ScreenGui also ignores the inset -- matching the same live-checked
+pattern rather than guessing which of the two configurations is
+actually true in Studio.
+
+**3. Popup steps (Upgrades/Rebirth/Shop) bypassed the real popup
+system entirely, which plausibly explains the button report for those
+specific steps too.** `goToStep` showed/hid popup steps with a direct
+`step.Frame.Visible = true`/`false`, never calling
+`_G.PopupUI.Open`/`.Close` (the system `UIInitializerHooks.client.luau`
+builds and every other path into a popup already goes through). That
+system owns more than visibility: `openPopup` resets the popup's
+`Size`/`GroupTransparency` and tweens them open, shows the click-
+catching `Backdrop`, and records the popup as `currentOpen`. A bare
+`Visible = true` skips all of that -- a popup that had ever been closed
+once before (by anything, any time this session) would still be sitting
+at its closed-state `Size` (85% of target) and `GroupTransparency`
+(fully transparent), since only `closePopup`'s tween ever restores
+those, and the tutorial's bypass never called it. Fixed by routing both
+directions through `_G.PopupUI.Open(name)`/`.Close(name)` (falling back
+to the old bare `Visible` toggle only if `_G.PopupUI` somehow isn't set
+yet). As a side effect, the highlight ring now visibly tracks the
+popup's real open animation instead of being computed once against a
+frame that may not have been in its final state yet.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole

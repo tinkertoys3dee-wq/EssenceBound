@@ -1713,7 +1713,6 @@ fadeOutTween.Completed:Wait()
 
 CONFIG.Music:Stop()
 CONFIG.Music.Volume = CONFIG.Music:GetAttribute("OriginalVolume") or CONFIG.Music.Volume -- restore volume for next time it plays
-ready:Fire("Done")
 
 --============================================================
 -- SECTION 24: FADE OUT + FULL CLEANUP
@@ -1750,3 +1749,17 @@ end
 
 task.wait(CONFIG.FadeTime + 0.1)
 gui:Destroy()
+
+-- Fired here, not right after the music fade above, on purpose: this
+-- BindableEvent is what SoundController/TheHollowGlitch/Tutorial/
+-- UpgradeUIManagement all wait on before doing ANYTHING (see the
+-- ownership note in SECTION 1). Firing it earlier -- while `root` was
+-- still mid-fade at DisplayOrder 10000, well above every other ScreenGui
+-- -- let those scripts build and show fully-interactive UI (most visibly
+-- the tutorial's dialogue box, highlight ring, and Next/Skip buttons)
+-- underneath a loading screen that hadn't visually gotten out of the way
+-- yet, for up to CONFIG.FadeTime + 0.1 (~0.8s). A player's first click
+-- right as the tutorial started could land while the real target was
+-- still obscured, reading as "nothing I click does anything." Now
+-- nothing downstream proceeds until this screen is verifiably gone.
+ready:Fire("Done")
