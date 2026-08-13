@@ -154,6 +154,13 @@ local CLOSE_INFO = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirectio
 local openPopup, closePopup -- forward declared, bodies assigned further down
 
 local backdrop = GUI:WaitForChild("Backdrop")
+-- The authored backdrop is transparent in Studio but its Visible property can
+-- still default to true. PresentationCoordinator correctly treats any visible
+-- active backdrop as an already-open modal, so that stale initial state made
+-- every nav button fail CanOpenModal() before the first popup could open. Give
+-- the shared popup system one explicit closed state; openPopup is the only path
+-- that makes it visible again.
+backdrop.Visible = false
 backdrop:SetAttribute("PresentationModal", true)
 -------------------------------------------------------------------
 -- OPEN / CLOSE IMPLEMENTATION

@@ -53,6 +53,31 @@ local PER_PLAYER_WRITE_LOOP = 20 -- how often to CHECK whether a write is due
 
 local SECONDS_PER_WEEK = 7 * 24 * 60 * 60
 
+-- OrderedDataStore only accepts integer values inside Roblox's signed 64-bit
+-- range. Leave deliberate headroom below 2^63 - 1 because Luau represents
+-- every number as a double and loses unit precision above 2^53. At leaderboard
+-- scale that precision loss is harmless, while a value outside the int64 range
+-- is rejected outright with ValueNotNumeric (error 14).
+local MAX_ORDERED_DATASTORE_VALUE = 9e18
+
+local function toOrderedDataStoreInteger(rawValue)
+	local value = tonumber(rawValue)
+	-- NaN is the only number unequal to itself. Never let malformed persisted
+	-- data reach SetAsync; nil tells the write loop to preserve the last valid
+	-- leaderboard entry rather than replacing it with a fabricated zero.
+	if value == nil or value ~= value then
+		return nil
+	end
+	if value <= 0 then
+		return 0
+	end
+	-- math.floor(math.huge) is still math.huge, so clamping must happen first.
+	if value == math.huge or value >= MAX_ORDERED_DATASTORE_VALUE then
+		return MAX_ORDERED_DATASTORE_VALUE
+	end
+	return math.floor(value)
+end
+
 local function getCurrentWeekNumber()
 	return math.floor(os.time() / SECONDS_PER_WEEK)
 end
@@ -64,7 +89,7 @@ end
 local function getWeeklyGain(data)
 	local currentWeek = getCurrentWeekNumber()
 	local baselineWeek = tonumber(data.WeeklyBaselineWeekNumber) or 0
-	local total = math.floor(tonumber(data.TotalEssenceGathered) or 0)
+	local total = toOrderedDataStoreInteger(data.TotalEssenceGathered) or 0
 
 	if baselineWeek ~= currentWeek then
 		data.WeeklyBaselineWeekNumber = currentWeek
@@ -72,8 +97,8 @@ local function getWeeklyGain(data)
 		return 0
 	end
 
-	local baselineValue = tonumber(data.WeeklyBaselineValue) or total
-	return math.max(0, total - baselineValue)
+	local baselineValue = toOrderedDataStoreInteger(data.WeeklyBaselineValue) or total
+	return toOrderedDataStoreInteger(total - baselineValue) or 0
 end
 
 local BOARDS = {
@@ -83,7 +108,7 @@ local BOARDS = {
 		Icon = "🌿",
 		DataStoreName = "EssenceLeaderboard",
 		GetValue = function(data)
-			return math.floor(tonumber(data.TotalEssenceGathered) or 0)
+			return data.TotalEssenceGathered
 		end,
 	},
 	{
@@ -92,7 +117,7 @@ local BOARDS = {
 		Icon = "🔥",
 		DataStoreName = "RebirthsLeaderboard",
 		GetValue = function(data)
-			return math.floor(tonumber(data.Rebirths) or 0)
+			return data.Rebirths
 		end,
 	},
 	{
@@ -242,12 +267,15 @@ local function writePlayerScores(player, force)
 	for _, board in ipairs(BOARDS) do
 		resolveBoardStore(board)
 		if board.Store then
-			local value = board.GetValue(data)
+			-- Sanitize at the final shared boundary, not just in individual board
+			-- getters. This guarantees every current and future OrderedDataStore
+			-- receives a finite, non-negative integer within its supported range.
+			local value = toOrderedDataStoreInteger(board.GetValue(data))
 			-- Skip zero-progress players entirely -- no point cluttering the
 			-- store with rows nobody will ever page down to, and skip
 			-- unchanged values so a player sitting idle doesn't re-write the
 			-- same number every throttle window for no reason.
-			if value > 0 and value ~= writeState.LastWrittenValue[board.Id] then
+			if value and value > 0 and value ~= writeState.LastWrittenValue[board.Id] then
 				local ok, err = pcall(function()
 					board.Store:SetAsync(tostring(player.UserId), value)
 				end)
