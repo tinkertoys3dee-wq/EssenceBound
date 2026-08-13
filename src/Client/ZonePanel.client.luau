@@ -162,6 +162,7 @@ local backdrop = new("TextButton", {
 	Visible = false,
 	ZIndex = 200,
 }, screenGui)
+backdrop:SetAttribute("PresentationModal", true)
 
 local panel = new("Frame", {
 	Name = "Panel",

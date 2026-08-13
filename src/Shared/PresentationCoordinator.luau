@@ -90,11 +90,11 @@ local function isEffectivelyVisible(guiObject, screenGui)
 end
 
 -- Player-opened panels are not queue requests, but they still deserve the
--- same no-overlap guarantee. Most modal systems in this project use a
--- full-screen object named Backdrop; the opt-in attribute covers future
--- systems without forcing their instance naming. An automatic presentation
--- does not reveal its own backdrop until after it has acquired the slot, so
--- this probe cannot deadlock the request that is about to open.
+-- same no-overlap guarantee. A name such as "Backdrop" is far too broad to
+-- decide that by itself: the live place also contains decorative, always-on
+-- backdrops that are not modals. We may track name-matched objects so existing
+-- instances can opt in after parenting, but only the explicit
+-- PresentationModal attribute is authoritative in hasVisibleModal().
 local modalCandidates = {}
 
 local function notifyModalStateChanged()
@@ -160,7 +160,7 @@ local function hasVisibleModal()
 		local screenGui = descendant:FindFirstAncestorOfClass("ScreenGui")
 		if
 			screenGui
-			and (descendant:GetAttribute("PresentationModal") == true or descendant.Active)
+			and descendant:GetAttribute("PresentationModal") == true
 			and isEffectivelyVisible(descendant, screenGui)
 		then
 			return true
@@ -312,7 +312,13 @@ end
 -- its own modal after acquiring the matching lease.
 function Coordinator.CanOpenModal(allowedOwner: string?): boolean
 	if not ready then
-		return false
+		-- A destroyed loading layer is stronger evidence than a missed boolean
+		-- handoff. Recover immediately on the first real button press instead of
+		-- making every menu wait for the slower development watchdog below.
+		if playerGui:FindFirstChild("LoadingScreen") then
+			return false
+		end
+		Coordinator.SetReady(true)
 	end
 	local owner = activeOwner()
 	if owner ~= nil and owner ~= allowedOwner then

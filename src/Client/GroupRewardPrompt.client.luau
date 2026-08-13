@@ -255,6 +255,7 @@ local backdrop = new("TextButton", {
 	Text = "",
 	ZIndex = 100,
 }, popupRoot)
+backdrop:SetAttribute("PresentationModal", true)
 
 local outerHalo = new("Frame", {
 	Name = "OuterHalo",

@@ -205,6 +205,7 @@ backdrop.BorderSizePixel = 0
 backdrop.ZIndex = 1
 backdrop.Active = true -- blocks click-through to the game world
 backdrop.Parent = screenGui
+backdrop:SetAttribute("PresentationModal", true)
 
 --=========================================================================
 -- BUILD: Main Popup Panel

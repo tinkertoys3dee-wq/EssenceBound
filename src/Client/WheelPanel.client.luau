@@ -268,6 +268,7 @@ local backdrop = new("TextButton", {
 	Visible = false,
 	ZIndex = 250,
 }, screenGui)
+backdrop:SetAttribute("PresentationModal", true)
 
 local panelShadow = new("Frame", {
 	Name = "PanelShadow",

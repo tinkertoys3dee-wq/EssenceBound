@@ -128,6 +128,7 @@ local backdrop = new("TextButton", {
 	Visible = false,
 	ZIndex = 120,
 }, screenGui)
+backdrop:SetAttribute("PresentationModal", true)
 
 -- =========================================================================
 -- STATE (server pushes {Badges = {{Id,Earned},...}, Milestones =
