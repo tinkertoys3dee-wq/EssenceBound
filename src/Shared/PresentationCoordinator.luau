@@ -95,6 +95,13 @@ end
 -- backdrops that are not modals. We may track name-matched objects so existing
 -- instances can opt in after parenting, but only the explicit
 -- PresentationModal attribute is authoritative in hasVisibleModal().
+--
+-- IMPORTANT: this observation is one-way. A visible player-opened modal delays
+-- automatic presentations; automatic queue ownership must never reject a real
+-- button press. Interactive backdrops and tutorial/cinematic input guards
+-- already prevent two player-driven full-screen frames from stacking. Making
+-- every opener query the queue creates silent, session-wide navigation
+-- lockouts whenever an automatic lease is long-lived or fails to clean up.
 local modalCandidates = {}
 
 local function notifyModalStateChanged()
@@ -303,28 +310,6 @@ end
 
 function Coordinator.GetQueueDepth(): number
 	return #queue
-end
-
--- Manual panels do not need to join the automatic presentation queue, but
--- they must respect whatever currently owns the foreground and any other
--- player-opened modal. `allowedOwner` is deliberately narrow: Tutorial may
--- open Upgrades as part of its guided step, and an automatic panel may open
--- its own modal after acquiring the matching lease.
-function Coordinator.CanOpenModal(allowedOwner: string?): boolean
-	if not ready then
-		-- A destroyed loading layer is stronger evidence than a missed boolean
-		-- handoff. Recover immediately on the first real button press instead of
-		-- making every menu wait for the slower development watchdog below.
-		if playerGui:FindFirstChild("LoadingScreen") then
-			return false
-		end
-		Coordinator.SetReady(true)
-	end
-	local owner = activeOwner()
-	if owner ~= nil and owner ~= allowedOwner then
-		return false
-	end
-	return not hasVisibleModal()
 end
 
 function Coordinator.SetReady(value: boolean?)

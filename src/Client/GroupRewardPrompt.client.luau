@@ -18,7 +18,6 @@ local UserInputService = game:GetService("UserInputService")
 
 local GroupRewardConfig = require(ReplicatedStorage:WaitForChild("GroupRewardConfig"))
 local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
-local PresentationCoordinator = require(ReplicatedStorage:WaitForChild("PresentationCoordinator"))
 
 if not GroupRewardConfig.IsEnabled() then
 	return
@@ -722,10 +721,6 @@ local function showPopup()
 	if player:GetAttribute("GroupMember") == true or popupRoot.Visible then
 		return
 	end
-	if not PresentationCoordinator.CanOpenModal() then
-		return
-	end
-
 	animationId += 1
 	popupRoot.Visible = true
 	backdrop.BackgroundTransparency = 1

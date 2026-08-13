@@ -1013,11 +1013,6 @@ local function leadingOfferId(category)
 end
 
 local function openStore(offerId, source)
-	if not storeOpen and not PresentationCoordinator.CanOpenModal("StoreSpotlight") then
-		-- Do not let a manual Shop click put a full-screen store over onboarding
-		-- or a cinematic. The player can click again once the focused beat ends.
-		return
-	end
 	storeOpenedThisSession = true
 	local activeSpotlight = screenGui:FindFirstChild("OfferSpotlight")
 	if activeSpotlight and activeSpotlight:IsA("GuiObject") then

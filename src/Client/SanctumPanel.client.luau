@@ -22,7 +22,6 @@ local SanctumUpgrades = require(ReplicatedStorage:WaitForChild("SanctumUpgrades"
 local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
 local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
 local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
-local PresentationCoordinator = require(ReplicatedStorage:WaitForChild("PresentationCoordinator"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -789,9 +788,6 @@ end)
 
 local function open()
 	if isOpen then
-		return
-	end
-	if not PresentationCoordinator.CanOpenModal() then
 		return
 	end
 	isOpen = true

@@ -805,12 +805,9 @@ end
 
 local manualProgressionPanelOpened = false
 
-local function showPanel(which, allowedOwner)
+local function showPanel(which)
 	if openPanel == which then
 		closePanel()
-		return
-	end
-	if openPanel == nil and not PresentationCoordinator.CanOpenModal(allowedOwner) then
 		return
 	end
 
@@ -1673,7 +1670,7 @@ task.spawn(function()
 
 	local ok, err = xpcall(function()
 		if state.Daily and state.Daily.CanClaim and openPanel == nil and not manualProgressionPanelOpened then
-			showPanel("Daily", "DailyWelcome")
+			showPanel("Daily")
 			-- This is an optional nudge, not a hard onboarding gate. Give the
 			-- player time to claim/read it, then close it before the next queued
 			-- frame. A manual close releases the slot immediately.

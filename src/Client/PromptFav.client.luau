@@ -61,7 +61,7 @@ end
 local clearSince = nil
 local clearDeadline = os.clock() + 120
 while os.clock() < clearDeadline do
-	if not PresentationCoordinator.HasPendingPresentation() and PresentationCoordinator.CanOpenModal() then
+	if not PresentationCoordinator.HasPendingPresentation() then
 		clearSince = clearSince or os.clock()
 		if os.clock() - clearSince >= 1.5 then
 			break
