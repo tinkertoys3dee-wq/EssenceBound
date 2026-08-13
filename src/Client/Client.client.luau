@@ -1,1 +1,1 @@
-print("Hello word, from client!")
+print("Hello wd, from client!")
