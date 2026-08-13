@@ -280,20 +280,36 @@ closePopup = function(name)
 	local targetSize = popupSizes[name]
 	local shrunk = UDim2.fromScale(targetSize.X.Scale * 0.85, targetSize.Y.Scale * 0.85)
 
-	local sizeTween = tween(popup, CLOSE_INFO, {Size = shrunk, GroupTransparency = 1})
-	sizeTween:Play()
+	tween(popup, CLOSE_INFO, {Size = shrunk, GroupTransparency = 1}):Play()
 	tween(backdrop, CLOSE_INFO, {BackgroundTransparency = 1}):Play()
 
 	if currentOpen == name then
 		currentOpen = nil
 	end
 
-	sizeTween.Completed:Connect(function(state)
-		if state == Enum.PlaybackState.Completed and popup.GroupTransparency >= 0.99 then
+	-- Was gated on a specific tween's Completed event firing with
+	-- state == Completed -- but ANY later call that re-tweens the same
+	-- popup/backdrop properties (a rapid close-then-reopen, or two close
+	-- calls landing close together) CANCELS the in-flight tween instead of
+	-- completing it, and a Cancelled tween never satisfies that check. The
+	-- backdrop especially is shared across every popup in PopupHolder, so a
+	-- skipped hide here doesn't just leave one popup's leftovers visible --
+	-- it leaves a full-screen, click-catching, PresentationModal=true frame
+	-- stuck over the entire game for the rest of the session, silently
+	-- blocking every other popup AND (via PresentationCoordinator's
+	-- hasVisibleModal check) the Tutorial and everything else routed
+	-- through it. Checking the actual property values after the close
+	-- duration has elapsed, instead of trusting which tween instance
+	-- happened to fire last, gets the same result on the normal path and
+	-- self-corrects on the raced one: whatever's overwritten Visible/
+	-- Transparency by then (a fresh openPopup call) is exactly what should
+	-- decide whether to hide, not a stale reference to one specific tween.
+	task.delay(CLOSE_INFO.Time, function()
+		if popup.GroupTransparency >= 0.99 then
 			popup.Visible = false
-			if currentOpen == nil then
-				backdrop.Visible = false
-			end
+		end
+		if currentOpen == nil and backdrop.BackgroundTransparency >= 0.99 then
+			backdrop.Visible = false
 		end
 	end)
 end

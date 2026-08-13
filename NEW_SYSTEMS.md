@@ -2668,6 +2668,73 @@ treatment, and everything else in this script now runs unconditionally
 and immediately, with no dependency on RebirthPopup's internal
 structure at all.
 
+## 54. A stuck, active, full-screen backdrop -- exactly "an active frame above everything"
+
+Reported directly, and it named the mechanism correctly: something acting
+like an active frame sitting above everything, eating clicks, persisting
+through repeated retests. Found the real bug this describes, plus added a
+defensive backstop so the tutorial specifically can never be taken down by
+it (or anything like it) again, even from a panel that wasn't touched here.
+
+**The bug.** `UIInitializerHooks.client.luau`'s `closePopup` only hid the
+shared `Backdrop` (a full-screen, `Active`, `PresentationModal=true` frame
+that exists specifically to dim the background and catch "click outside to
+close") from inside `sizeTween.Completed:Connect(function(state) if state
+== Enum.PlaybackState.Completed then ... end)`. A Roblox tween that gets
+CANCELLED -- which happens automatically the instant anything else tweens
+the same object's same properties, e.g. a close landing while another open
+is already in flight -- fires `Completed` with `state ==
+Enum.PlaybackState.Cancelled`, not `Completed`. That check silently skips
+the hide. Since this `Backdrop` is shared across every popup in
+`PopupHolder` (Upgrades, Rebirth, Shop, ...), one skipped hide doesn't just
+leave one popup's leftovers on screen -- it leaves a full-screen, active,
+click-catching frame stuck over the ENTIRE game for the rest of the
+session, matching "an active frame above everything" exactly. It also
+carries `PresentationModal=true`, so `PresentationCoordinator.
+hasVisibleModal()` would see it too, permanently blocking the Tutorial (and
+everything else routed through the coordinator) from ever being granted
+the foreground.
+
+Fixed by no longer trusting which specific tween instance happened to fire
+last: `closePopup` now checks the popup's/backdrop's actual transparency
+values after the close duration has elapsed (`task.delay(CLOSE_INFO.Time,
+...)`), rather than gating on one tween's Completed-vs-Cancelled state.
+Whatever the ACTUAL values are by then -- whether the close ran cleanly or
+got overtaken by a fresh open -- is exactly what should decide whether to
+hide, so the raced case self-corrects instead of leaking a stuck backdrop.
+
+**The backstop.** `Tutorial.client.luau`'s `PresentationCoordinator
+.Acquire("Tutorial", ...)` call yielded with NO timeout, waiting until the
+coordinator's queue actually granted it -- which only happens when
+`hasVisibleModal()` is false across EVERY `PresentationModal`-tagged
+backdrop in the game (14 of them now, across Achievements, Zones, Wheel,
+Astral Forge, Prophecy, Monetization, Leaderboard, Sanctum, Offline
+Earnings, Group Reward, Rebirth Shop, What's New, and this popup system's
+own). A stuck backdrop anywhere in that list -- this one or one of the
+others -- would hang the tutorial forever with nothing to show at all,
+from a cause with zero relation to the tutorial itself. Wrapped the
+`Acquire` call with a 12-second bounded wait: if the coordinator hasn't
+granted a slot by then, cancel the queued request (so it can't be silently
+granted later with nothing left to release it, which would otherwise leak
+the coordinator's one slot for the rest of the session) and start the
+tutorial without a lease. The tutorial can now never be locked out by a
+bug in a completely unrelated panel again, audited or not.
+
+**Same fragile pattern, not yet fixed elsewhere.** Achievements,
+ProgressionHud, ZonePanel, WheelPanel, AstralForgePanel, ProphecyPanel,
+LeaderboardPanel, SanctumPanel, and RebirthShopPanel all share the
+identical `state == Enum.PlaybackState.Completed` gate on their OWN
+backdrops -- copied from the same template this fix came from. Checked the
+three panels most likely to have already auto-triggered during repeated
+testing (`RecieveOfflineEarning`, `WhatsNewPopup`, `GroupRewardPrompt`) --
+all three already use a robust pattern (`screenGui.Enabled = false`
+unconditionally, or a version-counter guard) and are NOT vulnerable. The
+nine still-vulnerable panels are all player-opened, not automatic, so
+lower risk in the near term, and the Tutorial backstop above means none of
+them can block the tutorial regardless -- but they carry the same latent
+bug this section describes and are worth the same fix if any of them turns
+out to be involved.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole

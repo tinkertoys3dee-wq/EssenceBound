@@ -1558,12 +1558,63 @@ local function startTutorial()
 	goToStep(1)
 end
 
+-- PresentationCoordinator.Acquire yields with NO timeout until the
+-- coordinator's pump() actually grants it -- which never happens while
+-- ready is false OR hasVisibleModal() is true. hasVisibleModal() checks
+-- EVERY backdrop, across every panel in the game (Achievements, Zones,
+-- Wheel, Astral Forge, Prophecy, Monetization, Leaderboard, Sanctum,
+-- Offline Earnings, Group Reward, Rebirth Shop, What's New, plus this
+-- popup system's own), that's tagged PresentationModal=true. If even ONE
+-- of those gets stuck Visible=true from a bug anywhere in that unrelated
+-- code, this call would hang forever and the tutorial would never build
+-- so much as its dialogue box -- the player would be stuck with nothing
+-- to click, from a cause that has nothing to do with the tutorial itself.
+-- Wrapped with a bounded wait so the tutorial can never be locked out by
+-- someone else's stuck modal: if the lease isn't granted within
+-- ACQUIRE_TIMEOUT_SECONDS, cancel the queued request (so it can't be
+-- silently granted later with nothing left to release it, which would
+-- otherwise leak the coordinator's single slot for the rest of the
+-- session) and start the tutorial without one.
+local ACQUIRE_TIMEOUT_SECONDS = 12
+
+local function acquireTutorialLease()
+	local resultToken, acquireDone = nil, false
+	task.spawn(function()
+		resultToken = PresentationCoordinator.Acquire("Tutorial", {
+			Priority = 100,
+			QuietAfter = 2.2,
+		})
+		acquireDone = true
+	end)
+
+	local deadline = os.clock() + ACQUIRE_TIMEOUT_SECONDS
+	while not acquireDone and os.clock() < deadline do
+		task.wait(0.1)
+	end
+	if acquireDone then
+		return resultToken
+	end
+
+	warn("[TutorialLocalScript] PresentationCoordinator did not grant the tutorial a foreground slot within "
+		.. ACQUIRE_TIMEOUT_SECONDS .. "s (something else's modal is likely stuck visible) -- starting without one.")
+	PresentationCoordinator.CancelQueued("Tutorial")
+
+	-- Closes the narrow race where pump() dequeued and granted the request
+	-- in the same instant this gave up on it: if a real token still lands
+	-- shortly after, release it immediately instead of leaking a lease
+	-- nobody is left to release.
+	task.delay(0.5, function()
+		if acquireDone and resultToken then
+			PresentationCoordinator.Release(resultToken, 0)
+		end
+	end)
+
+	return nil
+end
+
 -- Re-check after waiting in the global queue: the server flag may have
 -- arrived while loading was fading or this request was queued.
-tutorialLease = PresentationCoordinator.Acquire("Tutorial", {
-	Priority = 100,
-	QuietAfter = 2.2,
-})
+tutorialLease = acquireTutorialLease()
 if player:GetAttribute("SeenTutorial") == true then
 	concludeTutorial(0.3, 0)
 else
