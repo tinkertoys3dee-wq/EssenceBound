@@ -2628,6 +2628,46 @@ tutorial's Skip button now also persists `SeenTutorial = true` (it
 previously only hid the dialogue, so the whole tutorial came back on
 every rejoin).
 
+## 53. Found the actual reason buttons stopped responding game-wide: one fragile chain took down the whole nav bar
+
+After the tutorial-specific fixes in section 52 still didn't resolve "I
+can't click on any buttons" on retest, looked past the tutorial entirely
+and found the real, much bigger bug: `UIInitializerHooks.client.luau` --
+the single script that wires up EVERY nav bar button in the game
+(Upgrades, Rebirth, Shop, Settings, Index, Inventory) -- ran that wiring
+loop only AFTER an unguarded `WaitForChild`/`FindFirstChild` chain into
+`RebirthPopup`'s Studio-authored internals (`Content > Frame >
+LargeDisplay > Display > TextLabel`, `CurrentStats`, `Progress`,
+`Milestones > Frame`, `Unlocks > Frame` -- none of it captured by git,
+per `SYNC.md`'s own note that syncback only captures script-bearing
+instances, not UI structure). That chain existed purely to build the
+Rebirth popup's live stats display -- a cosmetic detail, unrelated to
+whether any button in the game responds to a click.
+
+If ANY of those nested instances was missing, renamed, or simply hadn't
+finished syncing into Studio at the moment this script ran, that line
+would either hang forever (a bare `WaitForChild` with no timeout) or
+throw immediately (chaining `:FindFirstChild()` off a `nil` result) --
+and either way, this is a plain top-level script with no error
+isolation, so EVERYTHING after that point never ran, including the loop
+further down that wires every `MainGui.Right.Holder` button's click
+handler. One missing or slow-to-sync instance deep inside one popup's
+internals was capable of making the entire nav bar permanently inert,
+completely independent of the tutorial, of `PresentationCoordinator`, of
+anything either agent's tutorial fix touched.
+
+Fixed by moving the RebirthPopup-specific setup into its own
+`task.spawn` + `pcall`, using timed (`10`-second) `WaitForChild` calls
+instead of bare ones, with `rebirthUpdates` starting as a no-op that
+only gets replaced with the real implementation once the lookup
+succeeds. A broken or slow-to-sync RebirthPopup now costs only its own
+live stats display (it opens with stale numbers until the background
+task finishes, then self-corrects on the next `Rebirths` change or
+re-open) -- never the rest of the UI. The nav bar wiring loop, VIP
+treatment, and everything else in this script now runs unconditionally
+and immediately, with no dependency on RebirthPopup's internal
+structure at all.
+
 ## What to check when you open Studio
 
 1. **Press play and confirm essence actually goes up.** This is the whole

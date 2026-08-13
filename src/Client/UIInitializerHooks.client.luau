@@ -161,77 +161,117 @@ backdrop:SetAttribute("PresentationModal", true)
 -------------------------------------------------------------------
 -- OPEN / CLOSE IMPLEMENTATION
 -------------------------------------------------------------------
-local rbF = popups["RebirthPopup"]:WaitForChild("Content"):WaitForChild("Frame")
-local rbD = rbF:FindFirstChild("LargeDisplay"):FindFirstChild("Display"):FindFirstChild("TextLabel")
-local RebirthModule = require(game:GetService("ReplicatedStorage"):WaitForChild("RebirthHandler"))
-local Earthessence = player:WaitForChild("leaderstats"):WaitForChild("Earth Essence")
-local CS = rbF:WaitForChild("CurrentStats")
-local RBar = rbF:WaitForChild("Progress")
-local unlockTemplate = game:GetService("ReplicatedStorage"):WaitForChild("Cloneables"):WaitForChild("UnlockTemplate")
-local milestones = rbF:WaitForChild("Milestones"):WaitForChild("Frame")
-local function rebirthUpdates()
-	print(player:GetAttribute("Rebirths"))
-	local RebirthData = RebirthModule.GetRebirthInfo({rebirthCount = player:GetAttribute("Rebirths"),essence = Earthessence:GetAttribute("Quantity")},player)
-	rbD.Text = "Rebirth "..player:GetAttribute("Rebirths")
+-- rebirthUpdates only ever renders the RebirthPopup's live stats display --
+-- a fully optional cosmetic detail. Everything else in this script (the nav
+-- bar button wiring further down, VIP treatment) is NOT optional: every
+-- single button in MainGui.Right.Holder gets wired up later in this SAME
+-- top-level script execution. This used to be a bare WaitForChild/
+-- FindFirstChild chain into RebirthPopup's Studio-authored internals
+-- (Content > Frame > LargeDisplay > Display > TextLabel, CurrentStats,
+-- Progress, Milestones > Frame, Unlocks > Frame -- none of which is
+-- captured by git; see SYNC.md's note that syncback only captures
+-- script-bearing instances) sitting directly in the script's main
+-- execution path. If ANY of those nested instances was missing, renamed,
+-- or simply hadn't finished syncing into Studio yet at the moment this
+-- script ran, it would either hang forever (a timeout-less WaitForChild)
+-- or throw immediately (indexing nil off a FindFirstChild miss) -- and
+-- either way, EVERYTHING after it in this script never runs, including the
+-- nav bar wiring that makes every button in the game clickable at all.
+-- Moved into its own task.spawn + pcall, with timed WaitForChild calls, so
+-- a broken/incomplete RebirthPopup structure costs only its own live
+-- stats, never the rest of the UI.
+local rebirthUpdates = function() end
 
-	CS:FindFirstChild("CurrentMultiplier"):FindFirstChild("Value").Text = RebirthData.currentMultiplier
-	CS:FindFirstChild("EssenceNeeded"):FindFirstChild("Value").Text = formatNumber(RebirthData.essenceNeeded)
-	CS:FindFirstChild("NextMultiplier"):FindFirstChild("Value").Text = RebirthData.nextMultiplier
+task.spawn(function()
+	local ok, err = pcall(function()
+		local rebirthPopup = popups["RebirthPopup"]
+		if not rebirthPopup then
+			error("RebirthPopup is not a child of PopupHolder")
+		end
+		local rbF = rebirthPopup:WaitForChild("Content", 10):WaitForChild("Frame", 10)
+		local rbD = rbF:WaitForChild("LargeDisplay", 10):WaitForChild("Display", 10):WaitForChild("TextLabel", 10)
+		local RebirthModule = require(game:GetService("ReplicatedStorage"):WaitForChild("RebirthHandler"))
+		local Earthessence = player:WaitForChild("leaderstats"):WaitForChild("Earth Essence")
+		local CS = rbF:WaitForChild("CurrentStats", 10)
+		local RBar = rbF:WaitForChild("Progress", 10)
+		local unlockTemplate = game:GetService("ReplicatedStorage"):WaitForChild("Cloneables"):WaitForChild("UnlockTemplate")
+		local milestones = rbF:WaitForChild("Milestones", 10):WaitForChild("Frame", 10)
 
-	RBar:FindFirstChild("Quantity").Text = formatNumber(RebirthData.essenceCurrent).. " / ".. formatNumber(RebirthData.essenceNeeded)
-	RBar:FindFirstChild("Percent").Text = math.clamp(math.floor(RebirthData.essenceCurrent / RebirthData.essenceNeeded * 100),0,100).. "%"
-	RBar:FindFirstChild("Frame"):FindFirstChild("Frame").Size = UDim2.new(math.clamp(RebirthData.essenceCurrent / RebirthData.essenceNeeded,0,1),0,1,0)
-	
-	local milestone = RebirthModule.GetReachedMilestones(player:GetAttribute("Rebirths")) 
-	local keys = {}
-	for key, _ in pairs(milestone) do
-		table.insert(keys, key)
-	end
+		rebirthUpdates = function()
+			print(player:GetAttribute("Rebirths"))
+			local RebirthData = RebirthModule.GetRebirthInfo({rebirthCount = player:GetAttribute("Rebirths"),essence = Earthessence:GetAttribute("Quantity")},player)
+			rbD.Text = "Rebirth "..player:GetAttribute("Rebirths")
 
-	-- 2. Sort the keys (so they are in a predictable order, e.g., Level1, Level2, Level3)
-	table.sort(keys)
+			CS:FindFirstChild("CurrentMultiplier"):FindFirstChild("Value").Text = RebirthData.currentMultiplier
+			CS:FindFirstChild("EssenceNeeded"):FindFirstChild("Value").Text = formatNumber(RebirthData.essenceNeeded)
+			CS:FindFirstChild("NextMultiplier"):FindFirstChild("Value").Text = RebirthData.nextMultiplier
 
-	-- 3. Grab the last sorted key
-	local lastKey = #keys
-	for _, child in pairs(milestones:GetChildren()) do
-		if child:IsA("Frame") and child.Name ~= "Frame" then
-			if child.Name ~= tostring(lastKey) then
-				child.BackgroundColor3 = Color3.fromRGB(58, 50, 78)
-				child:FindFirstChild("UIStroke").Color = Color3.fromRGB(148,136,160)
-			else
-				child.BackgroundColor3 = Color3.fromRGB(58, 209, 118)
-				child:FindFirstChild("UIStroke").Color = Color3.fromRGB(247,165,60)
+			RBar:FindFirstChild("Quantity").Text = formatNumber(RebirthData.essenceCurrent).. " / ".. formatNumber(RebirthData.essenceNeeded)
+			RBar:FindFirstChild("Percent").Text = math.clamp(math.floor(RebirthData.essenceCurrent / RebirthData.essenceNeeded * 100),0,100).. "%"
+			RBar:FindFirstChild("Frame"):FindFirstChild("Frame").Size = UDim2.new(math.clamp(RebirthData.essenceCurrent / RebirthData.essenceNeeded,0,1),0,1,0)
+
+			local milestone = RebirthModule.GetReachedMilestones(player:GetAttribute("Rebirths"))
+			local keys = {}
+			for key, _ in pairs(milestone) do
+				table.insert(keys, key)
+			end
+
+			-- 2. Sort the keys (so they are in a predictable order, e.g., Level1, Level2, Level3)
+			table.sort(keys)
+
+			-- 3. Grab the last sorted key
+			local lastKey = #keys
+			for _, child in pairs(milestones:GetChildren()) do
+				if child:IsA("Frame") and child.Name ~= "Frame" then
+					if child.Name ~= tostring(lastKey) then
+						child.BackgroundColor3 = Color3.fromRGB(58, 50, 78)
+						child:FindFirstChild("UIStroke").Color = Color3.fromRGB(148,136,160)
+					else
+						child.BackgroundColor3 = Color3.fromRGB(58, 209, 118)
+						child:FindFirstChild("UIStroke").Color = Color3.fromRGB(247,165,60)
+					end
+				end
+			end
+			if not RebirthData.nextRebirthUnlocks then
+				RebirthData.nextRebirthUnlocks = {["NextRegular Bonus"] =  RebirthModule.CalculateMultiplier(player:GetAttribute("Rebirths") + 1)}
+			end
+
+			for _, child in rbF:FindFirstChild("Unlocks"):FindFirstChild("Frame"):GetChildren() do
+				if child:IsA("Frame") then
+					child:Destroy()
+				end
+			end
+			for name,v in pairs(RebirthData.nextRebirthUnlocks)  do
+
+				if name == "essenceMultiplierBonus"  then
+					local clone = unlockTemplate:Clone()
+					clone.Parent = rbF:FindFirstChild("Unlocks"):FindFirstChild("Frame")
+					clone:FindFirstChild("TextLabel").Text = "+"..tostring(v * 100).. "% Boost Perm"
+				end
+				if name == "upgradesUnlocked" then
+					local clone = unlockTemplate:Clone()
+					clone.Parent = rbF:FindFirstChild("Unlocks"):FindFirstChild("Frame")
+					clone:FindFirstChild("TextLabel").Text = v[1]
+				end
+				if name == "NextRegular Bonus" then
+					local clone = unlockTemplate:Clone()
+					clone.Parent = rbF:FindFirstChild("Unlocks"):FindFirstChild("Frame")
+					clone:FindFirstChild("TextLabel").Text = v.."x Multiplier"
+				end
 			end
 		end
-	end
-	if not RebirthData.nextRebirthUnlocks then
-		RebirthData.nextRebirthUnlocks = {["NextRegular Bonus"] =  RebirthModule.CalculateMultiplier(player:GetAttribute("Rebirths") + 1)}
-	end
-	
-	for _, child in rbF:FindFirstChild("Unlocks"):FindFirstChild("Frame"):GetChildren() do
-		if child:IsA("Frame") then
-			child:Destroy()
-		end
-	end
-	for name,v in pairs(RebirthData.nextRebirthUnlocks)  do
 
-		if name == "essenceMultiplierBonus"  then
-			local clone = unlockTemplate:Clone()
-			clone.Parent = rbF:FindFirstChild("Unlocks"):FindFirstChild("Frame")
-			clone:FindFirstChild("TextLabel").Text = "+"..tostring(v * 100).. "% Boost Perm"
+		-- The popup may already be open (or get opened again before this
+		-- finishes) while this was still loading -- give it one immediate
+		-- paint instead of leaving it stuck on the no-op's last render.
+		if rebirthPopup.Visible then
+			rebirthUpdates()
 		end
-		if name == "upgradesUnlocked" then
-			local clone = unlockTemplate:Clone()
-			clone.Parent = rbF:FindFirstChild("Unlocks"):FindFirstChild("Frame")
-			clone:FindFirstChild("TextLabel").Text = v[1]
-		end
-		if name == "NextRegular Bonus" then
-			local clone = unlockTemplate:Clone()
-			clone.Parent = rbF:FindFirstChild("Unlocks"):FindFirstChild("Frame")
-			clone:FindFirstChild("TextLabel").Text = v.."x Multiplier"
-		end
+	end)
+	if not ok then
+		warn("UIInitializerHooks: RebirthPopup live-stats setup failed, Rebirth popup will open without live stats: " .. tostring(err))
 	end
-end
+end)
 
 closePopup = function(name)
 	local popup = popups[name]
