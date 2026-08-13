@@ -27,6 +27,20 @@ local CollectionUpgrades = {}
 -- UPGRADE DEFINITIONS (Collection branch only)
 -- =========================================================================
 local treeUpgrades = require(script.Parent.TreeUpgrades)
+-- Timed lookup rather than a bare WaitForChild: a missing SanctumUpgrades
+-- must cost the Sanctum bonus only, not hang collection entirely.
+local SanctumUpgrades
+do
+	local module = script.Parent:FindFirstChild("SanctumUpgrades")
+		or script.Parent:WaitForChild("SanctumUpgrades", 10)
+
+	if module then
+		local ok, result = pcall(require, module)
+		if ok and type(result) == "table" then
+			SanctumUpgrades = result
+		end
+	end
+end
 local RADIUS_UPGRADES = {
 	{ Id = "collection_radius_1", 
 		EffectPerLevel = treeUpgrades.GetUpgrade("collection_radius_1").EffectPerLevel, 
@@ -76,6 +90,12 @@ do
 	collect(SPEED_UPGRADES)
 	collect(MAX_ACTIVE_ORB_UPGRADES)
 	table.insert(ALL_UPGRADE_IDS, AUTO_COLLECT_UPGRADE_ID)
+	-- Included so WatchAll fires when a Sanctum purchase changes the ring
+	-- size -- without this the ring would keep its old radius until
+	-- something else happened to trigger a recalculation.
+	table.insert(ALL_UPGRADE_IDS, "sanctum_wider_reach")
+	table.insert(ALL_UPGRADE_IDS, "sanctum_magnetism")
+	table.insert(ALL_UPGRADE_IDS, "sanctum_overflow")
 end
 CollectionUpgrades.AllUpgradeIds = ALL_UPGRADE_IDS
 
@@ -103,15 +123,26 @@ end
 -- PUBLIC ACCESSORS
 -- =========================================================================
 
--- Extra radius (added on top of a base size) from collection_radius_1/2.
+-- Extra radius (added on top of a base size) from collection_radius_1/2,
+-- plus the Shadow Sanctum's Wider Reach. The two stack additively so the
+-- Shadow economy complements the Earth Essence tree rather than replacing
+-- it.
 function CollectionUpgrades.GetCollectionRadiusBonus(player)
-	return sumEffect(player, RADIUS_UPGRADES)
+	local sanctumReach = 0
+	if SanctumUpgrades then
+		sanctumReach = tonumber(SanctumUpgrades.GetPlayerEffect(player, "sanctum_wider_reach")) or 0
+	end
+	return sumEffect(player, RADIUS_UPGRADES) + sanctumReach
 end
 
 -- Combined pull strength from magnetic_pull_1/2 (for whatever script moves
 -- orbs toward the player - this module just does the level math).
 function CollectionUpgrades.GetMagnetStrength(player)
-	return sumEffect(player, MAGNET_UPGRADES)
+	local sanctumMagnet = 0
+	if SanctumUpgrades then
+		sanctumMagnet = tonumber(SanctumUpgrades.GetPlayerEffect(player, "sanctum_magnetism")) or 0
+	end
+	return sumEffect(player, MAGNET_UPGRADES) + sanctumMagnet
 end
 
 -- Seconds shaved off however long an orb needs to dwell before collecting.
@@ -121,7 +152,13 @@ end
 
 -- Extra concurrent active orbs allowed on screen (for the orb spawner).
 function CollectionUpgrades.GetMaxActiveOrbsBonus(player)
-	return sumEffect(player, MAX_ACTIVE_ORB_UPGRADES)
+	local sanctumOverflow = 0
+	if SanctumUpgrades then
+		sanctumOverflow = tonumber(SanctumUpgrades.GetPlayerEffect(player, "sanctum_overflow")) or 0
+	end
+	-- Floored: this feeds an orb-count cap that's compared with >= and used
+	-- to size loops, so a fractional value would be a latent off-by-one.
+	return sumEffect(player, MAX_ACTIVE_ORB_UPGRADES) + math.floor(sanctumOverflow)
 end
 
 -- Whether the player has purchased essence_magnet_field (auto-collect

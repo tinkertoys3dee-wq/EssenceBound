@@ -20,15 +20,17 @@
 	DESIGN NOTE ON TRUST: RollCrit/RollDoubleCrit are meant to be called
 	CLIENT-SIDE, once per orb, purely to decide whether that orb gets crit
 	visuals (tint/glow/bigger pop) and to flag it for the "collected"
-	RemoteEvent. The actual BONUS AMOUNT that flag is worth is computed by
-	GetCritMultiplier, which reads CritMultiplierBonus live off the
-	player's own Attributes -- so even if a client always claimed
-	crit = true, the payout is still capped by the upgrades they've
-	actually bought. Call GetCritMultiplier SERVER-SIDE (see
-	EssenceMultiplier.lua) -- that's what keeps the bonus amount honest;
-	the boolean itself is just a convenience flag, not a security boundary
-	(consistent with how `quantity` from the client is already trusted
-	elsewhere in this codebase).
+	RemoteEvent. GetCritMultiplier reads CritMultiplierBonus live off the
+	player's own Attributes, so the EXTRA amount a crit is worth beyond
+	its flat base 2x can't exceed what real upgrades justify. The base 2x
+	itself is NOT gated by anything, though: a client that always claims
+	crit = true gets an unconditional 2x on every collection regardless
+	of upgrades owned -- a real, currently-unmitigated gap, not the closed
+	trust boundary this note used to describe. See OrbClickManager.
+	server.luau's "collected" handler for the full writeup of that gap
+	and why it's flagged rather than fixed there. (`quantity` from the
+	client has the same "purely client-owned, no independent server
+	record" root cause, elsewhere in this codebase.)
 
 	USAGE
 	------
@@ -55,6 +57,24 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TreeUpgrades = require(ReplicatedStorage:WaitForChild("TreeUpgrades"))
+local NewPlayerLuckConfig = require(ReplicatedStorage:WaitForChild("NewPlayerLuckConfig"))
+local GroupRewardConfig = require(ReplicatedStorage:WaitForChild("GroupRewardConfig"))
+
+-- Timed lookup rather than a bare WaitForChild: crit rolling runs on every
+-- orb spawn, so a missing SanctumUpgrades must cost the Sanctum crit bonus
+-- only, never hang this module.
+local SanctumUpgrades
+do
+	local module = ReplicatedStorage:FindFirstChild("SanctumUpgrades")
+		or ReplicatedStorage:WaitForChild("SanctumUpgrades", 10)
+
+	if module then
+		local ok, result = pcall(require, module)
+		if ok and type(result) == "table" then
+			SanctumUpgrades = result
+		end
+	end
+end
 
 local CriticalsController = {}
 
@@ -65,7 +85,19 @@ local CriticalsController = {}
 -- guaranteed_crit_streak reduces this by EffectPerLevel(=2) per level,
 -- MaxLevel 5 -> up to -10 total. Floor keeps it from ever hitting 0 or
 -- going negative regardless of how the tree gets tuned later.
-local BASE_GUARANTEED_CRIT_STREAK = 20
+--
+-- Was 20: lowered so the wait between guaranteed crits is shorter across
+-- the whole game, not just via the first-click guarantee added in
+-- OrbClicker.client.luau (which only ever covers the very first one).
+-- Deliberately NOT lowered further than this: at 16, a maxed
+-- guaranteed_crit_streak (-10) still lands on 6, comfortably above the
+-- floor of 4, so every level of that upgrade stays meaningful. Dropping
+-- much further would push the upgrade's own top level(s) below the floor
+-- and make them do nothing -- the same kind of dead-upgrade problem
+-- root_awakening's levels 2-5 already have elsewhere in TreeUpgrades
+-- (its "UnlockTree" effect is defined but never read anywhere -- flagged,
+-- not fixed here, since it's a balance call outside this change's scope).
+local BASE_GUARANTEED_CRIT_STREAK = 16
 local MIN_GUARANTEED_CRIT_STREAK = 4
 
 -- Belt-and-suspenders cap so stacking every CritChance upgrade can't push
@@ -80,6 +112,14 @@ local streakCounts = {}
 
 local function getGuaranteedStreakLength(player)
 	local reduction = TreeUpgrades.GetSummedEffectFromAttributes(player, "GuaranteedCritEveryNClicksReduction")
+
+	-- First-24-hours boost (see NewPlayerLuckConfig) shortens the wait on
+	-- top of whatever the player has actually upgraded -- stacks with,
+	-- doesn't replace, their real progress.
+	if NewPlayerLuckConfig.IsActive(player) then
+		reduction += NewPlayerLuckConfig.GuaranteedStreakReduction
+	end
+
 	return math.max(MIN_GUARANTEED_CRIT_STREAK, BASE_GUARANTEED_CRIT_STREAK - reduction)
 end
 
@@ -88,7 +128,41 @@ end
 -- =========================================================================
 
 function CriticalsController.GetCritChance(player)
-	return math.min(MAX_CRIT_CHANCE, TreeUpgrades.GetSummedEffectFromAttributes(player, "CritChance"))
+	-- Shadow Sanctum's Dark Fortune stacks additively with the Earth tree's
+	-- CritChance line, then the whole total is clamped by MAX_CRIT_CHANCE
+	-- exactly as before -- so the two economies complement each other and
+	-- neither can push crit chance past the existing cap.
+	local sanctumCrit = 0
+	if SanctumUpgrades then
+		sanctumCrit = tonumber(SanctumUpgrades.GetPlayerEffect(player, "sanctum_dark_fortune")) or 0
+	end
+
+	-- First-24-hours boost (see NewPlayerLuckConfig): a flat add on top,
+	-- clamped by the same MAX_CRIT_CHANCE as everything else below, so it
+	-- can never push a player past the existing ceiling either.
+	local luckBonus = NewPlayerLuckConfig.IsActive(player) and NewPlayerLuckConfig.CritChanceBonus or 0
+	local groupBonus = player:GetAttribute("GroupMember") == true and GroupRewardConfig.CritChanceBonus or 0
+	local prophecyBonus = math.clamp(
+		tonumber(player:GetAttribute("ProphecyCritChanceBonus")) or 0,
+		0,
+		0.2
+	)
+	local forgeBonus = math.clamp(
+		tonumber(player:GetAttribute("ForgeCritChanceBonus")) or 0,
+		0,
+		0.12
+	)
+
+	-- Mundane Studios members get the same small, additive treatment as
+	-- New Player Luck. The server owns GroupMember and the existing global
+	-- cap still applies after every source has been stacked.
+	local total = TreeUpgrades.GetSummedEffectFromAttributes(player, "CritChance")
+		+ sanctumCrit
+		+ luckBonus
+		+ groupBonus
+		+ prophecyBonus
+		+ forgeBonus
+	return math.min(MAX_CRIT_CHANCE, total)
 end
 
 function CriticalsController.GetCritMultiplierBonus(player)

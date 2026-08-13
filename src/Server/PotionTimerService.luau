@@ -78,7 +78,24 @@ local expirationTasks = {}   -- [player] = { [effectName] = thread }
 -------------------------------------------------------------------
 -- REMOTES (for UI to show live countdowns)
 -------------------------------------------------------------------
+-- Was a bare FindFirstChild with no creation fallback -- unlike every
+-- other remote-folder lookup in this codebase (see ensureRemote in
+-- ProgressionService/LeaderboardService/etc.), so a place where
+-- "PotionRemotes" wasn't already manually pre-created in Studio would
+-- crash this ENTIRE module on the very next line (indexing nil). Given
+-- both this file's and Potiontimerhud.client.luau's own docstrings
+-- describe the remotes as something that must "already exist" rather
+-- than a setup step to perform, they're very likely already present in
+-- the live place -- but every system built this session that reuses
+-- "EssenceX15" (Essence Rush, Daily day 7, playtime chests, promo
+-- codes) depends on this module loading without erroring, so it's worth
+-- making self-sufficient rather than trusting that assumption forever.
 local remotesFolder = ReplicatedStorage:FindFirstChild("PotionRemotes")
+if not remotesFolder then
+	remotesFolder = Instance.new("Folder")
+	remotesFolder.Name = "PotionRemotes"
+	remotesFolder.Parent = ReplicatedStorage
+end
 
 local potionUpdated = remotesFolder:FindFirstChild("PotionUpdated")
 if not potionUpdated then
@@ -91,6 +108,11 @@ end
 -- (avoids a race condition with PotionUpdated firing before the
 -- client's listener is connected).
 local getActivePotions = remotesFolder:FindFirstChild("GetActivePotions")
+if not getActivePotions then
+	getActivePotions = Instance.new("RemoteFunction")
+	getActivePotions.Name = "GetActivePotions"
+	getActivePotions.Parent = remotesFolder
+end
 
 local function fireUpdate(player, effectName, remaining, active)
 	potionUpdated:FireClient(player, effectName, remaining, active)

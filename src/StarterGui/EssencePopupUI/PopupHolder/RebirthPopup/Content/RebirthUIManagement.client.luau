@@ -7,6 +7,9 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local Rebirth = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("Rebirth")
 local module = require(game:GetService("ReplicatedStorage"):WaitForChild("RebirthEffect"))
+local RebirthModule = require(game:GetService("ReplicatedStorage"):WaitForChild("RebirthHandler"))
+local Juice = require(game:GetService("ReplicatedStorage"):WaitForChild("Juice"))
+local juiceLayer = Juice.GetLayer(playerGui)
 -------------------------------------------------------------------
 -- THEME (matched to the dark purple / gold-orange / green look)
 -------------------------------------------------------------------
@@ -132,6 +135,62 @@ for _, button in script.Parent:GetDescendants() do
 	end
 end
 
+local MILESTONE_COLOR = Color3.fromRGB(255, 165, 60)
+
+-- Milestone rebirths (see RebirthHandler.luau's MILESTONES table -- 1, 5,
+-- 10, 25, 50) grant a permanent bonus on top of the normal per-rebirth
+-- boost, a genuinely bigger moment than an ordinary rebirth, but until
+-- now got the exact same treatment as every other one. Layered AFTER the
+-- base RebirthEffect finishes (via handle.Completed below) rather than
+-- competing with it for the same screen space.
+local function celebrateMilestoneIfAny(rebirthCount)
+	local milestone = RebirthModule.GetMilestone(rebirthCount)
+	if not milestone or not juiceLayer then
+		return
+	end
+
+	local center = UDim2.fromScale(0.5, 0.4)
+
+	Juice.Flash(juiceLayer, { Color = MILESTONE_COLOR, Peak = 0.45, Duration = 0.6 })
+	Juice.Ring(juiceLayer, center, {
+		Color = MILESTONE_COLOR, StartSize = 30, EndSize = 320, Duration = 0.9, Thickness = 5,
+	})
+	Juice.Burst(juiceLayer, center, {
+		Count = 26,
+		Colors = { MILESTONE_COLOR, Color3.fromRGB(255, 255, 255) },
+		Distance = 260,
+		Duration = 1.0,
+		Size = { 6, 13 },
+	})
+
+	Juice.FloatText(juiceLayer, center, "⭐ MILESTONE: " .. (milestone.title or "Reborn"), {
+		Color = MILESTONE_COLOR,
+		Duration = 2.0,
+		Rise = 90,
+		TextSize = 34,
+	})
+
+	if milestone.description then
+		task.delay(0.2, function()
+			Juice.FloatText(juiceLayer, center + UDim2.fromScale(0, 0.1), milestone.description, {
+				Color = Color3.fromRGB(255, 255, 255),
+				Duration = 2.2,
+				Rise = 70,
+				TextSize = 18,
+			})
+		end)
+	end
+
+	local sound = Juice.FindSound("SFX/UI/UIPop")
+	if sound then
+		for i = 0, 3 do
+			task.delay(i * 0.08, function()
+				Juice.PlaySound(sound, { Pitch = 1.1 + i * 0.18, Volume = 0.55 })
+			end)
+		end
+	end
+end
+
 Rebirth.OnClientEvent:Connect(function()
 	RebirthGui.Visible = false
 	backdrop.Visible = false
@@ -143,6 +202,7 @@ Rebirth.OnClientEvent:Connect(function()
 
 	handle.Completed:Connect(function()
 		print("Rebirth animation done, GUI is clean again")
+		celebrateMilestoneIfAny(player:GetAttribute("Rebirths"))
 	end)
 end)
 

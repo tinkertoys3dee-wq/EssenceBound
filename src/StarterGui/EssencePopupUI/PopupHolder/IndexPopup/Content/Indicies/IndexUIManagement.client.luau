@@ -27,14 +27,16 @@ local function applyButtonFeel(button, hoverScale, baseColor, hoverColor, parent
 	hoverScale = hoverScale or 1.05
 
 	local tweener = parent or button
-	local UIScale = parent:FindFirstChild("UIScale") 
-	local baseSize = tweener.Size
 
-	local function scaled(mult)
-		return UDim2.new(
-			baseSize.X.Scale * mult, baseSize.X.Offset * mult,
-			baseSize.Y.Scale * mult, baseSize.Y.Offset * mult
-		)
+	-- Same fix as SettingsUIManagement.client.luau / ShopUITweens.client.luau's
+	-- copies of this exact helper: find-or-create rather than a bare
+	-- FindFirstChild, since every hover/press handler below tweens UIScale
+	-- directly and a nil target there throws on every interaction.
+	local UIScale = tweener:FindFirstChild("UIScale")
+	if not UIScale then
+		UIScale = Instance.new("UIScale")
+		UIScale.Scale = 1
+		UIScale.Parent = tweener
 	end
 
 	local highlightStroke
@@ -51,7 +53,9 @@ local function applyButtonFeel(button, hoverScale, baseColor, hoverColor, parent
 	end
 
 	button.MouseEnter:Connect(function()
-		tween(UIScale, TweenInfo.new(0.15, Enum.EasingStyle.Quad), {Scale = 1.05}):Play()
+		-- Was hardcoded to 1.05, ignoring the hoverScale argument every
+		-- caller actually passes (1.3 here).
+		tween(UIScale, TweenInfo.new(0.15, Enum.EasingStyle.Quad), {Scale = hoverScale}):Play()
 		if hoverColor then
 			tween(tweener, TweenInfo.new(0.15), {BackgroundColor3 = hoverColor}):Play()
 		end
@@ -110,6 +114,7 @@ end
 
 local PU = game:GetService("ReplicatedStorage"):WaitForChild("Cloneables"):WaitForChild("HoverPopup")
 local Data = require(game.ReplicatedStorage:WaitForChild("EssenceDatas"))
+local EssenceVisuals = require(game.ReplicatedStorage:WaitForChild("EssenceVisuals"))
 
 local function createTooltip()
 	local PUC = PU:Clone()
@@ -135,22 +140,69 @@ end
 -- Assuming your grid slots are inside a frame called "GridContainer"
 local gridContainer = script.Parent -- Adjust this path to point to the frame holding your slots
 
+-- Existing place files only authored Earth/Shadow slots. Create Solar from
+-- the closest visual template before binding hover handlers, so it joins the
+-- same grid and cannot be absent from the Index after a filesystem sync.
+local solarSlot = gridContainer:FindFirstChild("Solar Essence")
+if not solarSlot then
+	local template = gridContainer:FindFirstChild("Shadow Essence") or gridContainer:FindFirstChild("Earth Essence")
+	if template and template:IsA("GuiObject") then
+		solarSlot = template:Clone()
+		solarSlot.Name = "Solar Essence"
+		solarSlot.LayoutOrder = template.LayoutOrder + 1
+		solarSlot.Visible = player:GetAttribute("SolarEssenceDiscovered") == true
+		solarSlot:SetAttribute("AstralAccentColor", Color3.fromRGB(255, 190, 62))
+		solarSlot.Parent = gridContainer
+
+		for _, descendant in ipairs(solarSlot:GetDescendants()) do
+			if descendant:IsA("TextLabel") or descendant:IsA("TextButton") then
+				descendant.Text = descendant.Text:gsub("Shadow", "Solar"):gsub("SHADOW", "SOLAR")
+			end
+		end
+
+		local image = (solarSlot:IsA("ImageLabel") or solarSlot:IsA("ImageButton"))
+			and solarSlot
+			or solarSlot:FindFirstChildWhichIsA("ImageLabel", true)
+			or solarSlot:FindFirstChildWhichIsA("ImageButton", true)
+		if image then
+			EssenceVisuals.ApplyToImage(image, "Solar Essence")
+		end
+	end
+end
+
+if solarSlot then
+	local function refreshSolarVisibility()
+		solarSlot.Visible = player:GetAttribute("SolarEssenceDiscovered") == true
+	end
+	refreshSolarVisibility()
+	player:GetAttributeChangedSignal("SolarEssenceDiscovered"):Connect(refreshSolarVisibility)
+end
+
 for _, slot in pairs(gridContainer:GetChildren()) do
 	if slot:IsA("GuiButton") or slot:IsA("Frame") then
 
 		-- When mouse enters the slot
 		slot.MouseEnter:Connect(function()
 			hoveredSlot = slot
-			if slot.Name ~= "Frame" then
-							popup.Title.Text = slot.Name -- E.g., "Water Essence"
 
-						
-							if slot.Name == "Shadow Essence" then
-								popup.Description.Text = "Rarity: ".. Data[slot.Name].Rarity.. "\n".. "Discovered: ".. tostring(player:WaitForChild(slot.Name).value).. "\n\n".. "X^.02 Extra Essence Per Shadow Essence"
-								print(popup.Description.Text)
-							else
-					popup.Description.Text = "Rarity: ".. Data[slot.Name].Rarity.. "\n".. "Discovered: ".. tostring(player:WaitForChild(slot.Name).value)
-							end
+			-- Was `if slot.Name ~= "Frame" then` -- a blocklist that only
+			-- excludes one specific non-essence name, rather than an
+			-- allowlist of the essences this actually has data for.
+			-- EssenceDatas is catalog-derived (Earth/Shadow/Solar),
+			-- so any OTHER non-"Frame" child in this grid would have hit
+			-- Data[slot.Name].Rarity on a nil table and errored. Checking
+			-- Data[slot.Name] directly is both the real requirement and
+			-- self-documenting about what a "valid slot" means here.
+			if Data[slot.Name] then
+				popup.Title.Text = slot.Name -- E.g., "Water Essence"
+
+				if slot.Name == "Shadow Essence" then
+					popup.Description.Text = "Rarity: ".. Data[slot.Name].Rarity.. "\n".. "Discovered: ".. tostring(player:WaitForChild(slot.Name).Value).. "\n\n".. "Lifetime Shadow empowers global essence with a 0.2 power curve."
+				elseif slot.Name == "Solar Essence" then
+					popup.Description.Text = "Rarity: ".. Data[slot.Name].Rarity.. "\n".. "Discovered: ".. tostring(player:WaitForChild(slot.Name).Value).. "\n\n".. "Solar Radiance gains +5% per lifetime order of magnitude, up to +50%."
+				else
+					popup.Description.Text = "Rarity: ".. Data[slot.Name].Rarity.. "\n".. "Discovered: ".. tostring(player:WaitForChild(slot.Name).Value)
+				end
 			end
 			-- Update text (You can pull this data from your ModuleScript or attributes!)
 		

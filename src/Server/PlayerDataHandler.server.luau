@@ -31,6 +31,7 @@ local function formatNumber(value: number): string
 end
 
 local essenceMulti = require(game:GetService("ReplicatedStorage"):WaitForChild("EssenceMultiplier"))
+local MonetizationConfig = require(game:GetService("ReplicatedStorage"):WaitForChild("MonetizationConfig"))
 
 -- ============================================================
 -- CONFIG
@@ -91,36 +92,57 @@ end
 -- ============================================================
 local BS = game:GetService("BadgeService")
 local RP = game:GetService("ReplicatedStorage")
+local NewPlayerLuckConfig = require(RP:WaitForChild("NewPlayerLuckConfig"))
+local ZonesConfig = require(RP:WaitForChild("ZonesConfig"))
 local function loadPlayerData(player)
 	local clone = templateModule:Clone()
 	clone.Name = "PlayerData"
 	clone.Parent = player
 
-	local playerFolder = Instance.new("Folder")
-	playerFolder.Name = player.UserId
-	playerFolder.Parent = RP:WaitForChild("PlayerOrbs")
-
-	local health = Instance.new("IntValue")
-	health.Name = "Health"
-	health.Value = 100
-	health.Parent = playerFolder
-
-	local maxHealth = Instance.new("IntValue")
-	maxHealth.Name = "MaxHealth"
-	maxHealth.Value = 100
-	maxHealth.Parent = playerFolder
-
-	local data = require(clone) 
+	-- A per-player Folder + Health/MaxHealth IntValues used to be created
+	-- here under ReplicatedStorage.PlayerOrbs[UserId] on every single join,
+	-- and never destroyed on leave -- an unbounded, network-replicated
+	-- Instance leak that grew with every player who ever joined a given
+	-- server, on top of costing every connected client's own copy of
+	-- ReplicatedStorage. Confirmed dead: EssenceOrbController.luau owns HP
+	-- entirely internally now (OrbCurrentHP/OrbMaxHP attributes), and a
+	-- repo-wide search turns up no other reader of PlayerOrbs at all.
+	local data = require(clone)
 
 	local key = "Player_" .. player.UserId
 	local success, result = withRetries(function()
 		return playerDataStore:GetAsync(key)
 	end)
 
+	-- Only a fetch that SUCCEEDED and found nothing counts as "brand new"
+	-- below -- a fetch that FAILED (transient DataStore error) must never
+	-- be treated as a fresh account, or a returning player with real
+	-- progress could get misidentified as new on top of everything else
+	-- going wrong that attempt.
+	local isBrandNewPlayer = false
 	if success and result then
 		applySavedData(data, result)
 	elseif not success then
 		warn("PlayerDataHandler: failed to load data for " .. player.Name .. " after retries.")
+	else
+		isBrandNewPlayer = true
+	end
+
+	-- Stamped once, only for a genuinely first-ever join -- see
+	-- NewPlayerLuckConfig for what this drives. This can't just check "is
+	-- data.FirstJoinAt still 0" instead of tracking isBrandNewPlayer above:
+	-- an existing save that predates this field has FirstJoinAt sitting at
+	-- the template's default 0 too (nothing in saved data would have
+	-- overwritten it), which would misidentify every already-existing
+	-- player as brand new the first time each of their saves loads after
+	-- this shipped.
+	if isBrandNewPlayer then
+		data.FirstJoinAt = os.time()
+		-- FirstJourney.Eligible cannot default to true: returning saves that
+		-- predate the journey receive template defaults during the merge and
+		-- would otherwise be incorrectly put through new-player onboarding.
+		data.FirstJourney = type(data.FirstJourney) == "table" and data.FirstJourney or {}
+		data.FirstJourney.Eligible = true
 	end
 
 	-- OFFLINE HARVEST LOGIC REMOVED HERE --
@@ -143,15 +165,60 @@ local function loadPlayerData(player)
 	ShadowEssence:SetAttribute("Quantity", data.Essences["Shadow Essence"].Quantity)
 	ShadowEssence.Parent = leaderstats
 
+	local SolarEssence = Instance.new("StringValue")
+	SolarEssence.Name = "Solar Essence"
+	SolarEssence.Value = formatNumber(data.Essences.SolarEssence.Quantity)
+	SolarEssence:SetAttribute("Quantity", data.Essences.SolarEssence.Quantity)
+	SolarEssence.Parent = leaderstats
+
 	player:SetAttribute("ShadowEssence", data.Essences["Shadow Essence"].Quantity)
 	player:SetAttribute("EarthEssence", data.Essences.EarthEssence.Quantity)
+	player:SetAttribute("SolarEssence", data.Essences.SolarEssence.Quantity)
+
+	-- ===== LIFETIME SHADOW ESSENCE =====
+	-- Migration for saves written before this field existed: a lifetime
+	-- total behind the current balance is raised to match, so nobody loses
+	-- multiplier the first time they load after this shipped.
+	data.LifetimeShadowEssence = math.max(
+		tonumber(data.LifetimeShadowEssence) or 0,
+		tonumber(data.Essences["Shadow Essence"].Quantity) or 0
+	)
+	player:SetAttribute("ShadowEssenceLifetime", data.LifetimeShadowEssence)
+
+	-- ===== LIFETIME SOLAR ESSENCE =====
+	-- Mirrors Shadow's spend-safe migration/tracking contract. Solar's
+	-- permanent Radiance multiplier reads this total, never the spendable
+	-- balance, so buying a capstone cannot make the player weaker.
+	data.LifetimeSolarEssence = math.max(
+		tonumber(data.LifetimeSolarEssence) or 0,
+		tonumber(data.Essences.SolarEssence.Quantity) or 0
+	)
+	player:SetAttribute("SolarEssenceLifetime", data.LifetimeSolarEssence)
+
+	-- Tracks deltas so only genuine INCOME counts toward the lifetime
+	-- total -- spending in the Shadow Sanctum must not reduce it.
+	local lastShadowQuantity = tonumber(data.Essences["Shadow Essence"].Quantity) or 0
+	local lastSolarQuantity = tonumber(data.Essences.SolarEssence.Quantity) or 0
+
+	-- Mirror Sanctum levels onto attributes. The systems those upgrades
+	-- affect (EssenceOrbController, CollectionUpgrades, EssenceMultiplier)
+	-- read the attribute directly, the same way they already do for the
+	-- TreeUpgrades ids.
+	if type(data.SanctumUpgrades) ~= "table" then
+		data.SanctumUpgrades = {}
+	end
+	for upgradeId, level in pairs(data.SanctumUpgrades) do
+		player:SetAttribute(upgradeId, level)
+	end
 	
 	player:SetAttribute("ShadowEssenceDiscovered", data.Essences["Shadow Essence"].Discovered)
 	player:SetAttribute("EarthEssenceDiscovered", data.Essences.EarthEssence.Discovered)
+	player:SetAttribute("SolarEssenceDiscovered", data.Essences.SolarEssence.Discovered)
 	
 	EarthEssence.AttributeChanged:Connect(function(attribute)
 		if attribute == "Quantity" then
 			data.Essences.EarthEssence.Quantity = EarthEssence:GetAttribute("Quantity")
+			player:SetAttribute("EarthEssence", EarthEssence:GetAttribute("Quantity"))
 			
 			if not player:GetAttribute("4008378896042305") and data.Essences.EarthEssence.Quantity >= 500 then
 				player:SetAttribute("4008378896042305", true)
@@ -197,6 +264,56 @@ local function loadPlayerData(player)
 				if HighestDiscovered then
 					data.RarestEssence = HighestDiscovered
 					data.UniqueEssences = discoveries
+					-- Mirrors into an attribute (like Rebirths/RebirthCurrency
+					-- already do) so the "Rarest Essence" leaderstat below can
+					-- listen for changes instead of only ever reading the
+					-- value once at join -- same stale-leaderstat bug class.
+					player:SetAttribute("RarestEssence", HighestDiscovered)
+				end
+			end
+		end
+	end)
+
+	SolarEssence.AttributeChanged:Connect(function(attribute)
+		if attribute == "Quantity" then
+			data.Essences.SolarEssence.Quantity = SolarEssence:GetAttribute("Quantity")
+			player:SetAttribute("SolarEssence", SolarEssence:GetAttribute("Quantity"))
+			SolarEssence.Value = formatNumber(data.Essences.SolarEssence.Quantity)
+
+			local current = tonumber(SolarEssence:GetAttribute("Quantity")) or 0
+			local gained = current - lastSolarQuantity
+			lastSolarQuantity = current
+			if gained > 0 then
+				data.LifetimeSolarEssence = (tonumber(data.LifetimeSolarEssence) or 0) + gained
+				player:SetAttribute("SolarEssenceLifetime", data.LifetimeSolarEssence)
+			end
+
+			if data.Essences.SolarEssence.Discovered == false then
+				player:SetAttribute("SolarEssenceDiscovered", true)
+				data.Essences.SolarEssence.Discovered = true
+
+				local discoveryValue = player:FindFirstChild(data.Essences.SolarEssence.DisplayName)
+				if discoveryValue then
+					discoveryValue.Value = true
+				end
+
+				local highestDiscovered = nil
+				local previousRarity = -1
+				local discoveries = 0
+				for _, values in pairs(data.Essences) do
+					if values.Discovered then
+						discoveries += 1
+						if values.Rarity > previousRarity then
+							previousRarity = values.Rarity
+							highestDiscovered = values.DisplayName
+						end
+					end
+				end
+
+				if highestDiscovered then
+					data.RarestEssence = highestDiscovered
+					data.UniqueEssences = discoveries
+					player:SetAttribute("RarestEssence", highestDiscovered)
 				end
 			end
 		end
@@ -207,6 +324,18 @@ local function loadPlayerData(player)
 			data.Essences["Shadow Essence"].Quantity = ShadowEssence:GetAttribute("Quantity")
 			player:SetAttribute("ShadowEssence", ShadowEssence:GetAttribute("Quantity"))
 			ShadowEssence.Value = formatNumber(data.Essences["Shadow Essence"].Quantity)
+
+			-- Only count increases toward the lifetime total. A decrease is
+			-- the player spending in the Sanctum, which must never claw back
+			-- the multiplier they already earned.
+			local current = tonumber(ShadowEssence:GetAttribute("Quantity")) or 0
+			local gained = current - lastShadowQuantity
+			lastShadowQuantity = current
+
+			if gained > 0 then
+				data.LifetimeShadowEssence = (tonumber(data.LifetimeShadowEssence) or 0) + gained
+				player:SetAttribute("ShadowEssenceLifetime", data.LifetimeShadowEssence)
+			end
 
 			if data.Essences["Shadow Essence"].Discovered == false then
 				player:SetAttribute("ShadowEssenceDiscovered",true)
@@ -232,6 +361,11 @@ local function loadPlayerData(player)
 				if HighestDiscovered then
 					data.RarestEssence = HighestDiscovered
 					data.UniqueEssences = discoveries
+					-- Mirrors into an attribute (like Rebirths/RebirthCurrency
+					-- already do) so the "Rarest Essence" leaderstat below can
+					-- listen for changes instead of only ever reading the
+					-- value once at join -- same stale-leaderstat bug class.
+					player:SetAttribute("RarestEssence", HighestDiscovered)
 				end
 			end
 		end
@@ -246,10 +380,66 @@ local function loadPlayerData(player)
 	rarestEssence.Value = data.RarestEssence or ""
 	rarestEssence.Parent = leaderstats
 
+	-- Was set once above and never again -- a player who discovers a
+	-- rarer essence type mid-session (data.RarestEssence updates
+	-- correctly, see the discovery blocks above) never saw it reflected
+	-- here. Same mirror pattern as Rebirths/Prestige Shards.
+	player:GetAttributeChangedSignal("RarestEssence"):Connect(function()
+		rarestEssence.Value = tostring(player:GetAttribute("RarestEssence") or "")
+	end)
+
 	local rebirths = Instance.new("IntValue")
 	rebirths.Name = "Rebirths"
 	rebirths.Value = data.Rebirths or 0
 	rebirths.Parent = leaderstats
+
+	-- Was set once here and never again -- RebirthHandler.luau's
+	-- PerformRebirth updates player:GetAttribute("Rebirths") correctly
+	-- (everything server-side reads that live), but nothing mirrored it
+	-- back into this leaderstat's .Value, so the Roblox player list kept
+	-- showing whatever rebirth count a player joined with even after they
+	-- rebirthed several more times in the same session. Same mirror
+	-- pattern as the Prestige Shards leaderstat just below.
+	player:GetAttributeChangedSignal("Rebirths"):Connect(function()
+		rebirths.Value = tonumber(player:GetAttribute("Rebirths")) or 0
+	end)
+
+	-- ===== PRESTIGE SHARDS (RebirthCurrency) =====
+	-- The attribute itself (not this leaderstat) is the source of truth --
+	-- RebirthHandler.luau's PerformRebirth, and the Prestige Shop's own
+	-- purchase/reward code, all read and write player:GetAttribute
+	-- ("RebirthCurrency") directly. This leaderstat is a pure DISPLAY
+	-- mirror driven by the attribute, so every future call site that
+	-- changes the balance gets a correct display for free instead of
+	-- needing to remember to also touch a leaderstat.
+	--
+	-- Previously nothing ever initialized this attribute at join -- it was
+	-- only ever set the moment a player performed their NEXT rebirth this
+	-- session, so a returning player with an already-nonzero balance saw
+	-- nothing (attribute nil, shop balance reading 0) until they rebirthed
+	-- again. Same bug shape as the Sanctum "stuck showing 0" issue.
+	local rebirthCurrency = Instance.new("IntValue")
+	rebirthCurrency.Name = "Prestige Shards"
+	rebirthCurrency.Value = tonumber(data.RebirthCurrency) or 0
+	rebirthCurrency.Parent = leaderstats
+
+	player:SetAttribute("RebirthCurrency", tonumber(data.RebirthCurrency) or 0)
+	player:GetAttributeChangedSignal("RebirthCurrency"):Connect(function()
+		local value = tonumber(player:GetAttribute("RebirthCurrency")) or 0
+		data.RebirthCurrency = value
+		rebirthCurrency.Value = value
+	end)
+
+	-- Mirror Prestige Shop levels onto attributes, same reasoning as the
+	-- SanctumUpgrades mirror above: the systems those upgrades affect
+	-- (EssenceMultiplier, EssenceOrbController, OrbClickManager,
+	-- CursorCollection, RebirthHandler) all read the attribute directly.
+	if type(data.RebirthShopUpgrades) ~= "table" then
+		data.RebirthShopUpgrades = {}
+	end
+	for upgradeId, level in pairs(data.RebirthShopUpgrades) do
+		player:SetAttribute(upgradeId, level)
+	end
 
 	for _, value in pairs(data.Essences) do
 		local discovered = value.Discovered
@@ -263,12 +453,64 @@ local function loadPlayerData(player)
 		player:SetAttribute(string.gsub(name, "%s", ""), value)
 	end
 
-	for id, owned in pairs(data.Gamepasses) do
-		player:SetAttribute(tonumber(id), owned.Owned)
+	-- DataStore round-trips can stringify numeric dictionary keys. Collapse
+	-- both legacy forms into one string-keyed ownership table so a stale
+	-- default `false` entry can never overwrite a saved `true` attribute.
+	local normalizedGamepasses = {}
+	local savedGamepasses = type(data.Gamepasses) == "table" and data.Gamepasses or {}
+	for id, owned in pairs(savedGamepasses) do
+		local attribute = MonetizationConfig.GetOwnershipAttribute(id)
+		local wasOwned = type(owned) == "table" and owned.Owned == true
+		local existing = normalizedGamepasses[attribute]
+		normalizedGamepasses[attribute] = {
+			Owned = wasOwned or (existing and existing.Owned == true) or false,
+		}
+	end
+	data.Gamepasses = normalizedGamepasses
+	for attribute, owned in pairs(normalizedGamepasses) do
+		player:SetAttribute(attribute, owned.Owned)
 	end
 	
+	-- CriticalsController and NewPlayerLuckIndicator.client.luau both read
+	-- this directly (never data.FirstJoinAt, which they can't reach) --
+	-- nil while ineligible or expired, a real future timestamp for the
+	-- first 24 hours after a genuinely brand-new save's first join.
+	player:SetAttribute("NewPlayerLuckExpiresAt", NewPlayerLuckConfig.GetExpiresAt(data.FirstJoinAt))
+
+	-- Zones: mirror the current zone id + each PAID zone's unlock flag
+	-- onto attributes. GetEssence.luau's roll runs client-side on every
+	-- orb spawn and needs this readable without a remote round trip, same
+	-- reasoning as every other per-system mirror above. earth_zone is
+	-- never mirrored as its own unlock flag -- ZonesConfig.IsZoneUnlocked
+	-- already treats a zone with no UnlockCosts as unconditionally
+	-- unlocked regardless of what's saved, so there's nothing to check.
+	if type(data.Zones) ~= "table" then
+		data.Zones = { Current = "earth_zone", Unlocked = {} }
+	end
+	if type(data.Zones.Unlocked) ~= "table" then
+		data.Zones.Unlocked = {}
+	end
+
+	player:SetAttribute("CurrentZoneId", tostring(data.Zones.Current or "earth_zone"))
+	for _, zone in ipairs(ZonesConfig.Zones) do
+		if next(zone.UnlockCosts or {}) then
+			player:SetAttribute(ZonesConfig.UnlockedAttributeName(zone.Id), data.Zones.Unlocked[zone.Id] == true)
+		end
+	end
+
 	player:SetAttribute("Rebirths", data.Rebirths)
 	player:SetAttribute("SeenTutorial", data.SeenTutorial)
+	player:SetAttribute("SeenFirstCrit", data.SeenFirstCrit)
+	player:SetAttribute("SeenFavoritePrompt", data.SeenFavoritePrompt)
+	player:SetAttribute("SeenWhatsNewVersion", tonumber(data.SeenWhatsNewVersion) or 0)
+	-- Live mirrors for the storefront and HUD. ProductPurchaseHandler owns
+	-- writes after a receipt succeeds; clients can only read these values.
+	player:SetAttribute("RobuxSpent", math.max(0, tonumber(data.RobuxSpent) or 0))
+	player:SetAttribute("PurchaseCount", math.max(0, math.floor(tonumber(data.PurchaseCount) or 0)))
+	player:SetAttribute("FirstPurchaseBonusClaimed", data.FirstPurchaseBonusClaimed == true)
+	local firstJourney = type(data.FirstJourney) == "table" and data.FirstJourney or {}
+	player:SetAttribute("FirstJourneyEligible", firstJourney.Eligible == true)
+	player:SetAttribute("FirstJourneyCompleted", firstJourney.Completed == true)
 	
 	for name, level in pairs(data.Upgrades) do
 		player:SetAttribute(name, level)
@@ -290,7 +532,9 @@ local function loadPlayerData(player)
 		SE[essence] = dict.Quantity
 		local temp = dict.savedEPM
 		if not temp or temp == 0 then 
-			temp = 50
+			-- Mythic Solar must not inherit the legacy 50/min offline floor;
+			-- see EPMService for the matching live-session calculation.
+			temp = essence == "SolarEssence" and 1 or 50
 		end
 		savedEPM[essence] = temp
 	end
@@ -301,6 +545,12 @@ local function loadPlayerData(player)
 		SavedEPM = savedEPM
 	}
 	sessionStartTime[player.UserId] = os.clock()
+
+	-- PlayerData is parented before GetAsync finishes, so merely waiting for
+	-- the ModuleScript is not a reliable readiness signal. New services can
+	-- wait on this attribute and know the saved merge, leaderstats and live
+	-- mirrors above are all complete.
+	player:SetAttribute("PlayerDataLoaded", true)
 end
 
 -- ============================================================
@@ -376,6 +626,25 @@ game:BindToClose(function()
 	for _, player in ipairs(players) do
 		task.spawn(function()
 			savePlayerData(player, true)
+
+			-- savePlayerData no-ops immediately if a save for this player
+			-- was ALREADY in flight (saveLocks -- see its own comment) --
+			-- almost always another autosave. Normally that's fine, since
+			-- another one runs in 2 minutes regardless. Here it isn't: if
+			-- this callback moved on believing the player is saved while
+			-- that pre-existing save is still actually running, it can get
+			-- killed by the process terminating right after BindToClose
+			-- returns, silently losing whatever it hadn't written yet.
+			-- Wait for it to actually finish before counting this player
+			-- as done. Capped so one stuck lock can't hang every other
+			-- player's own wait below it.
+			local userId = player.UserId
+			local lockWaited = 0
+			while saveLocks[userId] and lockWaited < 20 do
+				task.wait(0.5)
+				lockWaited += 0.5
+			end
+
 			remaining -= 1
 		end)
 	end

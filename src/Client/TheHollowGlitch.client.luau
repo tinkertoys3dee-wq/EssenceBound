@@ -21,8 +21,7 @@ local badgefunc = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):W
 local GLITCH_CHARS = "!@#$%&*?/\\|~^#▓▒░"
 
 local RP = game:GetService("ReplicatedStorage")
-local loading = RP:WaitForChild("Remotes"):WaitForChild("LoadingDone")
-loading.Event:Wait()
+local PresentationCoordinator = require(RP:WaitForChild("PresentationCoordinator"))
 
 local function scrambleText(originalText, intensity)
 	intensity = intensity or 0.35
@@ -92,9 +91,25 @@ local ambientIntensified = false
 local function getAllGuiObjects()
 	local objects = {}
 	for _, sg in ipairs(playerGui:GetChildren()) do
-		if sg:IsA("ScreenGui") and sg.Enabled and sg.Name ~= "HollowedOneUI" then
+		if sg:IsA("ScreenGui")
+			and sg.Enabled
+			and sg.Name ~= "HollowedOneUI"
+			and sg.Name ~= "TutorialGui"
+			and sg.Name ~= "LoadingScreen"
+		then
 			for _, d in ipairs(sg:GetDescendants()) do
-				if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("Frame") or d:IsA("ImageLabel") then
+				-- Never mutate input targets or their containers. The old broad
+				-- Frame/TextButton pool could displace the great orb, a modal
+				-- backdrop, or a button while the player was trying to click it.
+				local interactive = d:IsA("GuiButton") or (d:IsA("GuiObject") and d.Active)
+				local ancestor = d.Parent
+				while ancestor and ancestor ~= sg and not interactive do
+					if ancestor:IsA("GuiButton") or (ancestor:IsA("GuiObject") and ancestor.Active) then
+						interactive = true
+					end
+					ancestor = ancestor.Parent
+				end
+				if not interactive and (d:IsA("TextLabel") or d:IsA("ImageLabel")) then
 					table.insert(objects, d)
 				end
 			end
@@ -158,12 +173,18 @@ end
 
 task.spawn(function()
 	while true do
+		if not PresentationCoordinator.WaitUntilReady(5) then
+			task.wait(1)
+			continue
+		end
 		if ambientIntensified then
 			task.wait(math.random(2, 5))
 		else
 			task.wait(math.random(AMBIENT_INTERVAL_MIN, AMBIENT_INTERVAL_MAX))
 		end
-		ambientGlitchEvent()
+		if not PresentationCoordinator.HasPendingPresentation() then
+			ambientGlitchEvent()
+		end
 	end
 end)
 
@@ -292,7 +313,11 @@ table.sort(Milestones, function(a, b) return a.Threshold < b.Threshold end)
 
 local triggeredTiers = {}
 local eventQueue = {}
-local isEventActive = false
+local isEventActive = false -- true only while a queued encounter owns the foreground slot
+local eventWorkerRunning = false
+local HOLLOW_EVENT_GAP = 30
+local nextEventAllowedAt = 0
+local eventGapScheduled = false
 -- NEW: in-memory log of past encounters, viewable in-game (see PART 5 below).
 local sightingsLog = {}
 
@@ -312,6 +337,7 @@ dimOverlay.Name = "DimOverlay"
 dimOverlay.Size = UDim2.new(1, 0, 1, 0)
 dimOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
 dimOverlay.BackgroundTransparency = 1
+dimOverlay.Active = false
 dimOverlay.ZIndex = 5
 dimOverlay.Parent = screenGui
 
@@ -402,17 +428,54 @@ local eventFrame = Instance.new("Frame")
 eventFrame.Name = "EventFrame"
 eventFrame.AnchorPoint = Vector2.new(0.5, 0)
 eventFrame.Position = UDim2.new(0.5, 0, -1.1, 0)
-eventFrame.Size = UDim2.new(0.34, 0, 0.3, 0)
+-- Author at one stable aspect ratio and scale the whole composition. The old
+-- mixed scale + minimum-height layout could be 360px tall on one viewport and
+-- 740px on another, causing its internally proportional sections to collide.
+eventFrame.Size = UDim2.fromOffset(480, 740)
 eventFrame.BackgroundColor3 = Color3.fromRGB(6, 5, 8)
 eventFrame.BackgroundTransparency = 0.05
 eventFrame.BorderSizePixel = 0
 eventFrame.ZIndex = 20
 eventFrame.Parent = screenGui
 
-local sizeConstraint = Instance.new("UISizeConstraint")
-sizeConstraint.MinSize = Vector2.new(330, 500)
-sizeConstraint.MaxSize = Vector2.new(480, 740)
-sizeConstraint.Parent = eventFrame
+local eventScale = Instance.new("UIScale")
+eventScale.Name = "ResponsiveScale"
+eventScale.Scale = 1
+eventScale.Parent = eventFrame
+
+local hollowViewportConnection = nil
+local skipEventButton = nil
+local function updateHollowedLayout()
+	local camera = workspace.CurrentCamera
+	local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+	local availableHeight = math.max(180, viewport.Y - 56)
+	local availableWidth = math.max(180, viewport.X - 24)
+	local scale = math.min(1, availableHeight / 740, availableWidth / 480)
+	-- 0.24 is still legible for the authored card and, unlike the previous
+	-- 0.34 floor, keeps all 740 authored pixels inside a 240px-high landscape
+	-- viewport. The separate skip control never shrinks below 44px.
+	eventScale.Scale = math.clamp(scale, 0.24, 1)
+	if skipEventButton then
+		-- The skip target remains a full 44px touch target even when the event
+		-- art has to shrink on a short phone viewport.
+		skipEventButton.Position = UDim2.new(0.5, math.floor(240 * eventScale.Scale), 0.05, 10)
+	end
+end
+
+local function bindHollowedViewport()
+	if hollowViewportConnection then
+		hollowViewportConnection:Disconnect()
+		hollowViewportConnection = nil
+	end
+	local camera = workspace.CurrentCamera
+	if camera then
+		hollowViewportConnection = camera:GetPropertyChangedSignal("ViewportSize"):Connect(updateHollowedLayout)
+	end
+	updateHollowedLayout()
+end
+
+workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(bindHollowedViewport)
+bindHollowedViewport()
 
 local frameCorner = Instance.new("UICorner")
 frameCorner.CornerRadius = UDim.new(0, 6)
@@ -1072,6 +1135,60 @@ footerText.TextSize = 12
 footerText.ZIndex = 21
 footerText.Parent = footerHolder
 
+-- Every encounter is flavor, never a gameplay gate. Keep a persistent,
+-- keyboard/gamepad/mobile-accessible escape hatch visible from the first
+-- entrance frame onward; skipping still records the reached milestone and
+-- sighting, it only shortens the cinematic presentation.
+skipEventButton = Instance.new("TextButton")
+skipEventButton.Name = "SkipEventButton"
+skipEventButton.AnchorPoint = Vector2.new(1, 0)
+skipEventButton.Position = UDim2.new(0.5, 240, 0.05, 10)
+skipEventButton.Size = UDim2.fromOffset(112, 44)
+skipEventButton.BackgroundColor3 = Color3.fromRGB(22, 18, 27)
+skipEventButton.BackgroundTransparency = 0.12
+skipEventButton.BorderSizePixel = 0
+skipEventButton.AutoButtonColor = false
+skipEventButton.Font = Enum.Font.RobotoMono
+skipEventButton.Text = "SKIP  ›"
+skipEventButton.TextColor3 = Color3.fromRGB(210, 205, 200)
+skipEventButton.TextSize = 12
+skipEventButton.Visible = false
+skipEventButton.ZIndex = 70
+skipEventButton.Parent = screenGui
+updateHollowedLayout()
+
+local skipCorner = Instance.new("UICorner")
+skipCorner.CornerRadius = UDim.new(0, 6)
+skipCorner.Parent = skipEventButton
+
+local skipStroke = Instance.new("UIStroke")
+skipStroke.Color = Color3.fromRGB(150, 30, 35)
+skipStroke.Thickness = 1
+skipStroke.Transparency = 0.2
+skipStroke.Parent = skipEventButton
+
+local skipRequested = false
+skipEventButton.Activated:Connect(function()
+	if skipEventButton.Visible then
+		skipRequested = true
+		skipEventButton.Text = "SKIPPING..."
+		skipEventButton.Active = false
+	end
+end)
+
+skipEventButton.MouseEnter:Connect(function()
+	TweenService:Create(skipEventButton, TweenInfo.new(0.12), {
+		BackgroundColor3 = Color3.fromRGB(55, 24, 31),
+		TextColor3 = Color3.fromRGB(255, 255, 255),
+	}):Play()
+end)
+skipEventButton.MouseLeave:Connect(function()
+	TweenService:Create(skipEventButton, TweenInfo.new(0.12), {
+		BackgroundColor3 = Color3.fromRGB(22, 18, 27),
+		TextColor3 = Color3.fromRGB(210, 205, 200),
+	}):Play()
+end)
+
 -- ===== NEW: Sightings Log panel (press H to toggle) =====
 -- A small collectible-feeling log of every past encounter: tier name,
 -- time it happened, and the lines it said. Hidden by default.
@@ -1182,17 +1299,27 @@ premonitionSound.Parent = SFX
 -- EFFECT HELPERS
 ----------------------------------------------------------------
 
+local staticBurstVersion = 0
 local function staticFlickerBurst(duration)
+	staticBurstVersion += 1
+	local version = staticBurstVersion
 	task.spawn(function()
 		local endTime = os.clock() + duration
-		while os.clock() < endTime do
+		while os.clock() < endTime and version == staticBurstVersion do
 			staticOverlay.Visible = true
 			task.wait(math.random(2, 5) / 100)
 			staticOverlay.Visible = false
 			task.wait(math.random(4, 10) / 100)
 		end
-		staticOverlay.Visible = false
+		if version == staticBurstVersion then
+			staticOverlay.Visible = false
+		end
 	end)
+end
+
+local function stopStaticFlicker()
+	staticBurstVersion += 1
+	staticOverlay.Visible = false
 end
 
 -- brief RGB-split flash on the figure + name, sells "reality is glitching" moments
@@ -1395,7 +1522,7 @@ task.spawn(function()
 		task.wait(math.random(6, 14))
 		if not isEventActive then
 			local progress, nextMilestone = getNextMilestoneProgress()
-			if nextMilestone and progress > 0.85 then
+			if nextMilestone and progress > 0.85 and not PresentationCoordinator.HasPendingPresentation() then
 				-- chance ramps from 0% at 85% progress up to ~40% right at the threshold
 				local chance = ((progress - 0.85) / 0.15) * 0.4
 				if math.random() < chance then
@@ -1407,9 +1534,13 @@ task.spawn(function()
 end)
 
 -- typewriter with occasional glitch-flash on letters
-local function typeText(label, fullText, charDelay)
+local function typeText(label, fullText, charDelay, canSkip)
 	label.Text = ""
 	for i = 1, #fullText do
+		if canSkip and skipRequested then
+			label.Text = fullText
+			return false
+		end
 		local revealed = fullText:sub(1, i)
 		local lastChar = fullText:sub(i, i)
 		if lastChar:match("%a") and math.random() < 0.12 then
@@ -1422,11 +1553,27 @@ local function typeText(label, fullText, charDelay)
 	-- settle without cursor briefly, then blink a couple times before clearing
 	label.Text = fullText
 	for i = 1, 3 do
+		if canSkip and skipRequested then
+			label.Text = fullText
+			return false
+		end
 		task.wait(0.25)
 		label.Text = fullText .. "▍"
 		task.wait(0.25)
 		label.Text = fullText
 	end
+	return true
+end
+
+local function waitForEventBeat(duration)
+	local deadline = os.clock() + math.max(0, duration)
+	while os.clock() < deadline do
+		if skipRequested then
+			return false
+		end
+		RunService.Heartbeat:Wait()
+	end
+	return true
 end
 
 -- camera shake: tracks the last applied offset so it can be undone before
@@ -1556,9 +1703,22 @@ end
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then return end
-	if input.KeyCode == Enum.KeyCode.H then
+	if isEventActive and (input.KeyCode == Enum.KeyCode.Escape or input.KeyCode == Enum.KeyCode.ButtonB) then
+		skipRequested = true
+		skipEventButton.Text = "SKIPPING..."
+		skipEventButton.Active = false
+	elseif input.KeyCode == Enum.KeyCode.H
+		and not isEventActive
+		and not PresentationCoordinator.HasPendingPresentation()
+	then
 		logFrame.Visible = not logFrame.Visible
 		if logFrame.Visible then refreshSightingsLog() end
+	end
+end)
+
+PresentationCoordinator.Changed:Connect(function()
+	if PresentationCoordinator.HasPendingPresentation() then
+		logFrame.Visible = false
 	end
 end)
 
@@ -1568,23 +1728,53 @@ end)
 local UpdateData = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("UpdateData")
 
 local musics = game:GetService("SoundService"):WaitForChild("Music")
+local musicVolumeBeforeEvent = nil
 
 local function playHollowedEvent(milestone)
-	musics.Volume = 0
-	
+	local lease = PresentationCoordinator.Acquire("HollowedOneTier" .. tostring(milestone.Tier), {
+		Priority = 72,
+		QuietAfter = 1,
+	})
+	if not lease then
+		return
+	end
+
+	isEventActive = true
+	skipRequested = false
+	dimOverlay.Active = true
+	skipEventButton.Text = "SKIP  ›"
+	skipEventButton.Active = true
+	skipEventButton.Visible = true
+	logFrame.Visible = false
+	playerGui:SetAttribute("HollowedEventActive", true)
+
 	if milestone.Tier == 1 then
 		if not player:GetAttribute("1472053267504184") then
 			badgefunc:FireServer("1472053267504184")
 		end
 	end
-	
+
 	if milestone.Tier == 6 then
 		if not player:GetAttribute("3749419964014047") then
 			badgefunc:FireServer("3749419964014047")
 		end
 	end
-	
+
 	UpdateData:FireServer(true,"=","HollowedMilestones","HollowMilestone"..milestone.Tier)
+
+	-- Milestone progression is recorded before optional audio manipulation, so
+	-- a malformed Music container can never turn this cosmetic event into a
+	-- repeating gameplay bug. SoundGroup layouts expose Volume; folder-based
+	-- development layouts simply keep their current per-track volumes.
+	local previousMusicVolume = nil
+	local hasMusicVolume, capturedMusicVolume = pcall(function()
+		return musics.Volume
+	end)
+	if hasMusicVolume then
+		previousMusicVolume = capturedMusicVolume
+		musicVolumeBeforeEvent = previousMusicVolume
+		musics.Volume = 0
+	end
 	ambientIntensified = true
 
 	-- reset visuals
@@ -1616,51 +1806,65 @@ local function playHollowedEvent(milestone)
 	staticFlickerBurst(1.8)
 	droneSound:Play()
 	if ASSETS.WhisperSound ~= "rbxassetid://0" then whisperSound:Play() end
-	slideDown.Completed:Wait()
-
-	startBreathing()
-	startEmberEmitter()
-	startEyeTracking()
-
-	startRuneRing()
-	startGlyphEmitter()
-	startScanLine()
-	startTearBars()
-	startStripeAnimation()
-
-	-- eyebrow text types in
-	typeText(eyebrowLabel, trackOut(milestone.Eyebrow), 0.02)
-	task.wait(0.3)
-
-	-- reveal the shroud slowly (figure becomes more visible)
-	TweenService:Create(shroudLayer, TweenInfo.new(2.2, Enum.EasingStyle.Sine), { ImageTransparency = milestone.ShroudTransparency }):Play()
-	TweenService:Create(shroudLayerFar, TweenInfo.new(2.6, Enum.EasingStyle.Sine), { ImageTransparency = milestone.ShroudTransparency + 0.1 }):Play()
-	task.wait(0.6)
-
-	-- reveal the name with a glitchy scramble-in, chroma burst, stinger
-	local revealedName = getRevealedName(milestone.NameRevealPercent)
-	chromaBurst(1.0)
-	for i = 1, 6 do
-		local scrambled = scrambleText(revealedName, 0.6)
-		nameLabel.Text = scrambled
-		nameGhostRed.Text = scrambled
-		nameGhostCyan.Text = scrambled
-		task.wait(0.05)
+	while slideDown.PlaybackState == Enum.PlaybackState.Playing and not skipRequested do
+		RunService.Heartbeat:Wait()
 	end
-	nameLabel.Text = revealedName
-	nameGhostRed.Text = revealedName
-	nameGhostCyan.Text = revealedName
-	stingerSound:Play()
-	staticFlickerBurst(0.4)
-	TweenService:Create(underlineFlourish, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		Size = UDim2.new(0.55, 0, 0, 1.5),
-	}):Play()
-
-	if milestone.ShakeIntensity then
-		startCameraShake(milestone.ShakeIntensity)
+	if skipRequested and slideDown.PlaybackState == Enum.PlaybackState.Playing then
+		slideDown:Cancel()
 	end
 
-	task.wait(0.5)
+	if not skipRequested then
+		startBreathing()
+		startEmberEmitter()
+		startEyeTracking()
+
+		startRuneRing()
+		startGlyphEmitter()
+		startScanLine()
+		startTearBars()
+		startStripeAnimation()
+
+		-- eyebrow text types in
+		typeText(eyebrowLabel, trackOut(milestone.Eyebrow), 0.02, true)
+		waitForEventBeat(0.3)
+	end
+
+	if not skipRequested then
+		-- reveal the shroud slowly (figure becomes more visible)
+		TweenService:Create(shroudLayer, TweenInfo.new(2.2, Enum.EasingStyle.Sine), { ImageTransparency = milestone.ShroudTransparency }):Play()
+		TweenService:Create(shroudLayerFar, TweenInfo.new(2.6, Enum.EasingStyle.Sine), { ImageTransparency = milestone.ShroudTransparency + 0.1 }):Play()
+		waitForEventBeat(0.6)
+	end
+
+	if not skipRequested then
+		-- reveal the name with a glitchy scramble-in, chroma burst, stinger
+		local revealedName = getRevealedName(milestone.NameRevealPercent)
+		chromaBurst(1.0)
+		for i = 1, 6 do
+			if skipRequested then
+				break
+			end
+			local scrambled = scrambleText(revealedName, 0.6)
+			nameLabel.Text = scrambled
+			nameGhostRed.Text = scrambled
+			nameGhostCyan.Text = scrambled
+			task.wait(0.05)
+		end
+		nameLabel.Text = revealedName
+		nameGhostRed.Text = revealedName
+		nameGhostCyan.Text = revealedName
+		stingerSound:Play()
+		staticFlickerBurst(0.4)
+		TweenService:Create(underlineFlourish, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Size = UDim2.new(0.55, 0, 0, 1.5),
+		}):Play()
+
+		if milestone.ShakeIntensity then
+			startCameraShake(milestone.ShakeIntensity)
+		end
+
+		waitForEventBeat(0.5)
+	end
 
 	-- pick 3 random lines, inject essence count / player name
 	local pool = {}
@@ -1684,18 +1888,30 @@ local function playHollowedEvent(milestone)
 		essenceNow = essenceNow,
 	})
 
-	for _, line in ipairs(chosen) do
-		local formattedLine = formatLine(line, essenceNow)
-		typeText(bodyText, formattedLine, 0.025)
-		if math.random() < 0.35 then chromaBurst(0.3) end
-		task.wait(1.6)
-		bodyText.Text = scrambleText(formattedLine, 0.7)
-		task.wait(0.15)
-		bodyText.Text = ""
-		task.wait(0.3)
+	if not skipRequested then
+		for _, line in ipairs(chosen) do
+			local formattedLine = formatLine(line, essenceNow)
+			if not typeText(bodyText, formattedLine, 0.025, true) then
+				break
+			end
+			if math.random() < 0.35 then chromaBurst(0.3) end
+			if not waitForEventBeat(1.6) then
+				break
+			end
+			bodyText.Text = scrambleText(formattedLine, 0.7)
+			if not waitForEventBeat(0.15) then
+				break
+			end
+			bodyText.Text = ""
+			if not waitForEventBeat(0.3) then
+				break
+			end
+		end
 	end
 
-	task.wait(1.2)
+	if not skipRequested then
+		waitForEventBeat(1.2)
+	end
 
 	if milestone.ShakeIntensity then
 		stopCameraShake()
@@ -1709,15 +1925,23 @@ local function playHollowedEvent(milestone)
 	stopScanLine()
 	stopTearBars()
 	stopStripeAnimation()
+	if skipRequested then
+		stopStaticFlicker()
+	end
+	skipEventButton.Visible = false
+	skipEventButton.Active = false
 	-- exit: slide up + fade dim/vignette/scanlines
-	local slideUp = TweenService:Create(eventFrame, TweenInfo.new(1.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+	local exitDuration = skipRequested and 0.28 or 1.4
+	local slideUp = TweenService:Create(eventFrame, TweenInfo.new(exitDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
 		Position = UDim2.new(0.5, 0, -1.1, 0),
 	})
-	TweenService:Create(dimOverlay, TweenInfo.new(1.4, Enum.EasingStyle.Sine), { BackgroundTransparency = 1 }):Play()
-	TweenService:Create(vignetteOverlay, TweenInfo.new(1.4, Enum.EasingStyle.Sine), { ImageTransparency = 1 }):Play()
-	TweenService:Create(scanlineOverlay, TweenInfo.new(1.4, Enum.EasingStyle.Sine), { ImageTransparency = 1 }):Play()
+	TweenService:Create(dimOverlay, TweenInfo.new(exitDuration, Enum.EasingStyle.Sine), { BackgroundTransparency = 1 }):Play()
+	TweenService:Create(vignetteOverlay, TweenInfo.new(exitDuration, Enum.EasingStyle.Sine), { ImageTransparency = 1 }):Play()
+	TweenService:Create(scanlineOverlay, TweenInfo.new(exitDuration, Enum.EasingStyle.Sine), { ImageTransparency = 1 }):Play()
 	slideUp:Play()
-	staticFlickerBurst(0.6)
+	if not skipRequested then
+		staticFlickerBurst(0.6)
+	end
 
 	slideUp.Completed:Wait()
 	droneSound:Stop()
@@ -1731,24 +1955,97 @@ local function playHollowedEvent(milestone)
 	elseif milestone.Tier == 6 then
 		evolveWatcherMark(milestone.AccentColor)
 	end
-	musics.Volume = 0.5
+	if previousMusicVolume ~= nil then
+		musicVolumeBeforeEvent = nil
+		pcall(function()
+			musics.Volume = previousMusicVolume
+		end)
+	end
+	dimOverlay.Active = false
+	playerGui:SetAttribute("HollowedEventActive", false)
+	PresentationCoordinator.Release(lease, 1)
+	return true
 end
 
 local function processQueue()
-	if isEventActive or #eventQueue == 0 then return end
-	isEventActive = true
+	if eventWorkerRunning or #eventQueue == 0 then return end
+	local gapRemaining = nextEventAllowedAt - os.clock()
+	if gapRemaining > 0 then
+		if not eventGapScheduled then
+			eventGapScheduled = true
+			task.delay(gapRemaining, function()
+				eventGapScheduled = false
+				processQueue()
+			end)
+		end
+		return
+	end
+	eventWorkerRunning = true
 	local milestone = table.remove(eventQueue, 1)
 	task.spawn(function()
-		playHollowedEvent(milestone)
+		local completed = false
+		local ok, err = xpcall(function()
+			completed = playHollowedEvent(milestone) == true
+		end, debug.traceback)
+		if not ok or not completed then
+			warn("[TheHollowGlitch] Milestone presentation failed: " .. tostring(err or "presentation ended before cleanup"))
+			stopCameraShake()
+			stopBreathing()
+			stopEmberEmitter()
+			stopEyeTracking()
+			stopRuneRing()
+			stopGlyphEmitter()
+			stopScanLine()
+			stopTearBars()
+			stopStripeAnimation()
+			skipEventButton.Visible = false
+			skipEventButton.Active = false
+			droneSound:Stop()
+			whisperSound:Stop()
+			ambientIntensified = false
+			dimOverlay.Active = false
+			dimOverlay.BackgroundTransparency = 1
+			vignetteOverlay.ImageTransparency = 1
+			scanlineOverlay.ImageTransparency = 1
+			stopStaticFlicker()
+			crackLayer.Visible = false
+			eventFrame.Position = UDim2.new(0.5, 0, -1.1, 0)
+			if musicVolumeBeforeEvent ~= nil then
+				local restoreVolume = musicVolumeBeforeEvent
+				musicVolumeBeforeEvent = nil
+				pcall(function()
+					musics.Volume = restoreVolume
+				end)
+			end
+			playerGui:SetAttribute("HollowedEventActive", false)
+			local owner = PresentationCoordinator.GetOwner()
+			if owner == "HollowedOneTier" .. tostring(milestone.Tier) then
+				-- A defensive escape hatch for an unexpected error after acquiring
+				-- the slot. Normal completion already releases its exact token.
+				PresentationCoordinator.ForceRelease(owner, 1)
+			end
+		end
 		isEventActive = false
+		eventWorkerRunning = false
+		-- Crossing several thresholds in one large gain used to dump every tier
+		-- cinematic back-to-back. Preserve the lore queue, but give the player a
+		-- full gameplay beat between sightings.
+		nextEventAllowedAt = os.clock() + HOLLOW_EVENT_GAP
 		processQueue()
 	end)
 end
 
+local milestonesReady = false
 local function checkMilestones()
+	if not milestonesReady then
+		return
+	end
 	local quantity = earthEssenceStat:GetAttribute("Quantity") or 0
 	for _, milestone in ipairs(Milestones) do
-		if quantity >= milestone.Threshold and not triggeredTiers[milestone.Tier] and not player:GetAttribute("HollowMilestone"..milestone.Tier)then
+		if quantity >= milestone.Threshold
+			and not triggeredTiers[milestone.Tier]
+			and not player:GetAttribute("HollowMilestone" .. milestone.Tier)
+		then
 			triggeredTiers[milestone.Tier] = true
 			table.insert(eventQueue, milestone)
 		end
@@ -1757,7 +2054,33 @@ local function checkMilestones()
 end
 
 earthEssenceStat:GetAttributeChangedSignal("Quantity"):Connect(checkMilestones)
-checkMilestones()
+task.spawn(function()
+	-- leaderstats are created before the saved Hollowed milestone attributes.
+	-- Seeding from Quantity immediately could therefore replay every old tier on
+	-- join. Wait for the authoritative data-ready boundary, mark saved tiers as
+	-- already triggered, then evaluate only genuinely new threshold crossings.
+	local deadline = os.clock() + 30
+	while player:GetAttribute("PlayerDataLoaded") ~= true and os.clock() < deadline do
+		task.wait(0.1)
+	end
+	if player:GetAttribute("PlayerDataLoaded") ~= true then
+		warn("[TheHollowGlitch] Player data never became ready; milestone presentations are disabled this session.")
+		return
+	end
+	for _, milestone in ipairs(Milestones) do
+		if player:GetAttribute("HollowMilestone" .. milestone.Tier) == true then
+			triggeredTiers[milestone.Tier] = true
+		end
+	end
+	if triggeredTiers[1] then
+		startWatcherMark()
+	end
+	if triggeredTiers[6] then
+		evolveWatcherMark(Milestones[6].AccentColor)
+	end
+	milestonesReady = true
+	checkMilestones()
+end)
 
 --[[
 	WHAT'S NEW IN THIS VERSION (on top of the v2 bugfixes):

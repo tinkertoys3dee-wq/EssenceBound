@@ -183,6 +183,20 @@ function RebirthModule.GetReachedMilestones(rebirthCount: number): { [number]: M
 	return reached
 end
 
+-- Sorted ascending list of every rebirth count that has a milestone (e.g.
+-- {1, 5, 10, 25, 50}). MILESTONES itself is a local table keyed by rebirth
+-- count -- this is the single source of truth for "which counts are
+-- milestones" for anything that needs the plain list rather than the full
+-- {count -> data} map (e.g. PrestigeAura.client.luau picking a visual tier).
+function RebirthModule.GetMilestoneThresholds(): { number }
+	local thresholds = {}
+	for count in pairs(MILESTONES) do
+		table.insert(thresholds, count)
+	end
+	table.sort(thresholds)
+	return thresholds
+end
+
 
 --============================================================
 -- HIGH-LEVEL HELPERS
@@ -222,25 +236,60 @@ function RebirthModule.CanRebirth(currentEssence: number, rebirthCount: number, 
 	return currentEssence >= RebirthModule.CalculateEssenceNeeded(rebirthCount, requirementReductionPercent)
 end
 
+-- Timed lookup with a graceful fallback, NOT a bare require -- Twin
+-- Ascension is a bonus on TOP of the rebirth grant, and a missing/broken
+-- RebirthShopUpgrades module must never be able to stop a rebirth (by far
+-- the single most important transaction in the game) from completing.
+-- Explicitly `any`, not a specific module type: this file is --!strict,
+-- and a dynamically require()'d ModuleScript has no static interface
+-- Luau can check anyway. `any` also means the nil-check at the call site
+-- is purely a runtime guard, exactly as intended -- it doesn't need the
+-- type checker's help to prove safety here, since GetPlayerLevelData is
+-- only ever called after that check passes.
+local function tryGetRebirthShopUpgrades(): any
+	local ReplicatedStorage = game:GetService("ReplicatedStorage")
+	local module = ReplicatedStorage:FindFirstChild("RebirthShopUpgrades")
+		or ReplicatedStorage:WaitForChild("RebirthShopUpgrades", 5)
+
+	if not module then
+		return nil
+	end
+
+	local ok, result = pcall(require, module)
+	if ok and type(result) == "table" then
+		return result
+	end
+	return nil
+end
+
 function RebirthModule.PerformRebirth(playerData, player)
 	local EssenceUpgrades = require(game:GetService("ReplicatedStorage"):WaitForChild("TreeUpgrades"))
 
 	local rebirthCount = playerData.Rebirths or 0
 	local essence = playerData.Essences["EarthEssence"].Quantity or 0
+	local shadowEssence = playerData.Essences["Shadow Essence"].Quantity or 0
+	local solarEssence = playerData.Essences.SolarEssence.Quantity or 0
 
 	local requirementReduction = EssenceUpgrades.GetSummedEffectFromAttributes(player, "RebirthRequirementReduction")
 	local essenceNeeded = RebirthModule.CalculateEssenceNeeded(rebirthCount, requirementReduction)
 
 	if essence < essenceNeeded then
-		return false
+		return false, false, essenceNeeded
 	end
 
 	local newRebirthCount = rebirthCount + 1
 	local unlocks = RebirthModule.GetMilestone(newRebirthCount)
 
-	-- rebirth_echo: retain a % of current essence instead of zeroing it out
+	-- rebirth_echo: retain the same percentage of ALL spendable essence
+	-- balances. Shadow Essence used to survive a rebirth entirely, letting
+	-- players bypass the intended prestige reset; it now follows Earth's
+	-- reset contract, and Solar follows it from day one. Lifetime Shadow /
+	-- Solar totals deliberately remain untouched because they are permanent
+	-- progression totals, not spendable balances.
 	local retainPercent = math.clamp(EssenceUpgrades.GetSummedEffectFromAttributes(player, "RebirthRetainPercent"), 0, 1)
 	local retainedEssence = math.floor(essence * retainPercent)
+	local retainedShadowEssence = math.floor(shadowEssence * retainPercent)
+	local retainedSolarEssence = math.floor(solarEssence * retainPercent)
 	local bonusCurrency = EssenceUpgrades.GetSummedEffectFromAttributes(player, "BonusRebirthCurrency")
 	
 	for upgrade, tier in pairs(playerData.Upgrades) do
@@ -250,18 +299,44 @@ function RebirthModule.PerformRebirth(playerData, player)
 	
 	playerData.Rebirths = newRebirthCount
 	player:SetAttribute("Rebirths", newRebirthCount)
-	player:WaitForChild("leaderstats"):WaitForChild("Earth Essence"):SetAttribute("Quantity", retainedEssence)
+	local leaderstats = player:WaitForChild("leaderstats")
+	leaderstats:WaitForChild("Earth Essence"):SetAttribute("Quantity", retainedEssence)
+	leaderstats:WaitForChild("Shadow Essence"):SetAttribute("Quantity", retainedShadowEssence)
+	leaderstats:WaitForChild("Solar Essence"):SetAttribute("Quantity", retainedSolarEssence)
+	player:SetAttribute("EarthEssence", retainedEssence)
+	player:SetAttribute("ShadowEssence", retainedShadowEssence)
+	player:SetAttribute("SolarEssence", retainedSolarEssence)
 	playerData.Essences["EarthEssence"].Quantity = retainedEssence
 	playerData.Essences["EarthEssence"].savedEPM = 0
+	playerData.Essences["Shadow Essence"].Quantity = retainedShadowEssence
+	playerData.Essences["Shadow Essence"].savedEPM = 0
+	playerData.Essences.SolarEssence.Quantity = retainedSolarEssence
+	playerData.Essences.SolarEssence.savedEPM = 0
 	
 	-- ascension_insight: bonus RebirthCurrency on top of the base grant
-	
+
 	local grantedCurrency = RebirthModule.BASE_REBIRTH_CURRENCY_GRANT + bonusCurrency
+
+	-- rebirthshop_twinascension: a chance for THIS rebirth's currency grant
+	-- to be doubled. Deliberately only doubles the currency, not the
+	-- rebirth count itself -- bumping newRebirthCount by 2 would let a
+	-- lucky roll skip straight past a milestone (MILESTONES is keyed by
+	-- exact rebirth count), silently costing the player content instead of
+	-- rewarding them.
+	local wasTwinAscension = false
+	local shopUpgrades = tryGetRebirthShopUpgrades()
+	if shopUpgrades then
+		local twinData = shopUpgrades.GetPlayerLevelData(player, "rebirthshop_twinascension")
+		if twinData and twinData.ChancePercent and math.random() < twinData.ChancePercent then
+			wasTwinAscension = true
+			grantedCurrency *= 2
+		end
+	end
 
 	playerData.RebirthCurrency = (playerData.RebirthCurrency or 0) + grantedCurrency
 	player:SetAttribute("RebirthCurrency", playerData.RebirthCurrency)
-	
-	return true
+
+	return true, wasTwinAscension, essenceNeeded
 end
 
 return RebirthModule

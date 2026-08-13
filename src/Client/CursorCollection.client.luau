@@ -13,6 +13,8 @@ local playerGui = player:WaitForChild("PlayerGui")
 local RP = game:GetService("ReplicatedStorage")
 local Remotes = RP:WaitForChild("Remotes")
 local CollectionUpgrades = require(RP:WaitForChild("CollectionUpgrades"))
+local EssenceConfig = require(RP:WaitForChild("EssenceConfig"))
+local MonetizationConfig = require(RP:WaitForChild("MonetizationConfig"))
 
 -- ============================================================
 -- CONFIG
@@ -23,7 +25,15 @@ local SEARCH_ROOT = MainGui:WaitForChild("Center", 5)
 	and MainGui.Center:WaitForChild("LargeOrbFolder", 5)
 	and MainGui.Center.LargeOrbFolder:WaitForChild("OrbClickables", 5)
 
-local BASE_RING_SIZE = 20 -- diameter before any collection_radius upgrades are applied
+-- Was 20. This is the actual hit-target for the single skill the whole
+-- game gates its first reward behind: hovering the ring over a moving,
+-- idly-orbiting drop. At 20px (10px radius) that target was small enough
+-- that a huge share of new players -- by measured data, roughly two thirds
+-- of everyone who's ever played -- never once landed a collection, click
+-- the great orb though they might. collection_radius_1/2 still add on top
+-- of this exactly as before; this only raises the un-upgraded floor so a
+-- first attempt has a real chance of landing.
+local BASE_RING_SIZE = 30 -- diameter before any collection_radius upgrades are applied
 local RING_COLOR = Color3.fromRGB(229, 229, 229)
 local RING_THICKNESS = 3
 local FOLLOW_LERP = 1
@@ -34,7 +44,17 @@ local FOLLOW_LERP = 1
 -- swift_collection_1/2 (GetCollectionSpeedBonus) shave time off this.
 -- essence_magnet_field (HasAutoCollect) skips the charge entirely.
 -- ============================================================
-local BASE_CHARGE_TIME = 0.9 -- seconds to fill the ring with 0 swift_collection levels
+-- Was 0.9, then 0.5. This sits directly in the path of every single reward
+-- in the game, from a brand-new player's very first orb through to a maxed
+-- account's ten-thousandth -- it's the single biggest lever on how snappy
+-- the whole core loop feels. swift_collection_1/2 can shave off up to
+-- 2.3s combined (10*0.09 + 10*0.14), so the upgrade path still comfortably
+-- reaches MIN_CHARGE_TIME well before being maxed; this change doesn't
+-- reduce how meaningful that upgrade line is. Lowered again alongside the
+-- BASE_RING_SIZE bump above -- a bigger target that still takes half a
+-- second to fill is easy to lose to the orb's own idle-orbit drift before
+-- a first-time player even realizes the ring is charging.
+local BASE_CHARGE_TIME = 0.4 -- seconds to fill the ring with 0 swift_collection levels
 local MIN_CHARGE_TIME = 0.15 -- charge time can never be reduced below this
 local PROGRESS_RING_COLOR = Color3.fromRGB(255, 221, 84)
 local PROGRESS_RING_THICKNESS = RING_THICKNESS + 1
@@ -220,11 +240,13 @@ local DUST_COUNT = 7
 local DUST_COLOR = Color3.fromRGB(100, 98, 90)
 
 
-local function spawnDustParticle(parent, originPosition, baseZIndex)
+local function spawnDustParticle(parent, originPosition, baseZIndex, tint)
 	local dust = Instance.new("Frame")
 	dust.Name = "CollectDust"
 	dust.AnchorPoint = Vector2.new(0.5, 0.5)
-	dust.BackgroundColor3 = DUST_COLOR
+	-- Tinted to the essence being collected. The old flat grey read as
+	-- smoke rather than essence and muddied the collection moment.
+	dust.BackgroundColor3 = tint or DUST_COLOR
 	dust.BackgroundTransparency = 0.15
 	dust.BorderSizePixel = 0
 	dust.ZIndex = baseZIndex + 1
@@ -262,25 +284,142 @@ local EssenceMulti = require(RP:WaitForChild("EssenceMultiplier"))
 local newDiscovery = game:GetService("ReplicatedStorage"):WaitForChild("EssenceDiscovered")
 local GetEssences = require(game:GetService("ReplicatedStorage"):WaitForChild("GetEssence"))
 
+-- Same pattern as newDiscovery/EssenceDiscovered above: owned/created by
+-- the consumer (CritStreakCombo.client.luau), this file just waits for
+-- and fires it. Purely a cosmetic broadcast -- IsCrit here is the exact
+-- same client-known flag playCollectFeel already reads a few lines
+-- below, not a new trust boundary.
+local critLanded = game:GetService("ReplicatedStorage"):WaitForChild("CritLanded")
+
+-- =========================================================================
+-- COLLECTION FEEL
+-- =========================================================================
+-- Collecting is the payoff beat of the whole loop and it was landing
+-- almost silently: a grey dust puff and a "+N". Everything below is
+-- cosmetic only -- what the orb is actually worth is decided server-side.
+
+local Juice = require(RP:WaitForChild("Juice"))
+local juiceLayer = Juice.GetLayer(playerGui)
+
+local ORB_TINTS = {}
+for _, essence in ipairs(EssenceConfig.Ordered) do
+	ORB_TINTS[essence.Name] = essence.Color
+end
+local CRIT_GOLD = Color3.fromRGB(255, 205, 80)
+
+local collectSound = Juice.FindSound("SFX/UI/UIPop")
+
+-- Rapid collection climbs in pitch the same way the orb click does, so a
+-- big harvest reads as a rising run of notes rather than one repeated
+-- blip. Cosmetic only.
+local collectStreak = 0
+local lastCollectAt = 0
+
+local function playCollectFeel(orb, isCrit, isGolden)
+	local now = os.clock()
+	if (now - lastCollectAt) <= 0.8 then
+		collectStreak = math.min(collectStreak + 1, 16)
+	else
+		collectStreak = 1
+	end
+	lastCollectAt = now
+
+	if not juiceLayer then
+		return
+	end
+
+	local center = Juice.CenterOf(orb, juiceLayer)
+	if not center then
+		return
+	end
+
+	local tint = ORB_TINTS[orb:GetAttribute("OrbType")] or ORB_TINTS["Earth Essence"]
+	local isSolar = orb:GetAttribute("OrbType") == "Solar Essence"
+	if isCrit or isGolden then
+		tint = CRIT_GOLD
+	end
+
+	if collectSound then
+		Juice.PlaySound(collectSound, {
+			Pitch = Juice.PitchForStreak(collectStreak, 18) * (isCrit and 1.25 or (isSolar and 1.12 or 1)),
+			Volume = (isCrit or isSolar) and 0.5 or 0.32,
+		})
+	end
+
+	Juice.Ring(juiceLayer, center, {
+		Color = tint,
+		StartSize = isCrit and 34 or (isSolar and 30 or 24),
+		EndSize = isCrit and 130 or (isSolar and 118 or 78),
+		Duration = isSolar and 0.52 or 0.4,
+		Thickness = (isCrit or isSolar) and 3 or 2,
+	})
+
+	Juice.Burst(juiceLayer, center, {
+		Count = isCrit and 12 or (isSolar and 10 or 5),
+		Colors = isSolar
+			and { tint, Color3.fromRGB(255, 111, 33), Color3.fromRGB(255, 255, 225) }
+			or { tint, Color3.fromRGB(255, 255, 255) },
+		Distance = isCrit and 130 or (isSolar and 115 or 60),
+		Duration = isSolar and 0.68 or 0.5,
+		Size = (isCrit or isSolar) and { 5, 11 } or { 3, 7 },
+	})
+
+	-- A crit previously looked identical to any other collection once the
+	-- orb was gone. Now it announces itself.
+	if isCrit then
+		Juice.FloatText(juiceLayer, center, "CRITICAL!", {
+			Color = CRIT_GOLD,
+			Duration = 0.85,
+			Rise = 80,
+			TextSize = 30,
+		})
+	elseif isSolar then
+		Juice.FloatText(juiceLayer, center, "MYTHIC SOLAR!", {
+			Color = ORB_TINTS["Solar Essence"],
+			Duration = 1.05,
+			Rise = 88,
+			TextSize = 28,
+		})
+	end
+end
+
 local function CollectEffect(orb)
 	if not orb or not orb.Parent then return end
+
+	-- Every real orb sets this at spawn (SpawnOrb / SpawnFallingOrb in
+	-- OrbClicker.client.luau both set it before the orb is ever parented
+	-- into OrbClickables), so this should never actually be nil/unknown.
+	-- Guarding it anyway: this is the exact value FireServer sends
+	-- straight to the "collected" handler as `orbName`, which indexes
+	-- PlayerDatas[...].Essences[orbName] server-side -- an unrecognized
+	-- value used to reach that lookup and error out mid-handler (see
+	-- OrbClickManager's matching server-side check). Reject up front,
+	-- before touching the orb at all, so a stray/misconfigured instance
+	-- can't be "collected" (Bail/FX/reparent) OR reach the network at all.
+	local orbType = orb:GetAttribute("OrbType")
+	if not EssenceConfig.IsValidName(orbType) then
+		warn("[CursorCollection] Skipped a collection with an unrecognized OrbType: " .. tostring(orbType) .. " (" .. orb:GetFullName() .. ")")
+		return
+	end
+
 	orb:SetAttribute("Bail", true)
 
 	local essenceValue = orb:GetAttribute("EssenceValue") or 1
+	local isCrit = orb:GetAttribute("IsCrit")
+	local isGolden = orb:GetAttribute("IsGolden")
+
+	-- Read the orb's on-screen position BEFORE it's reparented into
+	-- Destro, otherwise the effects spawn wherever that folder happens to
+	-- resolve to rather than where the player actually saw the orb.
+	pcall(playCollectFeel, orb, isCrit, isGolden)
 
 	orb.Parent = Destro
-	collectionFireable:FireServer(orb:GetAttribute("OrbType"), essenceValue, orb:GetAttribute("IsCrit"), orb:GetAttribute("IsGolden"))
-	
-	if orb:GetAttribute("OrbType") == "Shadow Essence" then
-		local discovered = player:GetAttribute("ShadowEssenceDiscovered") or false
-		if not discovered then
-			newDiscovery:Fire(orb:GetAttribute("OrbType"),GetEssences.Essences[orb:GetAttribute("OrbType")])
-		end
-	elseif orb:GetAttribute("OrbType") == "Earth Essence" then
-		local discovered = player:GetAttribute("EarthEssenceDiscovered") or false
-		if not discovered then
-			newDiscovery:Fire(orb:GetAttribute("OrbType"),GetEssences.Essences[orb:GetAttribute("OrbType")])
-		end
+	collectionFireable:FireServer(orbType, essenceValue, isCrit, isGolden)
+	critLanded:Fire(isCrit == true)
+
+	local discoveryAttribute = EssenceConfig.GetDiscoveryAttribute(orbType)
+	if discoveryAttribute and not (player:GetAttribute(discoveryAttribute) or false) then
+		newDiscovery:Fire(orbType, GetEssences.GetOddsText(orbType, player))
 	end
 	if orb:FindFirstChild("Shadow") then
 		orb:FindFirstChild("Shadow"):Destroy()
@@ -288,7 +427,13 @@ local function CollectEffect(orb)
 	local TextLabel = orb:FindFirstChild("Gain")
 	local Stroke = TextLabel:WaitForChild("UIStroke")
 
-	TextLabel.Text = "+"..formatNumber(math.floor(EssenceMulti.CalculateMultiplier(player,orb:GetAttribute("IsGolden"),orb:GetAttribute("IsCrit")) * essenceValue))
+	-- skipDoubleCritRoll=true: this is a preview for the floating text
+	-- only, never the real grant (that's OrbClickManager's server-side
+	-- call) -- rolling double_crit again here would be a second,
+	-- independent random roll from the server's own, which could show a
+	-- number that doesn't match what the leaderstat actually increases
+	-- by. See EssenceMultiplier.luau's note above RollCritMultiplier.
+	TextLabel.Text = "+"..formatNumber(math.floor(EssenceMulti.CalculateMultiplier(player,orb:GetAttribute("IsGolden"),orb:GetAttribute("IsCrit"),true) * essenceValue))
 	local container = orb.Parent
 	local imageLabel = orb:FindFirstChildWhichIsA("ImageLabel", true)
 		or orb:FindFirstChild("MainClickable")
@@ -371,10 +516,15 @@ local function CollectEffect(orb)
 		-- Dust/smoke burst rising out of the fading orb, staggered slightly
 		local dustOrigin = orb.Position
 		local baseZ = orb.ZIndex or 1
+		local dustTint = ORB_TINTS[orb:GetAttribute("OrbType")] or DUST_COLOR
+		if isCrit or isGolden then
+			dustTint = CRIT_GOLD
+		end
+
 		for i = 1, DUST_COUNT do
 			task.delay(math.random() * 0.18, function()
 				if container and container.Parent then
-					spawnDustParticle(container, dustOrigin, baseZ)
+					spawnDustParticle(container, dustOrigin, baseZ, dustTint)
 				end
 			end)
 		end
@@ -387,7 +537,7 @@ local function CollectEffect(orb)
 	end)
 end
 local function watch(obj)
-	if player:GetAttribute(1907677938) and false then
+	if player:GetAttribute(MonetizationConfig.GetOwnershipAttribute(1907677938)) then
 		task.wait(.3)
 		CollectEffect(obj)
 	else
@@ -444,8 +594,17 @@ end
 -- ============================================================
 local chargeProgress = 0
 
+-- Set true for a few seconds at a time by the Chrono Rift relic (see the
+-- bottom of this file). Declared here because updateCollection below reads
+-- it every frame -- the relic only ever writes it.
+local chronoRiftActive = false
+
 local function updateCollection(ringCenterX, ringCenterY, deltaTime)
-	local hasAutoCollect = CollectionUpgrades.HasAutoCollect(player)
+	-- Chrono Rift grants the SAME instant-collection behaviour the
+	-- essence_magnet_field upgrade permanently unlocks, just temporarily --
+	-- reusing that exact path rather than adding a parallel one means the
+	-- rift can't drift out of sync with how auto-collect actually works.
+	local hasAutoCollect = CollectionUpgrades.HasAutoCollect(player) or chronoRiftActive
 	local anyOverlap = false
 	local toCollect = {}
 
@@ -482,7 +641,6 @@ local function updateCollection(ringCenterX, ringCenterY, deltaTime)
 		setProgressGradient(chargeProgress)
 
 		if chargeProgress >= 1 then
-			print("done")
 			-- Ring complete: collect everything currently inside the radius.
 			for _, obj in ipairs(collectibleObjects) do
 				if CurrentlyInside[obj] then
@@ -518,4 +676,498 @@ RunService.RenderStepped:Connect(function(deltaTime)
 	-- ring also automatically shows up identically for comparison.
 	local rp = ring.AbsolutePosition
 	updateCollection(rp.X + ringRadius, rp.Y + ringRadius, deltaTime)
+end)
+
+-- =========================================================================
+-- VOID LASER (Sanctum relic: sanctum_laser)
+-- =========================================================================
+-- Periodically sweeps a beam across the field and force-collects every orb
+-- currently active -- through the exact same CollectEffect() a normal
+-- hover-collection already uses, so payout goes through the identical,
+-- already-trusted path. Purely a periodic BONUS on top of normal play; the
+-- player does nothing to trigger it.
+
+local SanctumUpgrades = require(RP:WaitForChild("SanctumUpgrades"))
+
+local LASER_COLOR = Color3.fromRGB(150, 90, 255)
+
+local function playLaserSweep()
+	-- Snapshot BEFORE the visual, not after: the sweep takes real time, and
+	-- collecting only what existed at the moment the laser fired -- rather
+	-- than also mopping up anything that spawns mid-animation -- keeps the
+	-- reward tied to what the player actually had on screen, not to how
+	-- long the beam happens to take to cross it.
+	--
+	-- Bail is checked here even though CollectEffect sets it too: this
+	-- protects against a race where the ring's own updateCollection has
+	-- already queued the same orb for collection on this exact frame,
+	-- before its removal from collectibleObjects (which only happens once
+	-- the reparent to Destro actually fires ChildRemoved) has gone through
+	-- -- without this check, that orb could get CollectEffect called on it
+	-- twice and be paid out twice for one collection.
+	local targets = {}
+	for _, obj in ipairs(collectibleObjects) do
+		if obj.Parent and not obj:GetAttribute("Bail") then
+			table.insert(targets, obj)
+		end
+	end
+
+	if juiceLayer then
+		local ok = pcall(function()
+			local beam = Instance.new("Frame")
+			beam.Name = "LaserRelic"
+			beam.AnchorPoint = Vector2.new(0.5, 0.5)
+			beam.Position = UDim2.fromScale(-0.1, 0.5)
+			beam.Size = UDim2.new(0.045, 0, 1.5, 0)
+			beam.Rotation = 12
+			beam.BackgroundColor3 = LASER_COLOR
+			beam.BackgroundTransparency = 0.15
+			beam.BorderSizePixel = 0
+			beam.ZIndex = 85
+			beam.Parent = juiceLayer
+
+			local edgeGlow = Instance.new("UIStroke")
+			edgeGlow.Thickness = 6
+			edgeGlow.Color = Color3.fromRGB(255, 255, 255)
+			edgeGlow.Transparency = 0.35
+			edgeGlow.Parent = beam
+
+			local sweep = TweenService:Create(
+				beam,
+				TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+				{ Position = UDim2.fromScale(1.1, 0.5) }
+			)
+			sweep:Play()
+			sweep.Completed:Wait()
+
+			beam:Destroy()
+		end)
+
+		if not ok then
+			warn("[CursorCollection] Laser sweep FX errored, continuing to the actual reward.")
+		end
+	end
+
+	-- Re-checked at the moment of collection too, not just at snapshot
+	-- time -- the sweep's ~0.45s runtime is enough for the player's own
+	-- ring to have legitimately collected one of these in the meantime.
+	for _, obj in ipairs(targets) do
+		if obj.Parent and not obj:GetAttribute("Bail") then
+			CollectEffect(obj)
+		end
+	end
+
+	if juiceLayer then
+		Juice.FloatText(juiceLayer, UDim2.fromScale(0.5, 0.42), "VOID SWEEP!", {
+			Color = LASER_COLOR,
+			Duration = 1,
+			Rise = 60,
+			TextSize = 28,
+		})
+	end
+
+	local sound = Juice.FindSound("SFX/UI/UIPop")
+	if sound then
+		Juice.PlaySound(sound, { Pitch = 1.4, Volume = 0.45 })
+	end
+end
+
+-- =========================================================================
+-- LASER COUNTDOWN PILL
+-- =========================================================================
+-- Same reasoning as the Hammer's countdown in OrbClicker.client.luau:
+-- watching a timer count down is most of what makes a periodic ability
+-- feel worth having.
+--
+-- Registered into Juice's shared relic bar (bottom-center, auto-laid-out)
+-- rather than built as a one-off ScreenGui here -- see the Hammer's
+-- equivalent comment in OrbClicker.client.luau for why. Order 2 = second
+-- from the left, after the Hammer.
+
+local laserParts = Juice.RegisterRelicPill(playerGui, {
+	Name = "Laser",
+	Icon = "🌌",
+	Color = LASER_COLOR,
+	Order = 2,
+})
+local laserPill = laserParts.Pill
+local laserPillFill = laserParts.Fill
+local laserPillLabel = laserParts.Label
+
+task.spawn(function()
+	-- Blocks here, no polling, until the player owns any level of the
+	-- Laser -- GetAttributeChangedSignal only wakes this thread on an
+	-- actual purchase.
+	while (player:GetAttribute("sanctum_laser") or 0) <= 0 do
+		player:GetAttributeChangedSignal("sanctum_laser"):Wait()
+	end
+
+	laserPill.Visible = true
+
+	while true do
+		local level = player:GetAttribute("sanctum_laser") or 0
+		local relicData = SanctumUpgrades.GetRelicLevelData("sanctum_laser", level)
+
+		if not relicData then
+			-- Shouldn't happen once level >= 1, but never busy-loop on a
+			-- bad read.
+			task.wait(5)
+		else
+			-- Ticks in 1-second steps rather than one blocking wait, purely
+			-- so the pill above can count down live.
+			local total = relicData.Interval
+			local remaining = total
+
+			while remaining > 0 do
+				laserPillLabel.Text = ("🌌 %ds"):format(math.ceil(remaining))
+				laserPillFill.Size = UDim2.fromScale(math.clamp(1 - (remaining / total), 0, 1), 1)
+
+				local step = math.min(1, remaining)
+				task.wait(step)
+				remaining -= step
+			end
+
+			laserPillLabel.Text = "🌌 NOW!"
+			laserPillFill.Size = UDim2.fromScale(1, 1)
+			Juice.Punch(Juice.GetScale(laserPill), 0.25, 0.3)
+
+			local ok, err = pcall(playLaserSweep)
+			if not ok then
+				warn("[CursorCollection] Laser sweep errored: " .. tostring(err))
+			end
+		end
+	end
+end)
+
+-- =========================================================================
+-- CHRONO RIFT (Sanctum relic: sanctum_chrono_rift)
+-- =========================================================================
+-- Periodically opens a window where collection is instant -- no hover
+-- charge at all. Unlike the Hammer (spawns orbs) and the Laser (collects
+-- what exists), this grants a temporary STATE, so for its duration the
+-- whole loop plays differently: sweep the cursor and everything it
+-- touches is gathered immediately.
+
+local RIFT_COLOR = Color3.fromRGB(120, 255, 235)
+
+-- Registered into Juice's shared relic bar, same as the Hammer and Laser
+-- above -- see the Hammer's comment in OrbClicker.client.luau for why.
+-- Order 3 = third from the left.
+local riftParts = Juice.RegisterRelicPill(playerGui, {
+	Name = "Rift",
+	Icon = "⌛",
+	Color = RIFT_COLOR,
+	Order = 3,
+})
+local riftPill = riftParts.Pill
+local riftPillFill = riftParts.Fill
+local riftPillLabel = riftParts.Label
+
+-- Full-screen tint shown only while the rift window is open, so the
+-- altered state is unmistakable rather than something the player has to
+-- infer from orbs behaving differently. Parented into the shared FX layer
+-- rather than the relic bar's ScreenGui -- it isn't a bar element, and
+-- juiceLayer already exists in this file for exactly this kind of
+-- transient full-screen effect.
+local riftOverlay = Instance.new("Frame")
+riftOverlay.Name = "RiftOverlay"
+riftOverlay.Size = UDim2.fromScale(1, 1)
+riftOverlay.BackgroundColor3 = RIFT_COLOR
+riftOverlay.BackgroundTransparency = 1
+riftOverlay.BorderSizePixel = 0
+riftOverlay.Visible = false
+riftOverlay.ZIndex = 1
+riftOverlay.Parent = juiceLayer
+
+local function openChronoRift(windowSeconds)
+	chronoRiftActive = true
+
+	riftOverlay.Visible = true
+	riftOverlay.BackgroundTransparency = 1
+	TweenService:Create(riftOverlay, TweenInfo.new(0.3), { BackgroundTransparency = 0.88 }):Play()
+
+	if juiceLayer then
+		Juice.FloatText(juiceLayer, UDim2.fromScale(0.5, 0.3), "CHRONO RIFT!", {
+			Color = RIFT_COLOR,
+			Duration = 1.3,
+			Rise = 70,
+			TextSize = 34,
+		})
+	end
+
+	local sound = Juice.FindSound("SFX/UI/UIPop")
+	if sound then
+		Juice.PlaySound(sound, { Pitch = 1.7, Volume = 0.5 })
+	end
+
+	-- Counts the window down in the pill too, so the player can see how
+	-- much of the instant-collect state is left rather than guessing.
+	local remaining = windowSeconds
+	while remaining > 0 do
+		riftPillLabel.Text = ("⌛ %ds LEFT"):format(math.ceil(remaining))
+		riftPillFill.Size = UDim2.fromScale(math.clamp(remaining / windowSeconds, 0, 1), 1)
+
+		local step = math.min(0.5, remaining)
+		task.wait(step)
+		remaining -= step
+	end
+
+	chronoRiftActive = false
+
+	local fadeOut = TweenService:Create(riftOverlay, TweenInfo.new(0.4), { BackgroundTransparency = 1 })
+	fadeOut:Play()
+	fadeOut.Completed:Connect(function()
+		-- Guarded: a second rift may have opened during the fade, and
+		-- hiding the overlay then would blank an active window.
+		if not chronoRiftActive then
+			riftOverlay.Visible = false
+		end
+	end)
+end
+
+task.spawn(function()
+	while (player:GetAttribute("sanctum_chrono_rift") or 0) <= 0 do
+		player:GetAttributeChangedSignal("sanctum_chrono_rift"):Wait()
+	end
+
+	riftPill.Visible = true
+
+	while true do
+		local level = player:GetAttribute("sanctum_chrono_rift") or 0
+		local relicData = SanctumUpgrades.GetRelicLevelData("sanctum_chrono_rift", level)
+
+		if not relicData then
+			task.wait(5)
+		else
+			local total = relicData.Interval
+			local remaining = total
+
+			while remaining > 0 do
+				riftPillLabel.Text = ("⌛ %ds"):format(math.ceil(remaining))
+				riftPillFill.Size = UDim2.fromScale(math.clamp(1 - (remaining / total), 0, 1), 1)
+
+				local step = math.min(1, remaining)
+				task.wait(step)
+				remaining -= step
+			end
+
+			local currentLevel = player:GetAttribute("sanctum_chrono_rift") or 0
+			local currentData = SanctumUpgrades.GetRelicLevelData("sanctum_chrono_rift", currentLevel)
+			if currentData then
+				Juice.Punch(Juice.GetScale(riftPill), 0.25, 0.3)
+
+				local ok, err = pcall(openChronoRift, currentData.WindowSeconds)
+				if not ok then
+					-- Never leave the rift stuck on if the visual half
+					-- errored partway through -- that would be a permanent
+					-- free auto-collect.
+					chronoRiftActive = false
+					riftOverlay.Visible = false
+					warn("[CursorCollection] Chrono Rift errored: " .. tostring(err))
+				end
+			end
+		end
+	end
+end)
+
+-- =========================================================================
+-- GRAVITY WELL (Prestige Shop: rebirthshop_gravitywell)
+-- =========================================================================
+-- Unlike the four relics above, this isn't a Sanctum purchase -- it's
+-- bought with Rebirth Currency in the Prestige Shop (RebirthShopUpgrades).
+-- Same "periodic, automatic, visual" shape though, so it gets the exact
+-- same countdown-pill treatment via Juice.RegisterRelicPill.
+--
+-- Every Interval seconds, nearby same-type orbs already sitting in the
+-- field are pulled together and FUSED into one bigger orb worth more than
+-- their sum. Deliberately a periodic PULSE rather than continuous
+-- per-frame drifting: each orb already runs its own per-frame homing
+-- animation (magnet pull toward the cursor, orbit/bob -- see SpawnOrb in
+-- OrbClicker.client.luau), and a second system fighting that same
+-- Position every frame would just jitter. A pulse sidesteps that
+-- entirely -- it reads each orb's position once, then only ever touches
+-- attributes (EssenceValue/IsCrit/IsGolden) and Bail/Destroy on the
+-- consumed orbs, exactly the same handoff CollectEffect already uses.
+
+local RebirthShopUpgrades
+do
+	local module = RP:FindFirstChild("RebirthShopUpgrades") or RP:WaitForChild("RebirthShopUpgrades", 10)
+	if module then
+		local ok, result = pcall(require, module)
+		if ok and type(result) == "table" then
+			RebirthShopUpgrades = result
+		end
+	end
+end
+
+local GRAVITY_WELL_COLOR = Color3.fromRGB(255, 165, 60)
+
+local gravityWellParts = Juice.RegisterRelicPill(playerGui, {
+	Name = "GravityWell",
+	Icon = "🌀",
+	Color = GRAVITY_WELL_COLOR,
+	Order = 5,
+})
+local gravityWellPill = gravityWellParts.Pill
+local gravityWellPillFill = gravityWellParts.Fill
+local gravityWellPillLabel = gravityWellParts.Label
+
+-- Single-linkage clustering: any orb within MergeRadius of ANY orb already
+-- in a cluster joins it. O(n^2) over currently-eligible orbs, which is
+-- fine at the field's real size (BASE_MAX_ACTIVE_ORBS is 40, and only a
+-- fraction of those are ever the same OrbType and already landed).
+local function clusterByProximity(orbs, mergeRadius)
+	local clusters = {}
+	local assigned = {}
+
+	for i, orb in ipairs(orbs) do
+		if not assigned[orb] then
+			local cluster = { orb }
+			assigned[orb] = true
+
+			-- Re-scan from the start each time a member is added, so a
+			-- chain (A near B, B near C, A far from C) still merges as one
+			-- cluster instead of only catching direct neighbors of the seed.
+			local growing = true
+			while growing do
+				growing = false
+				for _, candidate in ipairs(orbs) do
+					if not assigned[candidate] then
+						for _, member in ipairs(cluster) do
+							local dx = candidate.AbsolutePosition.X - member.AbsolutePosition.X
+							local dy = candidate.AbsolutePosition.Y - member.AbsolutePosition.Y
+							if (dx * dx + dy * dy) <= (mergeRadius * mergeRadius) then
+								table.insert(cluster, candidate)
+								assigned[candidate] = true
+								growing = true
+								break
+							end
+						end
+					end
+				end
+			end
+
+			table.insert(clusters, cluster)
+		end
+	end
+
+	return clusters
+end
+
+local function performGravityWellPulse(data)
+	-- Group eligible orbs (landed, not already mid-collection) by type --
+	-- orbs of different currencies can't sensibly fuse into one payout.
+	local byType = {}
+	for _, obj in ipairs(collectibleObjects) do
+		if obj.Parent and obj.Visible and obj:GetAttribute("Collectible") and not obj:GetAttribute("Bail") then
+			local orbType = obj:GetAttribute("OrbType") or "?"
+			byType[orbType] = byType[orbType] or {}
+			table.insert(byType[orbType], obj)
+		end
+	end
+
+	local fusedAny = false
+
+	for _, orbs in pairs(byType) do
+		if #orbs >= 2 then
+			local clusters = clusterByProximity(orbs, data.MergeRadius)
+
+			for _, cluster in ipairs(clusters) do
+				if #cluster >= 2 then
+					fusedAny = true
+
+					local survivor = cluster[1]
+					local totalValue = 0
+					local anyCrit, anyGolden = false, false
+
+					for _, member in ipairs(cluster) do
+						totalValue += (tonumber(member:GetAttribute("EssenceValue")) or 0)
+						if member:GetAttribute("IsCrit") then anyCrit = true end
+						if member:GetAttribute("IsGolden") then anyGolden = true end
+					end
+
+					survivor:SetAttribute("EssenceValue", totalValue * (1 + data.BonusPercent))
+					if anyCrit then survivor:SetAttribute("IsCrit", true) end
+					if anyGolden then survivor:SetAttribute("IsGolden", true) end
+
+					if juiceLayer then
+						local survivorPos = Juice.CenterOf(survivor, juiceLayer)
+						if survivorPos then
+							Juice.Ring(juiceLayer, survivorPos, {
+								Color = GRAVITY_WELL_COLOR, StartSize = 10, EndSize = 90, Duration = 0.5, Thickness = 3,
+							})
+						end
+					end
+					Juice.Punch(Juice.GetScale(survivor), 0.3, 0.35)
+
+					-- Consumed members: bail (stops their own per-frame
+					-- homing loop next frame, same guard CollectEffect
+					-- relies on), a small burst at their last position, then
+					-- gone -- never touched again after this.
+					for i = 2, #cluster do
+						local obj = cluster[i]
+						local objPos = juiceLayer and Juice.CenterOf(obj, juiceLayer)
+						obj:SetAttribute("Bail", true)
+						removeCollectible(obj)
+						obj:Destroy()
+
+						if juiceLayer then
+							Juice.Burst(juiceLayer, objPos, {
+								Count = 4, Colors = { GRAVITY_WELL_COLOR, Color3.fromRGB(255, 255, 255) },
+								Distance = 30, Duration = 0.35, Size = { 2, 5 },
+							})
+						end
+					end
+				end
+			end
+		end
+	end
+
+	return fusedAny
+end
+
+task.spawn(function()
+	while not RebirthShopUpgrades or (player:GetAttribute("rebirthshop_gravitywell") or 0) <= 0 do
+		if RebirthShopUpgrades then
+			player:GetAttributeChangedSignal("rebirthshop_gravitywell"):Wait()
+		else
+			task.wait(1)
+		end
+	end
+
+	gravityWellPill.Visible = true
+
+	while true do
+		local level = player:GetAttribute("rebirthshop_gravitywell") or 0
+		local data = RebirthShopUpgrades.GetLevelData("rebirthshop_gravitywell", level)
+
+		if not data then
+			task.wait(5)
+		else
+			local total = data.Interval
+			local remaining = total
+
+			while remaining > 0 do
+				gravityWellPillLabel.Text = ("🌀 %ds"):format(math.ceil(remaining))
+				gravityWellPillFill.Size = UDim2.fromScale(math.clamp(1 - (remaining / total), 0, 1), 1)
+
+				local step = math.min(1, remaining)
+				task.wait(step)
+				remaining -= step
+			end
+
+			local currentLevel = player:GetAttribute("rebirthshop_gravitywell") or 0
+			local currentData = RebirthShopUpgrades.GetLevelData("rebirthshop_gravitywell", currentLevel)
+			if currentData then
+				gravityWellPillLabel.Text = "🌀 PULL!"
+				gravityWellPillFill.Size = UDim2.fromScale(1, 1)
+				Juice.Punch(Juice.GetScale(gravityWellPill), 0.25, 0.3)
+
+				local ok, err = pcall(performGravityWellPulse, currentData)
+				if not ok then
+					warn("[CursorCollection] Gravity Well errored: " .. tostring(err))
+				end
+			end
+		end
+	end
 end)

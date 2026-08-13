@@ -68,9 +68,13 @@
 		-- firing a shot (e.g. on click):
 		local canFire, isTrickle = OrbController.CanFire(player)
 		if canFire then
-			local success, hpCostPaid, wasTrickle = OrbController.Fire(player)
+			local success, hpCostPaid, wasTrickle, secondWindData = OrbController.Fire(player)
 			-- wasTrickle shots cost 0 HP and are on their own cooldown --
 			-- treat them as a much weaker/slower shot in your combat code.
+			-- secondWindData is non-nil only on the shot that just triggered
+			-- rebirthshop_secondwind (HP was healed already) -- grant
+			-- secondWindData.BoostSeconds of essence boost and play your own
+			-- FX for it here; this module only reports the trigger.
 		end
 
 		-- granting a bonus heal outside of passive regen (e.g. a reward for
@@ -85,6 +89,45 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 local EssenceUpgrades = require(script.Parent:WaitForChild("TreeUpgrades"))
+-- Timed lookup rather than a bare WaitForChild: a missing SanctumUpgrades
+-- must cost the Sanctum bonus only, not hang the module that owns every
+-- player's orb energy.
+local SanctumUpgrades
+do
+	local module = script.Parent:FindFirstChild("SanctumUpgrades")
+		or script.Parent:WaitForChild("SanctumUpgrades", 10)
+
+	if module then
+		local ok, result = pcall(require, module)
+		if ok and type(result) == "table" then
+			SanctumUpgrades = result
+		end
+	end
+end
+
+-- Returns 0 when the module is unavailable, so callers stay arithmetic-safe.
+local function sanctumEffect(player, id)
+	if not SanctumUpgrades then
+		return 0
+	end
+	return tonumber(SanctumUpgrades.GetPlayerEffect(player, id)) or 0
+end
+
+-- Same defensive-lookup contract as SanctumUpgrades above: a missing/broken
+-- RebirthShopUpgrades module must cost Second Wind only, not this module's
+-- entire HP system (which every single click in the game passes through).
+local RebirthShopUpgrades
+do
+	local module = script.Parent:FindFirstChild("RebirthShopUpgrades")
+		or script.Parent:WaitForChild("RebirthShopUpgrades", 10)
+
+	if module then
+		local ok, result = pcall(require, module)
+		if ok and type(result) == "table" then
+			RebirthShopUpgrades = result
+		end
+	end
+end
 
 local EssenceOrbController = {}
 
@@ -101,8 +144,14 @@ local NEVER_DEPLETED_UPGRADE_ID = "core_resilience"
 -- BASE ORB STATS (level-0 values, before any upgrades) -- tune to taste
 -- =========================================================================
 
-local BASE_MAX_HP = 100
-local BASE_REGEN_RATE = 2 -- HP regenerated per second
+-- Raised from 100/2 (was ~12 clicks then 1 click per 4s forever, with zero
+-- in-game explanation of why -- new players were hitting a hard, unexplained
+-- wall about 15-20 seconds into their first session). Still a real resource
+-- players will want orb_vitality/orb_regen upgrades to grow, just a more
+-- forgiving starting point while they're learning the game and not yet
+-- invested. Paired with an in-tutorial explanation of the mechanic.
+local BASE_MAX_HP = 150
+local BASE_REGEN_RATE = 3.5 -- HP regenerated per second
 local BASE_SHOT_HP_COST = 8 -- HP spent per normal shot
 local MIN_SHOT_HP_COST = 1 -- fracture_efficiency can never reduce a shot below this
 local TRICKLE_SHOT_COOLDOWN = 1.2 -- seconds between free "trickle" shots while depleted
@@ -149,10 +198,28 @@ function EssenceOrbController.RecalculateStats(player)
 		return
 	end
 
-	local maxHP = BASE_MAX_HP + sumEffect(player, MAX_HP_UPGRADE_IDS)
-	local regenRate = BASE_REGEN_RATE + sumEffect(player, REGEN_UPGRADE_IDS)
+	-- Shadow Sanctum upgrades stack additively on top of the Earth Essence
+	-- tree rather than replacing it, so the two economies complement each
+	-- other instead of one making the other pointless.
+	-- Always numbers, even if the Sanctum module is missing, so a bad value
+	-- can never turn MaxHP/RegenRate into a non-number and break regen.
+	local sanctumMaxHP = sanctumEffect(player, "sanctum_deep_well")
+	local sanctumRegen = sanctumEffect(player, "sanctum_swift_shadows")
 
-	local shotCostReduction = sumEffect(player, { SHOT_COST_UPGRADE_ID }) -- e.g. 0.09 for 3 levels
+	local maxHP = BASE_MAX_HP + sumEffect(player, MAX_HP_UPGRADE_IDS) + sanctumMaxHP
+	local regenRate = BASE_REGEN_RATE + sumEffect(player, REGEN_UPGRADE_IDS) + sanctumRegen
+
+	-- Sanctum's Umbral Fracture stacks additively with fracture_efficiency,
+	-- then the combined total is clamped to 0..0.9 before being applied.
+	-- Without that clamp, enough combined levels could drive the reduction
+	-- past 1.0 and make BASE_SHOT_HP_COST * (1 - reduction) go NEGATIVE --
+	-- a click that REFUNDS energy and makes the orb infinitely clickable.
+	-- MIN_SHOT_HP_COST alone wouldn't catch that, since math.max would
+	-- happily return the floor while the real intent was broken.
+	local shotCostReduction = sumEffect(player, { SHOT_COST_UPGRADE_ID })
+		+ sanctumEffect(player, "sanctum_fracture")
+	shotCostReduction = math.clamp(shotCostReduction, 0, 0.9)
+
 	local shotHPCost = math.max(MIN_SHOT_HP_COST, BASE_SHOT_HP_COST * (1 - shotCostReduction))
 
 	local neverFullyDepleted = getLevel(player, NEVER_DEPLETED_UPGRADE_ID) >= 1
@@ -189,6 +256,11 @@ function EssenceOrbController.Init(player)
 		ShotHPCost = BASE_SHOT_HP_COST,
 		NeverFullyDepleted = false,
 		TrickleCooldownRemaining = 0,
+		-- rebirthshop_secondwind: separate from TrickleCooldownRemaining
+		-- above (core_resilience's cooldown) -- Second Wind is a one-time
+		-- "just bottomed out" comeback burst, not a sustained trickle, and
+		-- the two are meant to stack rather than share a cooldown.
+		SecondWindCooldownRemaining = 0,
 		Connections = {},
 	}
 
@@ -203,6 +275,11 @@ function EssenceOrbController.Init(player)
 	end
 	table.insert(watchedIds, SHOT_COST_UPGRADE_ID)
 	table.insert(watchedIds, NEVER_DEPLETED_UPGRADE_ID)
+	-- Sanctum upgrades that change orb stats, so buying one takes effect
+	-- immediately instead of waiting for some other recalculation.
+	table.insert(watchedIds, "sanctum_deep_well")
+	table.insert(watchedIds, "sanctum_swift_shadows")
+	table.insert(watchedIds, "sanctum_fracture")
 
 	local state = orbStates[player]
 	for _, id in ipairs(watchedIds) do
@@ -280,26 +357,52 @@ end
 -- Attempts to fire a shot. Deducts ShotHPCost from CurrentHP on a normal
 -- shot, or -- if the orb is depleted and core_resilience is owned --
 -- fires a free trickle shot and starts its cooldown instead.
--- Returns: success (bool), hpCostPaid (number), isTrickle (bool)
+--
+-- Returns: success (bool), hpCostPaid (number), isTrickle (bool),
+-- secondWindData ({BoostSeconds: number}?)
+--
+-- secondWindData is non-nil only on the exact shot that drains CurrentHP
+-- from >0 down to 0, while rebirthshop_secondwind is owned and its own
+-- cooldown has elapsed. This function only reports the trigger and heals
+-- the HP -- granting the essence boost and firing the client-facing
+-- effect is the CALLER's job (see OrbClickManager.server.luau), same
+-- separation of concerns as wasTrickle already documented above: HP math
+-- lives here, reward/FX orchestration lives in the click flow.
 function EssenceOrbController.Fire(player)
 	local state = orbStates[player]
 	if not state then
-		return false, 0, false
+		return false, 0, false, nil
 	end
 
 	local canFire, isTrickle = EssenceOrbController.CanFire(player)
 	if not canFire then
-		return false, 0, false
+		return false, 0, false, nil
 	end
 
 	if isTrickle then
 		state.TrickleCooldownRemaining = TRICKLE_SHOT_COOLDOWN
-		return true, 0, true
+		return true, 0, true, nil
 	end
 
+	local previousHP = state.CurrentHP
 	state.CurrentHP = math.max(0, state.CurrentHP - state.ShotHPCost)
 	player:SetAttribute("OrbCurrentHP", state.CurrentHP)
-	return true, state.ShotHPCost, false
+
+	local secondWindData = nil
+	if previousHP > 0 and state.CurrentHP <= 0 and state.SecondWindCooldownRemaining <= 0 and RebirthShopUpgrades then
+		local level = getLevel(player, "rebirthshop_secondwind")
+		if level >= 1 then
+			local data = RebirthShopUpgrades.GetLevelData("rebirthshop_secondwind", level)
+			if data then
+				state.CurrentHP = math.clamp(state.CurrentHP + state.MaxHP * data.RefillPercent, 0, state.MaxHP)
+				player:SetAttribute("OrbCurrentHP", state.CurrentHP)
+				state.SecondWindCooldownRemaining = data.Cooldown
+				secondWindData = { BoostSeconds = data.BoostSeconds }
+			end
+		end
+	end
+
+	return true, state.ShotHPCost, false, secondWindData
 end
 
 -- =========================================================================
@@ -348,6 +451,10 @@ RunService.Heartbeat:Connect(function(dt)
 
 		if state.TrickleCooldownRemaining > 0 then
 			state.TrickleCooldownRemaining = math.max(0, state.TrickleCooldownRemaining - dt)
+		end
+
+		if state.SecondWindCooldownRemaining > 0 then
+			state.SecondWindCooldownRemaining = math.max(0, state.SecondWindCooldownRemaining - dt)
 		end
 	end
 end)

@@ -9,15 +9,42 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local MarketplaceService = game:GetService("MarketplaceService")
 
-local TreeUpgrades = require(ReplicatedStorage:WaitForChild("TreeUpgrades"))
 local IdleUpgrades = require(ReplicatedStorage:WaitForChild("IdleUpgrades"))
+local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
+local GroupRewardConfig = require(ReplicatedStorage:WaitForChild("GroupRewardConfig"))
+local EPMService = require(game:GetService("ServerScriptService"):WaitForChild("EPMService"))
 
 local Events = ReplicatedStorage:WaitForChild("Remotes")
 local OfflineEarningsEvent = Events:FindFirstChild("OfflineEssenceReward")
 
 local OFFLINE_HARVEST_CAP_SECONDS = 8 * 60 * 60 -- cap offline earnings at 8 hours; tune to taste
-local AUTOMATION_CLICK_INTERVAL = 2 -- seconds between automation_core auto-clicks; tune to taste
 local PASSIVE_CURRENCY_ID = "EarthEssence" -- matches BaseCost keys in TreeUpgrades
+
+-- ===================== COMEBACK BONUS (lapsed-player win-back) =====================
+-- The offline-earnings calc above caps at OFFLINE_HARVEST_CAP_SECONDS (8h),
+-- which is correct for THAT purpose (nobody should out-earn active play by
+-- idling), but it means an 8-hour absence and a 3-week absence produce the
+-- EXACT same "welcome back" -- no acknowledgment at all that someone who
+-- actually lapsed came back. This is a separate, flat bonus specifically
+-- for real absences, using the UNCAPPED time away, folded into the same
+-- Welcome Back popup as an extra line rather than a second competing UI.
+-- Sorted longest-first so the loop below can just take the first match.
+local COMEBACK_TIERS = {
+	{ MinSeconds = 14 * 24 * 60 * 60, BaseReward = 8000 }, -- 14+ days
+	{ MinSeconds = 7 * 24 * 60 * 60, BaseReward = 3500 },  -- 7-14 days
+	{ MinSeconds = 3 * 24 * 60 * 60, BaseReward = 1200 },  -- 3-7 days
+	{ MinSeconds = 1 * 24 * 60 * 60, BaseReward = 300 },   -- 1-3 days
+}
+local COMEBACK_DISPLAY_KEY = "🎉 Welcome Back Bonus"
+
+local function getComebackBonus(realSecondsAway, rebirths)
+	for _, tier in ipairs(COMEBACK_TIERS) do
+		if realSecondsAway >= tier.MinSeconds then
+			return ProgressionConfig.ScaleReward(tier.BaseReward, rebirths)
+		end
+	end
+	return 0
+end
 
 -- ===================== ESSENCE DEPOSIT HELPER =====================
 
@@ -69,29 +96,17 @@ local function RunPassiveIncomeLoop()
 	end
 end
 
--- ===================== automation_core: AUTO-CLICK LOOP =====================
-
-local automationThreads = {}
-
-local function StartAutomationFor(player)
-	if automationThreads[player] then return end
-	automationThreads[player] = task.spawn(function()
-		while player.Parent do
-			task.wait(AUTOMATION_CLICK_INTERVAL)
-			if IdleUpgrades.HasAutomationCore(player) then
-				-- OrbController.ResolveClick(player) 
-			end
-		end
-	end)
-end
-
-local function StopAutomationFor(player)
-	local thread = automationThreads[player]
-	if thread then
-		task.cancel(thread)
-		automationThreads[player] = nil
-	end
-end
+-- automation_core ("the orb periodically fires on its own") is NOT
+-- implemented here despite the name of this section header that used to
+-- be above this comment -- the real, working implementation lives
+-- client-side in OrbClicker.client.luau (search HasAutomationCore /
+-- "automation_core"), which actually fires ClickOrbEvent on a randomized
+-- interval and applies every upgrade a real click would. What used to be
+-- here was a dead server-side loop from an earlier, abandoned attempt:
+-- its body was a commented-out call to `OrbController`, a variable never
+-- even required in this file, so it could never have run. Removed --
+-- IdleUpgrades.HasAutomationCore is still used by the real (client-side)
+-- implementation, just not from here.
 
 -- ===================== offline_harvest_1/2: REJOIN LUMP SUM =====================
 
@@ -121,6 +136,9 @@ local function GrantOfflineEarnings(player)
 	-- 2. Offline Upgrade Multiplier (added to base percent)
 	local upgradePercent = IdleUpgrades.GetOfflineEarningsPercent(player)
 	local finalOfflinePercent = basePercent + (upgradePercent or 0)
+	local memberOfflineMultiplier = player:GetAttribute("GroupMember") == true
+		and GroupRewardConfig.OfflineEarningsMultiplier
+		or 1
 
 	-- 3. Global Essence Multiplier
 	local globalMultiplier = 1
@@ -139,7 +157,16 @@ local function GrantOfflineEarnings(player)
 		if dict.Discovered == true then
 			local epm = dict.savedEPM or 0
 			if epm > 0 then
-				local offlineReward = math.floor(epm * minutesOffline * globalMultiplier * finalOfflinePercent)
+				-- Solar EPM already reflects the player's multiplied active
+				-- production and is capped in EPMService. Limit the second global
+				-- multiplier pass here so a high-end build cannot exponentiate a
+				-- mythic offline rate into tens of thousands overnight.
+				local offlineGlobalMultiplier = essenceId == "SolarEssence"
+					and math.min(globalMultiplier, 2)
+					or globalMultiplier
+				local offlineReward = math.floor(
+					epm * minutesOffline * offlineGlobalMultiplier * finalOfflinePercent * memberOfflineMultiplier
+				)
 
 				if offlineReward > 0 then
 					AddEssence(player, essenceId, offlineReward)
@@ -152,11 +179,30 @@ local function GrantOfflineEarnings(player)
 					end
 
 					totalEarnedDisplay += offlineReward
-					
-					rewards[essenceId] = offlineReward
+
+					rewards[dict.DisplayName or essenceId] = offlineReward
 				end
 			end
 		end
+	end
+
+	-- Comeback bonus: uses the REAL (uncapped) time away, not the 8-hour
+	-- `secondsAway` above, since the whole point is to recognize absences
+	-- the offline-earnings cap deliberately doesn't reward further.
+	local realSecondsAway = math.max(0, os.time() - lastLeave)
+	local comebackBonus = getComebackBonus(realSecondsAway, data.Rebirths)
+	if comebackBonus > 0 then
+		AddEssence(player, PASSIVE_CURRENCY_ID, comebackBonus)
+		data.TotalEssenceGathered = (data.TotalEssenceGathered or 0) + comebackBonus
+		totalEarnedDisplay += comebackBonus
+		rewards[COMEBACK_DISPLAY_KEY] = comebackBonus
+	end
+
+	-- Offline earnings are a pre-session lump sum, not active production.
+	-- Resnapshot all balances only after every offline/comeback award has been
+	-- deposited so the EPM window begins from the exact post-grant state.
+	if totalEarnedDisplay > 0 then
+		EPMService.resetBaseline(player)
 	end
 
 	-- Fire client event if rewards were granted
@@ -170,12 +216,10 @@ end
 Players.PlayerAdded:Connect(function(player)
 	task.defer(function()
 		GrantOfflineEarnings(player)
-		StartAutomationFor(player)
 	end)
 end)
 
 Players.PlayerRemoving:Connect(function(player)
-	StopAutomationFor(player)
 	local playerDataModule = player:FindFirstChild("PlayerData")
 	if playerDataModule then
 		local ok, data = pcall(require, playerDataModule)

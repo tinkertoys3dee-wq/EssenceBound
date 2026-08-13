@@ -8,6 +8,5 @@ GetData.OnServerInvoke = function(player)
 	for name, value in pairs(require(player:WaitForChild("PlayerData"))) do
 		data[name] = value
 	end
-	print(data)
 	return data
 end

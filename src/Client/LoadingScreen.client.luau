@@ -39,9 +39,34 @@ local TweenService = game:GetService("TweenService")
 local ContentProvider = game:GetService("ContentProvider")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
+local PresentationCoordinator = require(ReplicatedStorage:WaitForChild("PresentationCoordinator"))
+
+-- Automatic presentations may initialize while assets are still loading,
+-- but none may take the foreground slot until this full-screen input layer
+-- has actually faded out and been destroyed.
+PresentationCoordinator.SetReady(false)
+
+-- Keep the legacy local LoadingDone BindableEvent for compatibility with any
+-- place-only scripts that are not represented in this source tree. Runtime
+-- systems here use PresentationCoordinator's durable readiness state instead
+-- of a one-shot event that can be missed when LocalScripts start out of order.
+local remotesFolder = ReplicatedStorage:FindFirstChild("Remotes")
+if not remotesFolder then
+	remotesFolder = Instance.new("Folder")
+	remotesFolder.Name = "Remotes"
+	remotesFolder.Parent = ReplicatedStorage
+end
+
+local loadingDoneEvent = remotesFolder:FindFirstChild("LoadingDone")
+if not loadingDoneEvent then
+	loadingDoneEvent = Instance.new("BindableEvent")
+	loadingDoneEvent.Name = "LoadingDone"
+	loadingDoneEvent.Parent = remotesFolder
+end
 
 --============================================================
 -- SECTION 2: CONFIG
@@ -54,9 +79,14 @@ local CONFIG = {
 	SmallOrbImage = "rbxassetid://72641569769631",
 	Music = game:GetService("SoundService"):WaitForChild("Music"):WaitForChild("Loading Screen"):WaitForChild("Music1"),
 	-- ================= TIMING =================
-	MinDisplayTime = 2.25,
+	-- MinDisplayTime and GraceAfterComplete were 2.25 / 1.5 -- pure enforced
+	-- wait before ANY player, new or returning, can start playing. This is
+	-- a pacing change only, not a tone change: nothing about the ominous
+	-- theme/content below is touched, only how long the player is held
+	-- here regardless of theme.
+	MinDisplayTime = 1.4,
 	FadeTime = 0.7,
-	GraceAfterComplete = 1.5,
+	GraceAfterComplete = 0.8,
 	SkipButtonDelay = 5, -- seconds before the skip button fades in
 
 	-- ================= OMINOUS SYSTEM =================
@@ -669,10 +699,36 @@ local titleStroke = newInstance("UIStroke", {
 }, title)
 
 local FULL_TITLE = "ESSENCEBOUND"
-local sounds = game:GetService("SoundService"):WaitForChild("SFX"):WaitForChild("GlitchSounds")
-local glitchSound1 = sounds:WaitForChild("Sound1")
-local glitchsound2 = sounds:WaitForChild("Sound2")
-local glitchsound3 = sounds:WaitForChild("Sound3")
+
+-- Was a bare WaitForChild chain with no timeout, running here at the TOP
+-- LEVEL of the script (not inside the task.spawn below) -- meaning it
+-- blocked every single line after it, including whatever this script
+-- does to eventually let the loading screen finish. This is the one
+-- script every player must get through before they can play at all, so
+-- a missing/renamed SFX/GlitchSounds/Sound1-3 in Studio would hang the
+-- loading screen forever for 100% of players, with no error and no way
+-- to fix it without a redeploy. Timed lookup + a safePlay helper below
+-- (all 15 call sites already called these unconditionally) means a
+-- missing sound now costs only the glitch sound effect itself, never
+-- the ability to load into the game.
+local function findSound(parent, name, timeoutSeconds)
+	if not parent then
+		return nil
+	end
+	return parent:FindFirstChild(name) or parent:WaitForChild(name, timeoutSeconds)
+end
+
+local sfxFolder = findSound(game:GetService("SoundService"), "SFX", 5)
+local sounds = findSound(sfxFolder, "GlitchSounds", 5)
+local glitchSound1 = findSound(sounds, "Sound1", 5)
+local glitchsound2 = findSound(sounds, "Sound2", 5)
+local glitchsound3 = findSound(sounds, "Sound3", 5)
+
+local function safePlay(sound)
+	if sound then
+		sound:Play()
+	end
+end
 
 Lifecycle:track(task.spawn(function()
 	for i = 1, #FULL_TITLE do
@@ -693,11 +749,11 @@ local function effectChromaticGlitch()
 	titleGhostCyan.TextTransparency = 0.35
 	local num = math.random(1, 3)
 	if num == 1 then
-		glitchSound1:Play()
+		safePlay(glitchSound1)
 	elseif num == 2 then
-		glitchsound2:Play()
+		safePlay(glitchsound2)
 	else
-		glitchsound3:Play()
+		safePlay(glitchsound3)
 	end
 	task.wait(randomFloat(0.06, 0.14))
 	titleGhostRed.TextTransparency = 1
@@ -1241,11 +1297,11 @@ end
 local function effectRedFlash()
 	local num = math.random(1, 3)
 	if num == 1 then
-		glitchSound1:Play()
+		safePlay(glitchSound1)
 	elseif num == 2 then
-		glitchsound2:Play()
+		safePlay(glitchsound2)
 	else
-		glitchsound3:Play()
+		safePlay(glitchsound3)
 	end
 	local originalColor = root.BackgroundColor3
 	root.BackgroundColor3 = Color3.fromRGB(25, 4, 4)
@@ -1282,11 +1338,11 @@ local function effectTextGlitch()
 	if original == "" then return end
 	local num = math.random(1, 3)
 	if num == 1 then
-		glitchSound1:Play()
+		safePlay(glitchSound1)
 	elseif num == 2 then
-		glitchsound2:Play()
+		safePlay(glitchsound2)
 	else
-		glitchsound3:Play()
+		safePlay(glitchsound3)
 	end
 	for _ = 1, 4 do
 		local scrambled = {}
@@ -1313,11 +1369,11 @@ end
 local function effectCrackFlash()
 	local num = math.random(1, 3)
 	if num == 1 then
-		glitchSound1:Play()
+		safePlay(glitchSound1)
 	elseif num == 2 then
-		glitchsound2:Play()
+		safePlay(glitchsound2)
 	else
-		glitchsound3:Play()
+		safePlay(glitchsound3)
 	end
 	for _, crack in ipairs(crackLines) do
 		crack.Position = UDim2.fromScale(randomFloat(0.1, 0.9), randomFloat(0.1, 0.9))
@@ -1337,11 +1393,11 @@ end
 local function effectTremor()
 	local num = math.random(1, 3)
 	if num == 1 then
-		glitchSound1:Play()
+		safePlay(glitchSound1)
 	elseif num == 2 then
-		glitchsound2:Play()
+		safePlay(glitchsound2)
 	else
-		glitchsound3:Play()
+		safePlay(glitchsound3)
 	end
 	screenShake(0.012, 0.35)
 end
@@ -1455,13 +1511,19 @@ Lifecycle:track(task.spawn(function()
 	local total = math.max(#assets, 1)
 	local loaded = 0
 
-	for _, asset in ipairs(assets) do
-		if not Lifecycle.active then return end
-		pcall(function()
-			ContentProvider:PreloadAsync({ asset })
+	-- Batched into a single PreloadAsync call (was one call per descendant,
+	-- serially -- much slower on low-end/mobile devices, and this loading
+	-- screen is the very first thing every new player waits through). The
+	-- per-asset callback still drives the same progressive loading bar.
+	local ok = pcall(function()
+		ContentProvider:PreloadAsync(assets, function()
+			loaded += 1
+			realProgress = loaded / total
 		end)
-		loaded += 1
-		realProgress = loaded / total
+	end)
+
+	if not ok then
+		realProgress = 1
 	end
 
 	loadingComplete = true
@@ -1602,7 +1664,9 @@ Lifecycle:track(task.spawn(function()
 end))
 
 local inputConnection
-local ready = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("LoadingDone")
+-- Reuses the reference resolved (and created if missing) up in SECTION 1,
+-- rather than a second WaitForChild lookup for the same instance.
+local ready = loadingDoneEvent
 
 inputConnection = UserInputService.InputBegan:Connect(function(_, gameProcessed)
 	if gameProcessed or playerReady or not acceptAnyKeyInput then return end
@@ -1649,8 +1713,6 @@ fadeOutTween.Completed:Wait()
 
 CONFIG.Music:Stop()
 CONFIG.Music.Volume = CONFIG.Music:GetAttribute("OriginalVolume") or CONFIG.Music.Volume -- restore volume for next time it plays
-ready:Fire("Done")
-
 --============================================================
 -- SECTION 24: FADE OUT + FULL CLEANUP
 --============================================================
@@ -1686,3 +1748,10 @@ end
 
 task.wait(CONFIG.FadeTime + 0.1)
 gui:Destroy()
+
+-- Fire readiness only after the blocking GUI is gone. Previously this fired
+-- before the fade/cleanup, allowing Tutorial to become visible underneath a
+-- still-interactive LoadingScreen and making its highlighted orb appear
+-- unclickable for the opening beat.
+PresentationCoordinator.SetReady(true)
+ready:Fire("Done")

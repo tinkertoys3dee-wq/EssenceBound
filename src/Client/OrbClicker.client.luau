@@ -13,29 +13,29 @@ local LP = LargeOrbFolder:WaitForChild("Leafparent")
 local UserInputService = game:GetService("UserInputService")
 local GuiService = game:GetService("GuiService")
 
+local UpdData = Events:WaitForChild("UpdateData")
+
 local EssenceUpgrades = require(ReplicatedStorage:WaitForChild("TreeUpgrades"))
 local CollectionUpgrades = require(ReplicatedStorage:WaitForChild("CollectionUpgrades"))
 local Criticals = require(ReplicatedStorage:WaitForChild("CriticalsController"))
+local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
+local EssenceVisuals = require(ReplicatedStorage:WaitForChild("EssenceVisuals"))
+local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
 
 local cloneables = ReplicatedStorage:WaitForChild("Cloneables")
 local ClickOrbEvent = Events:WaitForChild("ClickOrb")
 
 local returnEvent = Events:WaitForChild("Return")
-local IconIDS = {
-	["EarthEssenceRegular"] = 79479049281587,
-	["ShadowEssenceRegular"] = 106130917603943
-}
-
 local EssenceTypes = {
-	["Earth Essence"] = {
-		["Icon"] = IconIDS["EarthEssenceRegular"],
-		["Name"] = "Earth Essence",
-	},
-	["Shadow Essence"] = {
-		["Icon"] = IconIDS["ShadowEssenceRegular"],
-		["Name"] = "Shadow Essence",
-	},
 }
+for _, definition in ipairs(EssenceConfig.Ordered) do
+	EssenceTypes[definition.Name] = {
+		Icon = definition.IconAssetId,
+		Image = definition.IconImage,
+		Name = definition.Name,
+		Color = definition.Color,
+	}
+end
 local GetEssenceModule = require(ReplicatedStorage:WaitForChild("GetEssence"))
 local Template = cloneables:WaitForChild("OrbClickableTemplate")
 
@@ -55,14 +55,134 @@ local popTween = TweenService:Create(LargeOrbuiScale, tweenInfo, {Scale = 1.1}) 
 local resetTween = TweenService:Create(LargeOrbuiScale, tweenInfo, {Scale = 1}) -- Squishes to 95%
 
 -- =========================================================================
+-- CLICK FEEL
+-- =========================================================================
+-- The great orb is the single most-repeated interaction in the game, so
+-- it has to land. Everything below is cosmetic only -- no reward, rate or
+-- spawn count is touched by any of it.
+--
+-- NOTE ON SCALE OWNERSHIP: LargeOrb's UIScale is already driven by
+-- HoverClickTween (hover 1.1 / press 0.95 / release 1.1). popTween writes
+-- that same property, so firing it on a manual click was overriding the
+-- press-squish about a frame after it started -- the squish was there in
+-- the code but never actually visible. The manual click path below now
+-- leaves the scale to HoverClickTween (which is driven by real mouse
+-- events and does it properly) and layers its impact on separate
+-- elements instead. The automation path still uses popTween, because
+-- auto-clicks fire no mouse events and would otherwise be silent.
+
+local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
+
+-- Shared full-screen effect layer (see Juice.GetLayer) -- kept out of
+-- MainGui so rings and particles can never be clipped by, or interfere
+-- with the layout of, the existing UI.
+local juiceLayer = Juice.GetLayer(Gui)
+
+local ESSENCE_GREEN = Color3.fromRGB(120, 240, 160)
+local ESSENCE_GOLD = Color3.fromRGB(255, 205, 80)
+local ESSENCE_DEEP = Color3.fromRGB(150, 110, 240)
+
+local clickSound = Juice.FindSound("SFX/UI/UIPop")
+
+-- Rapid clicking escalates the feedback: the pitch climbs, the ring grows
+-- and the burst thickens. Purely a feedback curve -- it does not change
+-- what a click is worth.
+local clickStreak = 0
+local lastClickAt = 0
+local STREAK_WINDOW = 0.65
+local STREAK_MAX = 20
+
+local function OrbClickJuice(isAutomated)
+	local now = os.clock()
+
+	if isAutomated then
+		-- Automated clicks get the visual but never drive the streak or
+		-- the rising pitch -- otherwise idle play would sit at a
+		-- permanently shrill top note the player didn't earn.
+		local center = Juice.CenterOf(LargeOrb, juiceLayer)
+		if center then
+			Juice.Ring(juiceLayer, center, {
+				Color = ESSENCE_GREEN,
+				StartSize = 70,
+				EndSize = 150,
+				Duration = 0.5,
+				Thickness = 2,
+			})
+		end
+		return
+	end
+
+	if (now - lastClickAt) <= STREAK_WINDOW then
+		clickStreak = math.min(clickStreak + 1, STREAK_MAX)
+	else
+		clickStreak = 1
+	end
+	lastClickAt = now
+
+	local intensity = clickStreak / STREAK_MAX
+
+	if clickSound then
+		Juice.PlaySound(clickSound, {
+			Pitch = Juice.PitchForStreak(clickStreak, 14) * (0.97 + math.random() * 0.06),
+			Volume = 0.5,
+		})
+	end
+
+	local center = Juice.CenterOf(LargeOrb, juiceLayer)
+	if not center then
+		return
+	end
+
+	Juice.Ring(juiceLayer, center, {
+		Color = intensity > 0.6 and ESSENCE_GOLD or ESSENCE_GREEN,
+		StartSize = 80,
+		EndSize = 170 + (intensity * 90),
+		Duration = 0.45,
+		Thickness = 2 + (intensity * 2),
+	})
+
+	Juice.Burst(juiceLayer, center, {
+		Count = 4 + math.floor(intensity * 7),
+		Colors = { ESSENCE_GREEN, ESSENCE_GOLD, ESSENCE_DEEP },
+		Distance = 90 + (intensity * 70),
+		Duration = 0.5,
+		Size = { 4, 9 },
+	})
+
+	-- A bigger beat every 10 clicks in a row, so a sustained streak builds
+	-- to something instead of flatlining.
+	if clickStreak > 0 and clickStreak % 10 == 0 then
+		Juice.Shake(Center, 5, 0.22)
+		Juice.Burst(juiceLayer, center, {
+			Count = 14,
+			Colors = { ESSENCE_GOLD, Color3.fromRGB(255, 255, 255) },
+			Distance = 210,
+			Duration = 0.7,
+			Size = { 6, 13 },
+		})
+	end
+end
+
+-- =========================================================================
 -- COLLECTION UPGRADES: overflow_capacity (max active orbs) + magnetic_pull
 -- (drift toward cursor). Both are spawn/motion concerns, so they live here
 -- rather than in CollectionRing.lua, which only owns overlap detection.
 -- =========================================================================
 
--- Base cap before any overflow_capacity levels are applied. Tune to taste -
--- this is a design choice, not something EssenceUpgrades specifies.
-local BASE_MAX_ACTIVE_ORBS = 400
+-- Base cap before any overflow_capacity/sanctum_overflow levels are
+-- applied. Tune to taste -- this is a design choice, not something
+-- EssenceUpgrades specifies.
+--
+-- Was 400. At that size the cap was effectively decorative: overflow_capacity
+-- (+10/level, max 6 = +60) and sanctum_overflow (+3/level, max 8 = +24) are
+-- both REAL paid upgrades meant to raise this, but a fully maxed account
+-- only reaches 484 -- a difference nobody would ever notice, since normal
+-- play never gets remotely close to 400 concurrent orbs anyway. The cap
+-- was doing two things badly at once: never actually limiting screen
+-- clutter during a big burst (shatter_force + a Hammer slam + a storm, all
+-- at once, could legitimately approach it), and making two purchased
+-- upgrades pointless since the number they raise was already absurd.
+local BASE_MAX_ACTIVE_ORBS = 40
 
 -- How strongly MagnetStrength pulls orbs toward the cursor, in scale-units
 -- of homing speed per point of MagnetStrength. Tune to taste.
@@ -199,6 +319,23 @@ local function GetOrbFXColor(EssenceType)
 	return Color3.fromRGB(255, 245, 200)
 end
 
+-- Mirrors ImageTransparency onto Solar's generated CanvasGroup. Earth and
+-- Shadow have no generated child, so this remains one ordinary tween for
+-- them; callers never need to know which presentation path an essence uses.
+local function TweenEssenceTransparency(imageObject, tweenInfo, targetTransparency)
+	local imageTween = TweenService:Create(imageObject, tweenInfo, {
+		ImageTransparency = targetTransparency,
+	})
+	imageTween:Play()
+	local generated = imageObject:FindFirstChild("GeneratedEssenceOrb")
+	if generated and generated:IsA("CanvasGroup") then
+		TweenService:Create(generated, tweenInfo, {
+			GroupTransparency = targetTransparency,
+		}):Play()
+	end
+	return imageTween
+end
+
 -- Soft radial glow, built the classic UI way: several stacked,
 -- increasingly-transparent circles. Parented under the orb so it moves
 -- and gets destroyed along with it automatically — caller just needs to
@@ -282,6 +419,16 @@ local function SpawnTrailGhost(sourceImageLabel, position, size, zIndex, parent)
 	ghost.ImageTransparency = ORB_FX.TrailStartTransparency
 	ghost.ZIndex = math.max(zIndex - 1, 1)
 	ghost.Parent = parent
+	-- Uploaded-art ghosts inherit Image directly. Only rebuild a native
+	-- presentation when the source actually owns one; fragment drops also
+	-- carry an EssenceName for payout purposes, but must keep their fragment
+	-- icon instead of turning into a full Solar orb in the trail.
+	local essenceName = sourceImageLabel:GetAttribute("EssenceName")
+	if essenceName and sourceImageLabel:FindFirstChild("GeneratedEssenceOrb") then
+		EssenceVisuals.ApplyToImage(ghost, essenceName, {
+			Transparency = ORB_FX.TrailStartTransparency,
+		})
+	end
 
 	local shrunkSize = UDim2.new(
 		size.X.Scale * ORB_FX.TrailShrinkTo, size.X.Offset * ORB_FX.TrailShrinkTo,
@@ -294,6 +441,14 @@ local function SpawnTrailGhost(sourceImageLabel, position, size, zIndex, parent)
 		{ ImageTransparency = 1, Size = shrunkSize }
 	)
 	tween:Play()
+	local generated = ghost:FindFirstChild("GeneratedEssenceOrb")
+	if generated and generated:IsA("CanvasGroup") then
+		TweenService:Create(
+			generated,
+			TweenInfo.new(ORB_FX.TrailLifetime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ GroupTransparency = 1 }
+		):Play()
+	end
 	tween.Completed:Connect(function()
 		ghost:Destroy()
 	end)
@@ -535,12 +690,19 @@ local PopSounds = game:GetService("SoundService"):WaitForChild("SFX"):WaitForChi
 PopSounds:WaitForChild("Pop1")
 PopSounds:WaitForChild("Pop2")
 PopSounds:WaitForChild("Pop3")
+
+-- See the FIRST-CRIT GUARANTEE note inside SpawnOrb.
+local firstCritLocked = false
+
 local function SpawnOrb(EssenceType, isFragment)
 	local Orb = Template:Clone()
 	Orb.Name = EssenceTypes[EssenceType]["Name"]
-	Orb.MainClickable.Image = isFragment
-		and ("rbxassetid://" .. FRAGMENT_ICON_ID)
-		or ("rbxassetid://" .. EssenceTypes[EssenceType]["Icon"])
+	Orb.MainClickable:SetAttribute("EssenceName", EssenceTypes[EssenceType].Name)
+	if isFragment then
+		Orb.MainClickable.Image = "rbxassetid://" .. FRAGMENT_ICON_ID
+	else
+		EssenceVisuals.ApplyToImage(Orb.MainClickable, EssenceType)
+	end
 
 	-- 1. Setup starting state (Centered and tiny)
 	Orb.Parent = EssenceParent
@@ -567,7 +729,25 @@ local function SpawnOrb(EssenceType, isFragment)
 	-- This is the "convenience flag" half of CriticalsController -- the
 	-- actual payout comes from GetCritMultiplier, called server-side off
 	-- this same attribute once collection fires (see EssenceMultiplier.lua).
-	local isCrit = not isFragment and Criticals.RollCrit(player) or false
+	--
+	-- FIRST-CRIT GUARANTEE: a brand-new player has a 0% base crit chance
+	-- and would otherwise wait up to BASE_GUARANTEED_CRIT_STREAK clicks
+	-- before ever seeing the game's biggest visual payoff. The very first
+	-- non-fragment orb a player ever spawns is forced to crit instead.
+	--
+	-- firstCritLocked flips the instant this fires, so it can never
+	-- trigger twice even before the SeenFirstCrit attribute round-trips
+	-- back from the server -- otherwise a click that spawns more than one
+	-- base orb (twin_orb_manifestation) could force-crit every orb in
+	-- that single click instead of just the first one, ever.
+	local isCrit
+	if not isFragment and not firstCritLocked and not player:GetAttribute("SeenFirstCrit") then
+		isCrit = true
+		firstCritLocked = true
+		UpdData:FireServer(true, "=", "SeenFirstCrit")
+	else
+		isCrit = not isFragment and Criticals.RollCrit(player) or false
+	end
 	Orb:SetAttribute("IsCrit", isCrit)
 
 	-- === FX: resolve this orb's flavor color once, reused everywhere below ===
@@ -606,7 +786,7 @@ local function SpawnOrb(EssenceType, isFragment)
 	Orb.ZIndex = 50 - math.floor(depth * 9)
 
 	Orb.Size = UDim2.new(0, 0, 0, 0)
-	Orb.MainClickable.ImageTransparency = 1 -- fade in from invisible
+	EssenceVisuals.SetTransparency(Orb.MainClickable, 1) -- fade in from invisible
 
 	-- === FX: glow + shimmer — skipped entirely for fragments ===
 	if isFragment then
@@ -634,6 +814,28 @@ local function SpawnOrb(EssenceType, isFragment)
 	local minX, maxX = -0.65, 1.65
 	local minY, maxY = -.15, 1.8
 	local exclusionRadius = 0.45
+	if Gui:GetAttribute("TutorialActive") == true then
+		-- The tutorial requires the player to collect this first real drop. Keep
+		-- it in the unobstructed center band instead of letting the normal wide
+		-- scatter roll place the only teaching target under its dialogue card or
+		-- beyond a screen edge. Normal spawning resumes as soon as onboarding ends.
+		minX, maxX = 0.2, 0.8
+		local camera = workspace.CurrentCamera
+		local compactLandscape = camera ~= nil and camera.ViewportSize.Y < 520
+		if compactLandscape then
+			-- Tutorial's compact card begins at 12% of the viewport and is
+			-- 104px tall. Derive the first safe landing row from that footprint
+			-- (plus room for the drop itself) so a 320x240 device cannot roll the
+			-- required collectible a few pixels underneath the instruction card.
+			local viewportHeight = math.max(1, camera.ViewportSize.Y)
+			local dialogueBottom = viewportHeight * 0.12 + 104
+			minY = math.clamp((dialogueBottom + 44) / viewportHeight, 0.52, 0.72)
+			maxY = 0.82
+		else
+			minY, maxY = 0.2, 0.58
+		end
+		exclusionRadius = 0.16
+	end
 
 	local targetX, targetY
 	repeat
@@ -651,7 +853,7 @@ local function SpawnOrb(EssenceType, isFragment)
 	local bounceElasticity = -0.55
 
 	TweenService:Create(Orb, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = finalSize}):Play()
-	TweenService:Create(Orb.MainClickable, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {ImageTransparency = targetTransparency}):Play()
+	TweenEssenceTransparency(Orb.MainClickable, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), targetTransparency)
 
 	-- === IDLE ORBIT SETTINGS ===
 	local orbitRadiusX = (0.03 + math.random() * 0.02) * depthScale
@@ -794,14 +996,13 @@ local function SpawnOrb(EssenceType, isFragment)
 					TweenInfo.new(returnDuration, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
 					{Position = UDim2.new(0.5, 0, 0.5, 0), Size = UDim2.new(0, 0, 0, 0)}
 				)
-				local fadeTween = TweenService:Create(
+				local fadeTween = TweenEssenceTransparency(
 					Orb.MainClickable,
 					TweenInfo.new(returnDuration, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
-					{ImageTransparency = 1}
+					1
 				)
 
 				returnTween:Play()
-				fadeTween:Play()
 
 				returnTween.Completed:Connect(function()
 					returnEvent:FireServer(1)
@@ -869,6 +1070,24 @@ end
 
 local bar = LP:WaitForChild("Healthbar"):WaitForChild("Healthbar")
 
+-- Energy bar colours. Reading the bar's fill LEVEL takes a moment; reading
+-- its colour is instant, which matters because running dry is the single
+-- most confusing thing that happens to a new player.
+local ENERGY_FULL = Color3.fromRGB(90, 230, 140)
+local ENERGY_MID = Color3.fromRGB(245, 200, 70)
+local ENERGY_LOW = Color3.fromRGB(240, 90, 90)
+
+local lastEnergyScale = nil
+
+local function energyColor(ratio)
+	-- Two-stage ramp: green holds until half, then slides through amber to
+	-- red, so the warning reads as a real change rather than a slow drift.
+	if ratio > 0.5 then
+		return ENERGY_MID:Lerp(ENERGY_FULL, math.clamp((ratio - 0.5) / 0.5, 0, 1))
+	end
+	return ENERGY_LOW:Lerp(ENERGY_MID, math.clamp(ratio / 0.5, 0, 1))
+end
+
 local function updateHealthBar()
 	local currentHP = player:GetAttribute("OrbCurrentHP")
 	local maxHP = player:GetAttribute("OrbMaxHP")
@@ -877,8 +1096,24 @@ local function updateHealthBar()
 		return
 	end
 
-	local targetScale = currentHP / maxHP
-	bar.Size = UDim2.new(math.clamp(targetScale, 0, 1), 0, 1, 0)
+	local targetScale = math.clamp(currentHP / maxHP, 0, 1)
+
+	-- Spending is a single instant deduction, so it gets a short tween --
+	-- a hard snap has no weight and is easy to miss entirely. Regen is the
+	-- opposite: the server writes OrbCurrentHP every heartbeat, so those
+	-- arrive as a continuous stream of tiny increments that are already
+	-- smooth. Tweening those too would spawn a tween per frame for no
+	-- visible gain.
+	if lastEnergyScale and targetScale < lastEnergyScale - 0.001 then
+		TweenService:Create(bar, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Size = UDim2.new(targetScale, 0, 1, 0),
+		}):Play()
+	else
+		bar.Size = UDim2.new(targetScale, 0, 1, 0)
+	end
+
+	lastEnergyScale = targetScale
+	bar.BackgroundColor3 = energyColor(targetScale)
 end
 
 player:GetAttributeChangedSignal("OrbCurrentHP"):Connect(updateHealthBar)
@@ -894,12 +1129,60 @@ end)
 local deniedColor = Color3.fromRGB(255, 90, 90)
 local originalOrbColor = Color3.fromRGB(255,255,255) -- adjust if color lives elsewhere on LargeOrb
 
+-- Throttles the explanatory text so hammering a depleted orb doesn't
+-- stack a dozen overlapping labels.
+local lastDeniedMessageAt = 0
+
 local function FlashDenied()
 	local flashTween = TweenService:Create(LargeOrb, TweenInfo.new(0.08), {ImageColor3 = deniedColor})
 	flashTween:Play()
 	flashTween.Completed:Connect(function()
 		TweenService:Create(LargeOrb, TweenInfo.new(0.15), {ImageColor3 = originalOrbColor}):Play()
 	end)
+
+	-- A bare colour flash reads as "this is broken" rather than "this is a
+	-- mechanic". The shake gives the refusal weight, and pointing the
+	-- player at the energy bar tells them what to do about it -- this was
+	-- the single most confusing moment in the early game.
+	Juice.Shake(Center, 7, 0.22)
+
+	if bar then
+		-- Punch only, deliberately no colour pulse: the bar's colour is now
+		-- driven by the energy ratio, and Juice.PulseBackground caches a
+		-- "base" colour the first time it runs and restores to it. Against a
+		-- colour that keeps changing, that base goes stale and would pin the
+		-- bar to whatever shade it happened to be on the first denial.
+		-- Nothing is lost -- the bar is already red at the point a click
+		-- gets refused.
+		Juice.Punch(Juice.GetScale(bar.Parent), 0.12, 0.25)
+	end
+
+	local now = os.clock()
+	if (now - lastDeniedMessageAt) > 1.6 then
+		lastDeniedMessageAt = now
+		NotificationService.Warning("Your Essence Core needs a moment to recharge before it can shatter again.", {
+			Title = "Essence Core Recharging",
+			Icon = "⚡",
+			Duration = 2.8,
+			Key = "orb-energy-recharging",
+		})
+
+		if clickSound then
+			-- Dropped well below the normal click pitch so a refusal is
+			-- instantly distinguishable by ear alone.
+			Juice.PlaySound(clickSound, { Pitch = 0.55, Volume = 0.4 })
+		end
+
+		local center = Juice.CenterOf(LargeOrb, juiceLayer)
+		if center then
+			Juice.FloatText(juiceLayer, center, "Recharging!", {
+				Color = Color3.fromRGB(255, 140, 140),
+				Duration = 1,
+				Rise = 60,
+				TextSize = 28,
+			})
+		end
+	end
 end
 
 LargeOrbButton.Activated:Connect(function()
@@ -907,12 +1190,20 @@ LargeOrbButton.Activated:Connect(function()
 	local shotHPCost = player:GetAttribute("OrbShotHPCost") or 0
 
 	if not CanSpawnOrb() then
+		NotificationService.Info("Collect some active essence orbs before creating more.", {
+			Title = "Orb Field Full",
+			Icon = "◆",
+			Duration = 2.6,
+			Key = "orb-field-full",
+		})
 		return
 	end
 
 	if currentHP >= shotHPCost or currentHP <= 0 then
-		-- immediate click feedback, every successful click
-		popTween:Play()
+		-- Immediate click feedback, every successful click. Scale is left
+		-- to HoverClickTween here (see CLICK FEEL note above) so its
+		-- press-squish stays visible instead of being overridden.
+		OrbClickJuice(false)
 
 		ClickOrbEvent:FireServer()
 
@@ -968,8 +1259,10 @@ task.spawn(function()
 			local shotHPCost = player:GetAttribute("OrbShotHPCost") or 0
 			local hasCoreResilience = (player:GetAttribute("core_resilience") or 0) >= 1
 			if currentHP >= shotHPCost or (currentHP > 0 and hasCoreResilience) then
-				-- immediate click feedback, every successful click
+				-- Automation fires no mouse events, so popTween is the only
+				-- thing that moves the orb here -- kept for that reason.
 				popTween:Play()
+				OrbClickJuice(true)
 				ClickOrbEvent:FireServer()
 				local baseOrbCount = 1
 				-- shatter_force_1/2: fragments, not full orbs
@@ -1040,7 +1333,8 @@ local OUT_OF_BOUNDS_MARGIN = 1.5 -- how far past an edge before it's considered 
 local function SpawnFallingOrb(EssenceType, isGolden)
 	local Orb = Template:Clone()
 	Orb.Name = EssenceTypes[EssenceType]["Name"]
-	Orb.MainClickable.Image = "rbxassetid://" .. EssenceTypes[EssenceType]["Icon"]
+	Orb.MainClickable:SetAttribute("EssenceName", EssenceTypes[EssenceType].Name)
+	EssenceVisuals.ApplyToImage(Orb.MainClickable, EssenceType)
 
 	Orb.Parent = EssenceParent
 	Orb.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -1048,7 +1342,12 @@ local function SpawnFallingOrb(EssenceType, isGolden)
 	Orb:SetAttribute("Collectable", false)
 	Orb:SetAttribute("Collectible", false) -- CollectionRing.lua's ring watches THIS attribute
 	Orb:SetAttribute("IsGolden",isGolden)
-Orb:SetAttribute("OrbType",EssenceType)
+	-- Matches SpawnOrb's pattern above (EssenceTypes[EssenceType]["Name"],
+	-- not the raw EssenceType param) so both spawners write the exact same
+	-- value CollectEffect/the server validate against, even if a future
+	-- essenceTypePool ever passes something that isn't already an
+	-- EssenceTypes key spelled exactly like its own .Name.
+	Orb:SetAttribute("OrbType", EssenceTypes[EssenceType]["Name"])
 	-- === CRIT ROLL ===
 	-- Falling storm orbs are "real" orbs same as a direct click (unlike
 	-- shatter_force fragments), so they roll same as SpawnOrb's non-fragment
@@ -1066,6 +1365,7 @@ Orb:SetAttribute("OrbType",EssenceType)
 		baseSize.X.Scale * sizeVariance, baseSize.X.Offset * sizeVariance,
 		baseSize.Y.Scale * sizeVariance, baseSize.Y.Offset * sizeVariance
 	)
+	local stormColor = isGolden and Color3.fromRGB(255, 215, 70) or GetOrbFXColor(EssenceType)
 
 	-- starting point: random spot along the top band, just off-screen
 	local currentX = FALL_AREA_MIN_X + math.random() * (FALL_AREA_MAX_X - FALL_AREA_MIN_X)
@@ -1073,17 +1373,43 @@ Orb:SetAttribute("OrbType",EssenceType)
 
 	Orb.Position = UDim2.new(currentX, 0, currentY, 0)
 	Orb.Size = UDim2.new(0, 0, 0, 0)
-	Orb.MainClickable.ImageTransparency = 1
+	EssenceVisuals.SetTransparency(Orb.MainClickable, 1)
 
-	-- === FX: crit tint + glow, so a crit is spottable mid-fall in a busy storm ===
-	local fxGlow
+	-- === FX: every storm orb gets a color-matched aura and comet tail. ===
+	-- Previously only critical drops had any silhouette treatment, so the
+	-- majority of the rain looked like ordinary UI icons drifting through
+	-- empty space. The trail is parented to the orb (automatic cleanup) and
+	-- counter-rotated below so it continues pointing against the fall even
+	-- while the collectible itself tumbles.
+	local fxGlow = CreateOrbGlow(isCrit and CRIT_COLOR or stormColor, finalSize)
+	fxGlow.Name = "FX_StormAura"
+	fxGlow.ZIndex = 0
+	fxGlow.Parent = Orb
+
+	local fallTrail = Instance.new("Frame")
+	fallTrail.Name = "FX_StormTrail"
+	fallTrail.AnchorPoint = Vector2.new(0.5, 1)
+	fallTrail.Position = UDim2.fromScale(0.5, 0.38)
+	fallTrail.Size = UDim2.fromScale(isGolden and 0.15 or 0.1, isGolden and 1.75 or 1.35)
+	fallTrail.BackgroundColor3 = isCrit and CRIT_COLOR or stormColor
+	fallTrail.BackgroundTransparency = isGolden and 0.16 or 0.28
+	fallTrail.BorderSizePixel = 0
+	fallTrail.ZIndex = math.max(Orb.MainClickable.ZIndex - 1, 1)
+	fallTrail.Parent = Orb
+	local trailCorner = Instance.new("UICorner")
+	trailCorner.CornerRadius = UDim.new(1, 0)
+	trailCorner.Parent = fallTrail
+	local trailGradient = Instance.new("UIGradient")
+	trailGradient.Rotation = 90
+	trailGradient.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(0.58, 0.48),
+		NumberSequenceKeypoint.new(1, 0.04),
+	})
+	trailGradient.Parent = fallTrail
+
 	if isCrit then
 		Orb.MainClickable.ImageColor3 = CRIT_COLOR
-		if ORB_FX.GlowEnabled then
-			fxGlow = CreateOrbGlow(CRIT_COLOR, finalSize)
-			fxGlow.ZIndex = 0
-			fxGlow.Parent = Orb
-		end
 	end
 
 	-- fall direction: mostly downward, drifting sideways at an angle
@@ -1093,14 +1419,26 @@ Orb:SetAttribute("OrbType",EssenceType)
 	local velocityX = math.sin(angleRad) * speed
 	local velocityY = math.cos(angleRad) * speed
 	local rotationSpeed = FALL_ROTATION_SPEED_MIN + math.random() * (FALL_ROTATION_SPEED_MAX - FALL_ROTATION_SPEED_MIN)
+	fallTrail.Rotation = -Orb.Rotation - angleDeg
+
+	-- Occasional ripples at the cloud line make each wave feel emitted by
+	-- the storm eye instead of simply instantiated off-screen. Kept sparse
+	-- and guarded by Juice's global particle cap.
+	if juiceLayer and currentX >= 0.02 and currentX <= 0.98 and math.random() < (isGolden and 0.32 or 0.18) then
+		Juice.Ring(juiceLayer, UDim2.fromScale(currentX, 0.025), {
+			Color = stormColor,
+			StartSize = 18,
+			EndSize = isGolden and 100 or 72,
+			Duration = 0.42,
+			Thickness = isGolden and 2.5 or 1.5,
+		})
+	end
 
 	-- pop in: scale + fade from nothing
 	TweenService:Create(Orb, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 		Size = finalSize,
 	}):Play()
-	TweenService:Create(Orb.MainClickable, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		ImageTransparency = 0,
-	}):Play()
+	TweenEssenceTransparency(Orb.MainClickable, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), 0)
 
 	-- only clickable once it's actually visible
 	task.delay(0.3, function()
@@ -1153,6 +1491,7 @@ Orb:SetAttribute("OrbType",EssenceType)
 		currentY = currentY + velocityY * deltaTime
 		Orb.Position = UDim2.new(currentX, 0, currentY, 0)
 		Orb.Rotation = Orb.Rotation + rotationSpeed * deltaTime
+		fallTrail.Rotation = -Orb.Rotation - angleDeg
 
 		-- === FX: crit glow pulse while falling ===
 		if fxGlow then
@@ -1178,15 +1517,10 @@ end
 local function StartEssenceFallEvent(duration, spawnInterval, essenceTypePool, isGolden)
 	spawnInterval = spawnInterval or 0.4
 
-	local typeKeys = essenceTypePool
-	if not typeKeys then
-		typeKeys = {}
-		for key in pairs(EssenceTypes) do
-			table.insert(typeKeys, key)
-		end
-	end
+	local typeKeys = essenceTypePool or {}
+	local useZoneWeights = essenceTypePool == nil
 
-	if #typeKeys == 0 then
+	if not useZoneWeights and #typeKeys == 0 then
 		warn("StartEssenceFallEvent: no essence types available to spawn")
 		return
 	end
@@ -1200,7 +1534,12 @@ local function StartEssenceFallEvent(duration, spawnInterval, essenceTypePool, i
 		-- overflow_capacity: skip this tick's spawn if the screen's already
 		-- at the active-orb cap, rather than spawning over it.
 		if CanSpawnOrb() then
-			local randomType = typeKeys[math.random(1, #typeKeys)]
+			-- A storm now respects the same zone/luck table as an ordinary
+			-- click. This keeps Solar mythic in the original zones and makes
+			-- the Sunforge's specialty matter during the game's biggest event.
+			local randomType = useZoneWeights
+				and GetEssenceModule.GetRandomEssence(player)
+				or typeKeys[math.random(1, #typeKeys)]
 			SpawnFallingOrb(randomType, isGolden)
 		end
 	end
@@ -1246,8 +1585,10 @@ local waitingColor = ColorSequence.new({
 })
 
 local activeColor = ColorSequence.new({
-	ColorSequenceKeypoint.new(0, Color3.fromRGB(34, 139, 34)),
-	ColorSequenceKeypoint.new(1, Color3.fromRGB(50, 205, 50))
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(84, 211, 255)),
+	ColorSequenceKeypoint.new(0.34, Color3.fromRGB(100, 231, 160)),
+	ColorSequenceKeypoint.new(0.68, Color3.fromRGB(188, 104, 255)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 184, 55))
 })
 
 -- storm_mastery: a golden storm gets its own gradient so it visibly reads
@@ -1269,6 +1610,7 @@ end
 -- estimate against the unupgraded base. Mirror StormMaxCooldown as its own
 -- attribute from StormController if you want an exact fill percentage.
 local ESTIMATED_MAX_COOLDOWN = 300
+local currentStormDuration = 60
 local currentEventThread = nil
 
 local function refreshWaitingUI()
@@ -1281,10 +1623,13 @@ end
 local function refreshActiveUI()
 	local timeRemaining = player:GetAttribute("StormTimeRemaining") or 0
 	local isGolden = player:GetAttribute("StormIsGolden")
-	local scale = math.clamp(timeRemaining / ESTIMATED_MAX_COOLDOWN, 0, 1)
+	-- Storms used the 300-second COOLDOWN as their active bar denominator,
+	-- making a fresh 60-second storm begin only 20% full. The confirmed
+	-- duration from StormStart is the correct visual denominator.
+	local scale = math.clamp(timeRemaining / math.max(currentStormDuration, 1), 0, 1)
 	local label = isGolden
 		and ("\u{2728} GOLDEN ESSENCE STORM: " .. formatTime(timeRemaining))
-		or ("\u{26A0}\u{FE0F} EARTH STORM ACTIVE: " .. formatTime(timeRemaining))
+		or ("\u{26A1} ESSENCE STORM ACTIVE: " .. formatTime(timeRemaining))
 	updateUI(scale, isGolden and goldenColor or activeColor, label)
 end
 
@@ -1294,7 +1639,7 @@ local function refreshManualButton()
 	local unlocked = player:GetAttribute("ManualStormUnlocked")
 	local cooldownRemaining = player:GetAttribute("ManualStormCooldownRemaining") or 0
 	manualSummonButton.Visible = unlocked and true or false
-	manualSummonButton.Active = unlocked and cooldownRemaining <= 0
+	manualSummonButton.Active = unlocked and true or false
 
 end
 
@@ -1306,6 +1651,23 @@ player:GetAttributeChangedSignal("ManualStormCooldownRemaining"):Connect(refresh
 
 if manualSummonButton then
 	manualSummonButton.Activated:Connect(function()
+		if player:GetAttribute("StormActive") then
+			NotificationService.Info("Ride this storm before summoning another one.", {
+				Title = "Storm Already Active",
+				Icon = "⚡",
+				Key = "manual-storm-active",
+			})
+			return
+		end
+		local remaining = tonumber(player:GetAttribute("ManualStormCooldownRemaining")) or 0
+		if remaining > 0 then
+			NotificationService.Warning("Manual summoning is ready again in " .. formatTime(remaining) .. ".", {
+				Title = "Storm Focus Recharging",
+				Icon = "⚡",
+				Key = "manual-storm-cooldown",
+			})
+			return
+		end
 		Events:WaitForChild("ManualStormSummon"):FireServer()
 	end)
 end
@@ -1318,13 +1680,17 @@ EssenceStormEvent.OnClientEvent:Connect(function(action, payload)
 		local duration = payload.Duration or 60
 		local spawnInterval = payload.SpawnInterval or 0.4
 		local IsGolden = payload.IsGolden or false
+		currentStormDuration = math.max(duration, 1)
 		refreshActiveUI()
+		-- StormVisuals.client.luau owns the cinematic arrival/atmosphere.
+		-- Keeping that long-running presentation out of this spawner means
+		-- canceling a visual can never cancel or delay collectible creation.
 
 		if currentEventThread then
 			task.cancel(currentEventThread)
 		end
 		currentEventThread = task.spawn(function()
-			StartEssenceFallEvent(duration, spawnInterval, {"Earth Essence","Shadow Essence"}, IsGolden)
+			StartEssenceFallEvent(duration, spawnInterval, nil, IsGolden)
 		end)
 
 	elseif action == "StormEnd" then
@@ -1345,3 +1711,496 @@ task.spawn(function()
 	refreshManualButton()
 end)
 
+-- =========================================================================
+-- SHADOW HAMMER (Sanctum relic: sanctum_hammer)
+-- =========================================================================
+-- Periodically slams a spectral hammer down on the great orb, spawning a
+-- burst of bonus real orbs -- the player never has to do anything for this
+-- to fire. Purely additive on top of normal clicking: uses the exact same
+-- SpawnOrb() every real click already uses, so a hammer-spawned orb rolls
+-- crit and pays out through the identical, already-trusted path.
+--
+-- Interval/BurstCount come from SanctumUpgrades so the numbers can never
+-- drift out of sync with what the Sanctum panel advertises.
+
+local SanctumUpgrades = require(ReplicatedStorage:WaitForChild("SanctumUpgrades"))
+
+local HAMMER_COLOR = Color3.fromRGB(190, 140, 255)
+
+local function playHammerSlam(burstCount)
+	local center = juiceLayer and Juice.CenterOf(LargeOrb, juiceLayer)
+
+	-- Telegraph: the hammer rises off-screen above the orb, holds a beat,
+	-- then slams down -- reads as a wind-up and a hit rather than
+	-- something just popping in and out of existence.
+	if juiceLayer and center then
+		local ok = pcall(function()
+			local hammer = Instance.new("TextLabel")
+			hammer.Name = "HammerRelic"
+			hammer.AnchorPoint = Vector2.new(0.5, 0.5)
+			hammer.Position = center - UDim2.fromOffset(0, 260)
+			hammer.Size = UDim2.fromOffset(70, 70)
+			hammer.BackgroundTransparency = 1
+			hammer.Font = Enum.Font.GothamBold
+			hammer.Text = "🔨"
+			hammer.TextScaled = true
+			hammer.Rotation = -25
+			hammer.ZIndex = 80
+			hammer.Parent = juiceLayer
+
+			local riseTween = TweenService:Create(
+				hammer,
+				TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+				{ Position = center - UDim2.fromOffset(0, 140), Rotation = 15 }
+			)
+			riseTween:Play()
+			riseTween.Completed:Wait()
+
+			task.wait(0.15)
+
+			local slamTween = TweenService:Create(
+				hammer,
+				TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+				{ Position = center, Rotation = -60 }
+			)
+			slamTween:Play()
+			slamTween.Completed:Wait()
+
+			hammer:Destroy()
+		end)
+
+		if not ok then
+			warn("[OrbClicker] Hammer telegraph FX errored, continuing to the actual reward.")
+		end
+	end
+
+	if center then
+		Juice.Shake(Center, 12, 0.3)
+	end
+
+	if juiceLayer and center then
+		Juice.Ring(juiceLayer, center, {
+			Color = HAMMER_COLOR, StartSize = 60, EndSize = 260, Duration = 0.6, Thickness = 5,
+		})
+		Juice.Burst(juiceLayer, center, {
+			Count = 18, Colors = { HAMMER_COLOR, Color3.fromRGB(255, 255, 255) },
+			Distance = 200, Duration = 0.8, Size = { 5, 12 },
+		})
+		Juice.FloatText(juiceLayer, center - UDim2.fromOffset(0, 40), "HAMMER SLAM!", {
+			Color = HAMMER_COLOR, Duration = 1.1, Rise = 70, TextSize = 30,
+		})
+	end
+
+	local sound = Juice.FindSound("SFX/UI/UIPop")
+	if sound then
+		-- Pitched well below a normal click so the slam has real weight.
+		Juice.PlaySound(sound, { Pitch = 0.6, Volume = 0.7 })
+	end
+
+	-- Staggered like a multi-orb click, so the reward has some visual
+	-- spread instead of every orb appearing in the same frame.
+	for i = 1, burstCount do
+		task.delay((i - 1) * 0.08, function()
+			if CanSpawnOrb() then
+				SpawnOrb(GetEssenceModule.GetRandomEssence(player), false)
+			end
+		end)
+	end
+end
+
+-- =========================================================================
+-- HAMMER COUNTDOWN PILL
+-- =========================================================================
+-- Watching a timer count down to a reward is most of what makes a
+-- periodic ability like this feel worth having equipped -- without a
+-- visible countdown, a slam would just be an unpredictable surprise the
+-- player can't anticipate or plan around.
+--
+-- Registered into Juice's shared relic bar (bottom-center, auto-laid-out)
+-- rather than built as a one-off ScreenGui here: with four relics now
+-- spread across three different LocalScripts, each picking its own screen
+-- position independently is exactly how pills end up overlapping the
+-- moment a new relic is added. Order 1 = leftmost.
+
+local hammerParts = Juice.RegisterRelicPill(Gui, {
+	Name = "Hammer",
+	Icon = "🔨",
+	Color = HAMMER_COLOR,
+	Order = 1,
+})
+local hammerPill = hammerParts.Pill
+local hammerPillFill = hammerParts.Fill
+local hammerPillLabel = hammerParts.Label
+
+task.spawn(function()
+	-- Blocks here, no polling, until the player owns any level of the
+	-- Hammer -- GetAttributeChangedSignal only wakes this thread on an
+	-- actual purchase.
+	while (player:GetAttribute("sanctum_hammer") or 0) <= 0 do
+		player:GetAttributeChangedSignal("sanctum_hammer"):Wait()
+	end
+
+	hammerPill.Visible = true
+
+	while true do
+		local level = player:GetAttribute("sanctum_hammer") or 0
+		local relicData = SanctumUpgrades.GetRelicLevelData("sanctum_hammer", level)
+
+		if not relicData then
+			-- Shouldn't happen once level >= 1, but never busy-loop on a
+			-- bad read.
+			task.wait(5)
+		else
+			-- Ticks in 1-second steps rather than one blocking wait, purely
+			-- so the pill above can count down live -- this is the same
+			-- total wait as before, just observable instead of opaque.
+			local total = relicData.Interval
+			local remaining = total
+
+			while remaining > 0 do
+				hammerPillLabel.Text = ("🔨 %ds"):format(math.ceil(remaining))
+				hammerPillFill.Size = UDim2.fromScale(math.clamp(1 - (remaining / total), 0, 1), 1)
+
+				local step = math.min(1, remaining)
+				task.wait(step)
+				remaining -= step
+			end
+
+			-- Re-read rather than trust the closed-over `level`: an
+			-- upgrade purchased mid-wait should size the NEXT slam
+			-- correctly, even though it doesn't shorten the wait already
+			-- in progress.
+			local currentLevel = player:GetAttribute("sanctum_hammer") or 0
+			local currentData = SanctumUpgrades.GetRelicLevelData("sanctum_hammer", currentLevel)
+			if currentData then
+				hammerPillLabel.Text = "🔨 NOW!"
+				hammerPillFill.Size = UDim2.fromScale(1, 1)
+				Juice.Punch(Juice.GetScale(hammerPill), 0.25, 0.3)
+
+				local ok, err = pcall(playHammerSlam, currentData.BurstCount)
+				if not ok then
+					warn("[OrbClicker] Hammer slam errored: " .. tostring(err))
+				end
+			end
+		end
+	end
+end)
+
+-- =========================================================================
+-- SHADOW ECLIPSE (Sanctum relic: sanctum_eclipse)
+-- =========================================================================
+-- Unlike Hammer above, Eclipse's timing is owned by the SERVER (see
+-- SanctumService.server.luau for why -- it grants a real essence
+-- multiplier, not something that routes through an already-trusted
+-- gameplay remote). This side only ever reacts to what the server says:
+-- EclipseCycleRemote means "a new countdown of N seconds just started",
+-- EclipseTriggerRemote means "the boost is live for N seconds, play the
+-- effect." Nothing here decides when the boost actually applies.
+
+local ECLIPSE_COLOR = Color3.fromRGB(140, 90, 220)
+
+local sanctumRemotesFolder = ReplicatedStorage:WaitForChild("SanctumRemotes")
+local EclipseCycleRemote = sanctumRemotesFolder:WaitForChild("EclipseCycle")
+local EclipseTriggerRemote = sanctumRemotesFolder:WaitForChild("EclipseTrigger")
+
+local eclipseParts = Juice.RegisterRelicPill(Gui, {
+	Name = "Eclipse",
+	Icon = "🌘",
+	Color = ECLIPSE_COLOR,
+	Order = 4,
+})
+local eclipsePill = eclipseParts.Pill
+local eclipsePillFill = eclipseParts.Fill
+local eclipsePillLabel = eclipseParts.Label
+
+local eclipseTintFrame = nil
+
+local function getEclipseTint()
+	if eclipseTintFrame and eclipseTintFrame.Parent then
+		return eclipseTintFrame
+	end
+
+	local screenGui = Instance.new("ScreenGui")
+	screenGui.Name = "EclipseTint"
+	screenGui.ResetOnSpawn = false
+	screenGui.IgnoreGuiInset = true
+	screenGui.DisplayOrder = 5 -- well below the relic bar / panels
+	screenGui.Parent = Gui
+
+	local tint = Instance.new("Frame")
+	tint.Name = "Tint"
+	tint.Size = UDim2.fromScale(1, 1)
+	tint.BackgroundColor3 = Color3.fromRGB(20, 8, 40)
+	tint.BackgroundTransparency = 1
+	tint.BorderSizePixel = 0
+	tint.ZIndex = 0
+	tint.Parent = screenGui
+
+	eclipseTintFrame = tint
+	return tint
+end
+
+-- Big, unmissable "the sky just went dark" beat -- comparable in
+-- spectacle to the Hammer slam / Laser sweep, but screen-wide instead of
+-- orb-centered, since this boost affects everything the player does for
+-- its whole duration rather than a single burst.
+local function playEclipseEffect(boostSeconds)
+	local tint = getEclipseTint()
+	local center = juiceLayer and Juice.CenterOf(LargeOrb, juiceLayer)
+
+	local darkenTween = TweenService:Create(tint, TweenInfo.new(0.35, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+		BackgroundTransparency = 0.72,
+	})
+	darkenTween:Play()
+
+	task.delay(math.max(0.5, boostSeconds - 0.6), function()
+		if tint.Parent then
+			TweenService:Create(tint, TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.In), {
+				BackgroundTransparency = 1,
+			}):Play()
+		end
+	end)
+
+	local sound = Juice.FindSound("SFX/UI/UIPop")
+	if sound then
+		-- Pitched low, like the Hammer slam, so this reads as heavier and
+		-- more ominous than a routine collection pop.
+		Juice.PlaySound(sound, { Pitch = 0.5, Volume = 0.7 })
+	end
+
+	if center then
+		Juice.Ring(juiceLayer, center, {
+			Color = ECLIPSE_COLOR, StartSize = 40, EndSize = 340, Duration = 0.9, Thickness = 6,
+		})
+		Juice.Burst(juiceLayer, center, {
+			Count = 22, Colors = { ECLIPSE_COLOR, Color3.fromRGB(255, 255, 255) },
+			Distance = 260, Duration = 1, Size = { 4, 10 },
+		})
+		Juice.FloatText(juiceLayer, center - UDim2.fromOffset(0, 40), "SHADOW ECLIPSE!", {
+			Color = ECLIPSE_COLOR, Duration = 1.2, Rise = 70, TextSize = 30,
+		})
+		Juice.FloatText(juiceLayer, center + UDim2.fromOffset(0, 10), "1.5x ESSENCE", {
+			Color = Color3.fromRGB(255, 255, 255), Duration = 1.2, Rise = 50, TextSize = 20,
+		})
+	end
+end
+
+task.spawn(function()
+	-- No relic-ownership gate needed client-side: the server only ever
+	-- fires these two remotes once Eclipse is actually owned, so simply
+	-- waiting on the events is enough.
+	eclipsePill.Visible = false
+
+	EclipseCycleRemote.OnClientEvent:Connect(function(intervalSeconds)
+		intervalSeconds = tonumber(intervalSeconds)
+		if not intervalSeconds or intervalSeconds <= 0 then
+			return
+		end
+
+		eclipsePill.Visible = true
+
+		task.spawn(function()
+			local remaining = intervalSeconds
+			while remaining > 0 do
+				eclipsePillLabel.Text = ("🌘 %ds"):format(math.ceil(remaining))
+				eclipsePillFill.Size = UDim2.fromScale(math.clamp(1 - (remaining / intervalSeconds), 0, 1), 1)
+
+				local step = math.min(1, remaining)
+				task.wait(step)
+				remaining -= step
+			end
+			eclipsePillLabel.Text = "🌘 NOW!"
+			eclipsePillFill.Size = UDim2.fromScale(1, 1)
+		end)
+	end)
+
+	EclipseTriggerRemote.OnClientEvent:Connect(function(boostSeconds)
+		boostSeconds = tonumber(boostSeconds) or 0
+		if boostSeconds <= 0 then
+			return
+		end
+
+		Juice.Punch(Juice.GetScale(eclipsePill), 0.25, 0.3)
+
+		local ok, err = pcall(playEclipseEffect, boostSeconds)
+		if not ok then
+			warn("[OrbClicker] Eclipse effect errored: " .. tostring(err))
+		end
+	end)
+end)
+
+-- =========================================================================
+-- PRESTIGE SHOP: shared remotes
+-- =========================================================================
+-- Owned/created by RebirthShopService.server.luau. Momentum has no remote
+-- of its own (MomentumStacks is a plain attribute, same pattern as
+-- OrbCurrentHP/StormTimeRemaining elsewhere in this file) -- only the
+-- three reactive/random effects need a server-initiated trigger.
+
+local rebirthShopRemotesFolder = ReplicatedStorage:WaitForChild("RebirthShopRemotes")
+local SecondWindRemote = rebirthShopRemotesFolder:WaitForChild("SecondWindProc")
+local ShardRainRemote = rebirthShopRemotesFolder:WaitForChild("ShardRainProc")
+local TwinAscensionRemote = rebirthShopRemotesFolder:WaitForChild("TwinAscensionProc")
+
+-- =========================================================================
+-- MOMENTUM (Prestige Shop: rebirthshop_momentum)
+-- =========================================================================
+-- MomentumStacks is maintained server-side (OrbClickManager.server.luau --
+-- it feeds a real essence-multiplier bonus in EssenceMultiplier, so the
+-- count itself has to be server-owned, same trust boundary as everything
+-- else this file only ever displays rather than decides). This is purely
+-- the combo counter that appears above the orb while it's building.
+
+local MOMENTUM_COLOR = Color3.fromRGB(255, 205, 60)
+
+local momentumLabel = Instance.new("TextLabel")
+momentumLabel.Name = "MomentumCombo"
+momentumLabel.AnchorPoint = Vector2.new(0.5, 1)
+momentumLabel.Size = UDim2.fromOffset(220, 36)
+momentumLabel.BackgroundTransparency = 1
+momentumLabel.Font = Enum.Font.GothamBlack
+momentumLabel.Text = ""
+momentumLabel.TextColor3 = MOMENTUM_COLOR
+momentumLabel.TextStrokeTransparency = 0.35
+momentumLabel.TextScaled = true
+momentumLabel.Visible = false
+momentumLabel.ZIndex = 60
+momentumLabel.Parent = juiceLayer
+
+local lastMomentumStacks = 0
+
+local function refreshMomentumLabel()
+	local stacks = player:GetAttribute("MomentumStacks") or 0
+	local center = juiceLayer and Juice.CenterOf(LargeOrb, juiceLayer)
+
+	if stacks <= 0 or not center then
+		momentumLabel.Visible = false
+		lastMomentumStacks = 0
+		return
+	end
+
+	momentumLabel.Position = center - UDim2.fromOffset(0, 115)
+	momentumLabel.Text = ("🔥 MOMENTUM x%d"):format(stacks)
+	momentumLabel.Visible = true
+
+	-- Only punch on genuine INCREASES -- the same signal also fires on the
+	-- reset-to-0 pass (already handled above) and would otherwise punch a
+	-- label that's simultaneously being hidden.
+	if stacks > lastMomentumStacks then
+		Juice.Punch(Juice.GetScale(momentumLabel), 0.28, 0.22)
+	end
+	lastMomentumStacks = stacks
+end
+
+player:GetAttributeChangedSignal("MomentumStacks"):Connect(refreshMomentumLabel)
+
+-- =========================================================================
+-- SECOND WIND (Prestige Shop: rebirthshop_secondwind)
+-- =========================================================================
+-- Fires the moment the server catches the orb's energy bottoming out and
+-- grants the comeback burst -- see EssenceOrbController.Fire and
+-- OrbClickManager.server.luau. Reads as a "close call, saved" beat rather
+-- than a routine relic activation: a hard flash + shake before the
+-- reassuring gold ring, instead of just building straight into the reward.
+
+local SECOND_WIND_COLOR = Color3.fromRGB(255, 120, 70)
+
+SecondWindRemote.OnClientEvent:Connect(function(boostSeconds)
+	boostSeconds = tonumber(boostSeconds) or 0
+	if boostSeconds <= 0 then
+		return
+	end
+
+	local center = juiceLayer and Juice.CenterOf(LargeOrb, juiceLayer)
+
+	if juiceLayer then
+		Juice.Flash(juiceLayer, { Color = SECOND_WIND_COLOR, Peak = 0.55, Duration = 0.45 })
+	end
+	Juice.Shake(Center, 10, 0.25)
+
+	if juiceLayer and center then
+		Juice.Ring(juiceLayer, center, {
+			Color = SECOND_WIND_COLOR, StartSize = 30, EndSize = 280, Duration = 0.7, Thickness = 5,
+		})
+		Juice.Burst(juiceLayer, center, {
+			Count = 16, Colors = { SECOND_WIND_COLOR, Color3.fromRGB(255, 255, 255) },
+			Distance = 220, Duration = 0.9, Size = { 4, 10 },
+		})
+		Juice.FloatText(juiceLayer, center - UDim2.fromOffset(0, 40), "SECOND WIND!", {
+			Color = SECOND_WIND_COLOR, Duration = 1.1, Rise = 70, TextSize = 30,
+		})
+	end
+
+	local sound = Juice.FindSound("SFX/UI/UIPop")
+	if sound then
+		Juice.PlaySound(sound, { Pitch = 0.8, Volume = 0.7 })
+	end
+end)
+
+-- =========================================================================
+-- SHARD RAIN (Prestige Shop: rebirthshop_shardrain)
+-- =========================================================================
+-- A rare bonus Prestige Shard from an ordinary collection -- fired from
+-- OrbClickManager.server.luau's collection handler. Anchored above the
+-- great orb like every other global callout in this file rather than at
+-- the collected orb's own position, since the server has no UI concept of
+-- where on screen that orb was.
+
+local SHARD_RAIN_COLOR = Color3.fromRGB(90, 190, 255)
+
+ShardRainRemote.OnClientEvent:Connect(function(amount)
+	amount = tonumber(amount) or 1
+	local center = juiceLayer and Juice.CenterOf(LargeOrb, juiceLayer)
+	if not (juiceLayer and center) then
+		return
+	end
+
+	Juice.Ring(juiceLayer, center, {
+		Color = SHARD_RAIN_COLOR, StartSize = 10, EndSize = 150, Duration = 0.6, Thickness = 4,
+	})
+	Juice.FloatText(juiceLayer, center - UDim2.fromOffset(0, 55), ("💎 +%d PRESTIGE SHARD%s!"):format(amount, amount > 1 and "S" or ""), {
+		Color = SHARD_RAIN_COLOR, Duration = 1.4, Rise = 80, TextSize = 24,
+	})
+
+	local sound = Juice.FindSound("SFX/UI/UIPop")
+	if sound then
+		Juice.PlaySound(sound, { Pitch = 1.6, Volume = 0.6 })
+	end
+end)
+
+-- =========================================================================
+-- TWIN ASCENSION (Prestige Shop: rebirthshop_twinascension)
+-- =========================================================================
+-- The rarest of the five -- only fires the moment a rebirth itself procs
+-- the double-currency roll (see RebirthHandler.luau). Biggest effect of
+-- the five accordingly: this is a jackpot moment on top of an already
+-- major moment (a rebirth), not routine feedback.
+
+local TWIN_ASCENSION_COLOR = Color3.fromRGB(255, 225, 140)
+
+TwinAscensionRemote.OnClientEvent:Connect(function()
+	local center = juiceLayer and Juice.CenterOf(LargeOrb, juiceLayer)
+	if not (juiceLayer and center) then
+		return
+	end
+
+	Juice.Flash(juiceLayer, { Color = TWIN_ASCENSION_COLOR, Peak = 0.6, Duration = 0.6 })
+	Juice.Ring(juiceLayer, center, {
+		Color = TWIN_ASCENSION_COLOR, StartSize = 20, EndSize = 340, Duration = 1, Thickness = 6,
+	})
+	Juice.Burst(juiceLayer, center, {
+		Count = 26, Colors = { TWIN_ASCENSION_COLOR, Color3.fromRGB(255, 255, 255) },
+		Distance = 280, Duration = 1.1, Size = { 5, 12 },
+	})
+	Juice.FloatText(juiceLayer, center - UDim2.fromOffset(0, 50), "✨ TWIN ASCENSION! ✨", {
+		Color = TWIN_ASCENSION_COLOR, Duration = 1.4, Rise = 80, TextSize = 32,
+	})
+	Juice.FloatText(juiceLayer, center + UDim2.fromOffset(0, 15), "DOUBLE PRESTIGE SHARDS", {
+		Color = Color3.fromRGB(255, 255, 255), Duration = 1.4, Rise = 60, TextSize = 18,
+	})
+
+	local sound = Juice.FindSound("SFX/UI/UIPop")
+	if sound then
+		Juice.PlaySound(sound, { Pitch = 1.3, Volume = 0.7 })
+	end
+end)

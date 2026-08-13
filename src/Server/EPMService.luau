@@ -3,6 +3,26 @@ local EPMService = {}
 -- This table holds the session tracking data so any script can access it
 EPMService.ActiveSessions = {}
 
+-- Start a fresh measurement window from the player's current balances. Offline
+-- rewards are applied shortly after joining, so adjusting individual starting
+-- values is vulnerable to lifecycle/order mistakes. Resnapshotting every
+-- balance after the complete grant makes the post-grant state the authoritative
+-- baseline and guarantees that none of the welcome-back lump sum enters EPM.
+function EPMService.resetBaseline(player)
+	local session = EPMService.ActiveSessions[player.UserId]
+	local playerDataModule = player:FindFirstChild("PlayerData")
+	if not session or not playerDataModule then return false end
+
+	local ok, data = pcall(require, playerDataModule)
+	if not ok or not data or not data.Essences then return false end
+
+	for essenceName, essence in pairs(data.Essences) do
+		session.StartingEssences[essenceName] = essence.Quantity
+	end
+	session.JoinTime = os.time()
+	return true
+end
+
 --=== EPM
 function EPMService.getEPM(player)
 	local session = EPMService.ActiveSessions[player.UserId]
@@ -27,9 +47,20 @@ function EPMService.getEPM(player)
 			return session.SavedEPM
 		end
 		-- Otherwise, calculate their real-time session average
-		currentEPM[name] = math.max(math.floor(essenceGained / minutesPlayed),50)
+		-- Solar is a mythic endgame currency. Reusing the legacy 50/minimum
+		-- floor would turn a single discovery into thousands of free Solar
+		-- after one offline cap and erase every Solar-priced capstone. It can
+		-- still be harvested while away, but at a restrained 1/min floor.
+		local measuredEPM = math.floor(essenceGained / minutesPlayed)
+		if name == "SolarEssence" then
+			-- A bounded window also prevents a one-time wheel/daily payout from
+			-- becoming the player's permanent offline Solar production rate.
+			currentEPM[name] = math.clamp(measuredEPM, 1, 6)
+		else
+			currentEPM[name] = math.max(measuredEPM, 50)
+		end
 	end
-	-- Return the current average, but never let it dip below a base rate (e.g., 50)
+	-- Return the current average, with a rarity-appropriate safety floor.
 	return currentEPM
 end
 
