@@ -368,20 +368,38 @@ end
 -- server-hop, and the mechanic can't be farmed.
 
 ProgressionConfig.PlaytimeChests = {
-	{ Seconds = 2 * 60,  Essence = 400,   Icon = "🎁", Title = "First Find" },
-	{ Seconds = 5 * 60,  Essence = 1000,  Icon = "🎁", Title = "Bronze Cache" },
-	{ Seconds = 10 * 60, Essence = 2500,  Icon = "📦", Title = "Silver Cache" },
-	{ Seconds = 18 * 60, Essence = 6000,  Icon = "📦", Title = "Golden Cache" },
-	{ Seconds = 30 * 60, Essence = 15000, Icon = "💎", Title = "Ancient Vault" },
+	-- The old 2/5/10/18-minute curve left a long silent gap immediately after
+	-- the first reward. This denser opening ladder always keeps the next payoff
+	-- close enough to understand, then hands off to the longer-session curve.
+	{ Seconds = 90,       Essence = 300,   Icon = "🎁", Title = "First Find" },
+	{ Seconds = 3 * 60,   Essence = 650,   Icon = "🎁", Title = "Spark Cache" },
+	{ Seconds = 5 * 60,   Essence = 1200,  Icon = "🎁", Title = "Bronze Cache" },
+	{ Seconds = 8 * 60,   Essence = 2400,  Icon = "📦", Title = "Silver Cache" },
+	{
+		Seconds = 12 * 60,
+		Essence = 5000,
+		Icon = "📦",
+		Title = "Golden Cache",
+		Potion = { Effect = "EssenceX15", Duration = 5 * 60 },
+		PotionLabel = "+ 1.5x Essence (5 min)",
+	},
+	{ Seconds = 15 * 60, Essence = 8500,  Icon = "💎", Title = "Ancient Vault" },
+	{ Seconds = 30 * 60, Essence = 18000, Icon = "💎", Title = "Deep Vault" },
 	{
 		Seconds = 45 * 60,
-		Essence = 32000,
+		Essence = 36000,
 		Icon = "👑",
 		Title = "Keeper's Hoard",
 		Potion = { Effect = "EssenceX15", Duration = 20 * 60 },
 		PotionLabel = "+ 1.5x Essence (20 min)",
 	},
 }
+
+-- A player should never lose a retention reward because its tiny HUD pill was
+-- hidden under onboarding or because they did not realize it needed a second
+-- click. The server grants a ready chest automatically; the button remains a
+-- manual fast path during the few seconds between the threshold and the tick.
+ProgressionConfig.AutoClaimPlaytimeChests = true
 
 -- Once every listed chest is claimed, a repeating chest keeps the reward
 -- loop alive for very long sessions instead of going silent.

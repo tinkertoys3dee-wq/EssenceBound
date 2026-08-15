@@ -23,7 +23,7 @@
 		  effects on a randomized timer, and it escalates — as
 		  progress nears completion, events fire more often and the
 		  background bleeds darker, so the tension has a shape.
-		- A skip button fades in 5 seconds after the screen opens.
+		- A skip button fades in 2 seconds after the screen opens.
 		  Clicking it (or pressing any key/click, same as before)
 		  immediately jumps straight to the fade-out/cleanup sequence,
 		  regardless of how far real asset loading has gotten.
@@ -40,6 +40,7 @@ local ContentProvider = game:GetService("ContentProvider")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SoundService = game:GetService("SoundService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -72,22 +73,40 @@ end
 -- SECTION 2: CONFIG
 --============================================================
 
+-- The loading screen must never hold PresentationCoordinator in its not-ready
+-- state forever because a place-only music folder was renamed or failed to
+-- sync. A silent Sound is a safe fallback; every call below still works.
+local musicFolder = SoundService:FindFirstChild("Music")
+local loadingFolder = musicFolder and musicFolder:FindFirstChild("Loading Screen")
+local loadingMusic = loadingFolder and loadingFolder:FindFirstChild("Music1")
+if not loadingMusic or not loadingMusic:IsA("Sound") then
+	local fallback = SoundService:FindFirstChild("EssenceBoundLoadingFallback")
+	if fallback and fallback:IsA("Sound") then
+		loadingMusic = fallback
+	else
+		loadingMusic = Instance.new("Sound")
+		loadingMusic.Name = "EssenceBoundLoadingFallback"
+		loadingMusic.Volume = 0
+		loadingMusic.Parent = SoundService
+	end
+end
+
 local CONFIG = {
 
 	-- ================= ASSETS (required) =================
 	LargeOrbImage = "rbxassetid://72641569769631",
 	SmallOrbImage = "rbxassetid://72641569769631",
-	Music = game:GetService("SoundService"):WaitForChild("Music"):WaitForChild("Loading Screen"):WaitForChild("Music1"),
+	Music = loadingMusic,
 	-- ================= TIMING =================
 	-- MinDisplayTime and GraceAfterComplete were 2.25 / 1.5 -- pure enforced
 	-- wait before ANY player, new or returning, can start playing. This is
 	-- a pacing change only, not a tone change: nothing about the ominous
 	-- theme/content below is touched, only how long the player is held
 	-- here regardless of theme.
-	MinDisplayTime = 1.4,
-	FadeTime = 0.7,
-	GraceAfterComplete = 0.8,
-	SkipButtonDelay = 5, -- seconds before the skip button fades in
+	MinDisplayTime = 0.8,
+	FadeTime = 0.35,
+	GraceAfterComplete = 0.25,
+	SkipButtonDelay = 2, -- seconds before the skip button fades in
 
 	-- ================= OMINOUS SYSTEM =================
 	OminousMinGap = 1.6,
@@ -1507,7 +1526,32 @@ local loadingComplete = false
 local realProgress = 0
 
 Lifecycle:track(task.spawn(function()
-	local assets = game:GetDescendants()
+	-- Preload only instances that can own content. Passing every Frame,
+	-- constraint, value object and script in the entire DataModel made low-end
+	-- clients scan thousands of irrelevant instances before first input.
+	local assets = {}
+	for _, instance in ipairs(game:GetDescendants()) do
+		if instance:IsA("ImageLabel")
+			or instance:IsA("ImageButton")
+			or instance:IsA("Decal")
+			or instance:IsA("Texture")
+			or instance:IsA("MeshPart")
+			or instance:IsA("SpecialMesh")
+			or instance:IsA("Sound")
+			or instance:IsA("Animation")
+			or instance:IsA("VideoFrame")
+			or instance:IsA("ParticleEmitter")
+			or instance:IsA("Beam")
+			or instance:IsA("Trail")
+			or instance:IsA("SurfaceAppearance")
+			or instance:IsA("Sky")
+			or instance:IsA("Shirt")
+			or instance:IsA("Pants")
+			or instance:IsA("ShirtGraphic")
+		then
+			table.insert(assets, instance)
+		end
+	end
 	local total = math.max(#assets, 1)
 	local loaded = 0
 
@@ -1695,6 +1739,7 @@ task.spawn(function()
 	finishLoading()
 end)
 
+local originalMusicVolume = CONFIG.Music.Volume
 CONFIG.Music:Play()
 
 while not playerReady do
@@ -1705,14 +1750,14 @@ if inputConnection.Connected then
 	inputConnection:Disconnect()
 end
 
-local fadeOutTween = TweenService:Create(CONFIG.Music, TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+local fadeOutTween = TweenService:Create(CONFIG.Music, TweenInfo.new(0.25, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
 	Volume = 0,
 })
 fadeOutTween:Play()
 fadeOutTween.Completed:Wait()
 
 CONFIG.Music:Stop()
-CONFIG.Music.Volume = CONFIG.Music:GetAttribute("OriginalVolume") or CONFIG.Music.Volume -- restore volume for next time it plays
+CONFIG.Music.Volume = CONFIG.Music:GetAttribute("OriginalVolume") or originalMusicVolume
 --============================================================
 -- SECTION 24: FADE OUT + FULL CLEANUP
 --============================================================

@@ -1518,7 +1518,9 @@ local function refreshChest()
 	chestIcon.Text = chest.NextIcon or "🎁"
 
 	if ready then
-		chestLabel.Text = ("CLAIM %s"):format(chest.NextTitle or "Chest")
+		chestLabel.Text = chest.AutoClaim
+			and ("OPENING %s"):format(chest.NextTitle or "Chest")
+			or ("CLAIM %s"):format(chest.NextTitle or "Chest")
 		chestLabel.TextColor3 = THEME.Gold
 		chestStroke.Color = THEME.Gold
 		chestStroke.Thickness = 3
@@ -1653,7 +1655,7 @@ task.spawn(function()
 	while player:GetAttribute("FirstJourneyEligible") == nil and os.clock() < journeyAttributeDeadline do
 		task.wait(0.1)
 	end
-	-- A newcomer already has Tutorial followed by the eight-minute Awakening
+	-- A newcomer already has Tutorial followed by the twelve-minute Awakening
 	-- journey. Keep Daily's unread badge/button available, but make opening it
 	-- their choice instead of adding another mandatory post-tutorial frame.
 	if player:GetAttribute("FirstJourneyEligible") ~= false then

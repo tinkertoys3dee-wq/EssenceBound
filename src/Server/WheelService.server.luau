@@ -9,18 +9,9 @@
 
 	TICKETS
 	--------
-	Counted the same way ProgressionService counts quest progress:
-	attaching an ADDITIONAL OnServerEvent listener to the existing
-	Collection remote rather than touching OrbClickManager at all --
-	Roblox fires every connected listener, so this can't interfere with
-	(or be interfered with by) the real collection/reward flow. The
-	orbName check below mirrors OrbClickManager's own validation for the
-	same reason ProgressionService's should too (see the fix alongside
-	this file): without it, a client could farm ticket progress by firing
-	Collection directly with a garbage orbName that never reaches a real
-	reward, bypassing the "earned through actual play" point of a ticket
-	entirely. MaxBankedTickets bounds how much even a successful farm is
-	worth at any one time.
+	Counted from GameplaySignals only after OrbClickManager validates and
+	credits a collection. A forged or rejected Collection remote can never
+	advance a ticket. MaxBankedTickets bounds how much can be stored.
 ]]
 
 local Players = game:GetService("Players")
@@ -29,7 +20,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local WheelConfig = require(ReplicatedStorage:WaitForChild("WheelConfig"))
 local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionConfig"))
-local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
+local GameplaySignals = require(ServerScriptService:WaitForChild("GameplaySignals"))
 
 -- =========================================================================
 -- REMOTES
@@ -77,6 +68,10 @@ local function getData(player)
 	return data
 end
 
+local function isDataReady(player)
+	return player:GetAttribute("PlayerDataLoaded") == true
+end
+
 -- Guarantees the Wheel sub-table exists and is shaped correctly, even for
 -- a save written before this system existed.
 local function getWheel(player)
@@ -120,6 +115,9 @@ local function buildClientState(wheel)
 end
 
 local function pushState(player)
+	if not isDataReady(player) then
+		return
+	end
 	local wheel = getWheel(player)
 	if not wheel then
 		return
@@ -132,6 +130,9 @@ end
 -- join remains useful, but the client no longer depends on receiving one
 -- particular RemoteEvent during startup in order to leave LOADING state.
 GetStateFunction.OnServerInvoke = function(player)
+	if not isDataReady(player) then
+		return nil
+	end
 	local wheel = getWheel(player)
 	if not wheel then
 		return nil
@@ -143,44 +144,29 @@ end
 -- TICKET EARNING
 -- =========================================================================
 
-task.spawn(function()
-	local remotes = ReplicatedStorage:WaitForChild("Remotes", 30)
-	if not remotes then
-		warn("WheelService: Remotes folder never appeared; tickets will not accrue from play.")
+GameplaySignals.OnCollectionAccepted(function(player)
+	if not isDataReady(player) then
 		return
 	end
 
-	local collection = remotes:WaitForChild("Collection", 30)
-	if not collection then
+	local wheel = getWheel(player)
+	if not wheel then
 		return
 	end
 
-	collection.OnServerEvent:Connect(function(player, orbName)
-		if not EssenceConfig.IsValidName(orbName) then
-			return
-		end
+	-- Paused (not reset) once already at the cap -- collecting while
+	-- holding the max banked tickets shouldn't waste progress toward
+	-- the next one; it resumes after a spin frees room.
+	if wheel.Tickets >= WheelConfig.MaxBankedTickets then
+		return
+	end
 
-		local wheel = getWheel(player)
-		if not wheel then
-			return
-		end
-
-		-- Paused (not reset) once already at the cap -- collecting while
-		-- holding the max banked tickets shouldn't waste progress toward
-		-- the next one; it just picks back up the moment a spin frees up
-		-- room, rather than resetting to 0 for a ticket that was never
-		-- actually going to be granted anyway.
-		if wheel.Tickets >= WheelConfig.MaxBankedTickets then
-			return
-		end
-
-		wheel.CollectionsSinceLastTicket += 1
-		if wheel.CollectionsSinceLastTicket >= WheelConfig.CollectionsPerTicket then
-			wheel.CollectionsSinceLastTicket -= WheelConfig.CollectionsPerTicket
-			wheel.Tickets += 1
-			pushState(player)
-		end
-	end)
+	wheel.CollectionsSinceLastTicket += 1
+	if wheel.CollectionsSinceLastTicket >= WheelConfig.CollectionsPerTicket then
+		wheel.CollectionsSinceLastTicket -= WheelConfig.CollectionsPerTicket
+		wheel.Tickets += 1
+		pushState(player)
+	end
 end)
 
 -- =========================================================================
@@ -235,6 +221,10 @@ local SPIN_DEBOUNCE_SECONDS = 1
 -- luau spins the wheel to land on -- the client never chooses this, it
 -- only ever finds out).
 SpinFunction.OnServerInvoke = function(player)
+	if not isDataReady(player) then
+		return false, "Still loading -- try again in a moment."
+	end
+
 	local now = os.clock()
 	local last = spinDebounce[player]
 	if last and (now - last) < SPIN_DEBOUNCE_SECONDS then
@@ -299,8 +289,11 @@ end
 
 local function onPlayerAdded(player)
 	task.spawn(function()
-		local dataModule = player:WaitForChild("PlayerData", 30)
-		if not dataModule or not player.Parent then
+		local deadline = os.clock() + 35
+		while player.Parent and not isDataReady(player) and os.clock() < deadline do
+			task.wait(0.1)
+		end
+		if not player.Parent or not isDataReady(player) then
 			return
 		end
 

@@ -57,6 +57,7 @@ local DefaultPlayerData = {
 	-- The rest of the fields are cumulative facts, so leaving/rejoining can
 	-- never erase an objective or pay a stage twice.
 	FirstJourney = {
+		Version = 2,
 		Eligible = false,
 		Completed = false,
 		ActiveSeconds = 0,
@@ -70,6 +71,7 @@ local DefaultPlayerData = {
 		RushAnnounced = false,
 		StartedLogged = false,
 		LastMinuteLogged = 0,
+		StageBaselines = {},
 	},
 	-- Forces the very first orb a player ever spawns to land as a
 	-- guaranteed critical (see OrbClicker.client.luau). A new player's

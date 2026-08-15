@@ -261,6 +261,12 @@ RollFunction.OnServerInvoke = function(player: Player)
 	scheduleExpiry(player, prophecy.Id, state.ExpiresAt)
 	local clientState = buildClientState(player, state)
 	SyncRemote:FireClient(player, clientState)
+	-- Session-only analytics mirror. The roll itself was validated, consumed its
+	-- cooldown and persisted above, so this cannot be forged by a client.
+	player:SetAttribute(
+		"SessionProphecyRolls",
+		math.max(0, math.floor(tonumber(player:GetAttribute("SessionProphecyRolls")) or 0)) + 1
+	)
 
 	return true, nil, {
 		ProphecyId = prophecy.Id,
@@ -274,6 +280,7 @@ end
 -- =========================================================================
 
 local function onPlayerAdded(player: Player)
+	player:SetAttribute("SessionProphecyRolls", 0)
 	task.spawn(function()
 		local dataModule = player:WaitForChild("PlayerData", 30)
 		if not dataModule or not player.Parent then

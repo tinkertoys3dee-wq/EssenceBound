@@ -120,12 +120,15 @@ local function loadPlayerData(player)
 	-- progress could get misidentified as new on top of everything else
 	-- going wrong that attempt.
 	local isBrandNewPlayer = false
+	local playerDataLoadStatus = "LoadedSave"
 	if success and result then
 		applySavedData(data, result)
 	elseif not success then
+		playerDataLoadStatus = "FallbackAfterError"
 		warn("PlayerDataHandler: failed to load data for " .. player.Name .. " after retries.")
 	else
 		isBrandNewPlayer = true
+		playerDataLoadStatus = "NewSave"
 	end
 
 	-- Stamped once, only for a genuinely first-ever join -- see
@@ -508,6 +511,11 @@ local function loadPlayerData(player)
 	player:SetAttribute("RobuxSpent", math.max(0, tonumber(data.RobuxSpent) or 0))
 	player:SetAttribute("PurchaseCount", math.max(0, math.floor(tonumber(data.PurchaseCount) or 0)))
 	player:SetAttribute("FirstPurchaseBonusClaimed", data.FirstPurchaseBonusClaimed == true)
+	-- Session-only cohort mirror for retention analytics. Inferring "new" from
+	-- FirstJourney.Eligible is incorrect after a player graduates because that
+	-- persisted eligibility flag intentionally remains true.
+	player:SetAttribute("IsBrandNewPlayer", isBrandNewPlayer)
+	player:SetAttribute("PlayerDataLoadStatus", playerDataLoadStatus)
 	local firstJourney = type(data.FirstJourney) == "table" and data.FirstJourney or {}
 	player:SetAttribute("FirstJourneyEligible", firstJourney.Eligible == true)
 	player:SetAttribute("FirstJourneyCompleted", firstJourney.Completed == true)
@@ -596,7 +604,15 @@ local function savePlayerData(player, isFinalSave)
 		end)
 	end)
 
-	EPMService.ActiveSessions[player.UserId] = nil
+	-- Autosave runs every two minutes. Clearing the live EPM window here used
+	-- to make EPMService.getEPM return nil for the rest of every session after
+	-- the first autosave. That broke both Time Warp products precisely when an
+	-- engaged player was most likely to consider one, and stopped the final
+	-- save from refreshing their offline-production baseline. Only a genuine
+	-- departure should retire this in-memory session.
+	if isFinalSave then
+		EPMService.ActiveSessions[player.UserId] = nil
+	end
 	saveLocks[userId] = nil
 
 	if not success then

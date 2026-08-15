@@ -2501,36 +2501,42 @@ in `EssenceConfig.luau`. Every surface now resolves that uploaded artwork
 automatically. `EssenceVisuals` retains the matching native Roblox UI build as
 a fallback if the catalog id is deliberately cleared later.
 
-## 51. Essence Awakening -- the first eight minutes are now a designed journey
+## 51. Essence Awakening -- the first twelve minutes are now a designed journey
 
 New saves no longer fall out of the tutorial into an undirected grind. A
-persistent six-beat **Essence Awakening** begins alongside the tutorial,
-credits actions the player is already learning, then carries them through a
-minute-five power spike and an eight-minute finale:
+persistent eleven-beat **Essence Awakening** begins alongside the tutorial,
+credits accepted actions the player is already learning, then carries them
+through a minute-three power spike and a twelve-minute finale. Version 2 uses
+per-stage baselines, so work done for one goal cannot silently pre-complete the
+next three and leave the player staring at a timer.
 
 | Beat | Verified goal | Automatic reward |
 |---|---|---|
 | First Spark | Collect 3 orbs | 75 Earth |
 | Resonant Rhythm | Strike the great orb 20 times | 150 Earth |
 | Shape Your Power | Buy any upgrade | 300 Earth |
-| Touch the Veil | Find Shadow or reach 25 total collections | 250 Earth + 20 Shadow |
-| Read the Current | Roll a prophecy or reach 45 total collections | 500 Earth + 25 Shadow |
-| Awakening Rush | Collect 25 orbs after minute 5 | 1,000 Earth + 50 Shadow |
+| Touch the Veil | Find Shadow or collect 20 more orbs | 250 Earth + 20 Shadow |
+| Read the Current | Roll a prophecy or collect 30 more orbs | 500 Earth + 25 Shadow |
+| Awakening Rush | Collect 25 orbs after minute 3 | 1,000 Earth + 50 Shadow |
+| Sustain the Surge | Collect 40 more orbs | 1,300 Earth + 50 Shadow |
+| Shatter the Limit | Land 100 more strikes after minute 6 | 1,750 Earth + 75 Shadow |
+| Choose Your Growth | Buy 2 upgrades or collect 50 more orbs after minute 8 | 2,500 Earth + 100 Shadow + 3 Solar |
+| Resonance Run | Collect 75 more orbs after minute 10 | 3,500 Earth + 125 Shadow |
+| Final Charge | Land 120 final strikes after minute 11 | 4,500 Earth + 150 Shadow + 5 Solar |
 
-At five active minutes the service turns on a personal 2× essence multiplier.
+At three active minutes the service turns on a personal 2× essence multiplier.
 It uses `FirstJourneyEssenceMultiplier`, independent from potions, Prophecy,
 Forge and global Rush effects, so overlapping timers multiply correctly and
-cannot erase one another. At eight active minutes, after the route is complete,
-the player receives 2,500 Earth, 100 Shadow, 5 Solar and a ten-minute 1.5×
-handoff boost. If someone learns slowly, the clock caps at 8:00 and the 2×
+cannot erase one another. At twelve active minutes, after the route is complete,
+the player receives 5,000 Earth, 200 Shadow, 10 Solar and a fifteen-minute 1.5×
+handoff boost. If someone learns slowly, the clock caps at 12:00 and the 2×
 rush stays active until their remaining objective is finished; the design
 rewards persistence instead of turning the deadline into a punishment.
 
 The clock counts online play only and persists across rejoins. The service
-observes the same gameplay remotes and server-written attributes as the real
-systems, rate-limits client-fired actions, applies OrbClickManager's collection
-validation boundary, advances stages on the server and grants every reward
-automatically. The template defaults `Eligible` to false; only
+observes `GameplaySignals`, which OrbClickManager fires only after a click or
+collection passes validation and is applied. It advances stages on the server
+and grants every reward automatically. The template defaults `Eligible` to false; only
 `PlayerDataHandler`'s proven brand-new-save branch flips it true, so veterans
 whose older saves receive the merged fields never get misclassified or handed
 new-player currency.
@@ -2538,22 +2544,20 @@ new-player currency.
 `FirstJourneyHud.client.luau` is code-built and intentionally occupies the
 lower-center gap above the relic timers rather than adding another right-rail
 button or covering the great orb. It waits until the tutorial is completed or
-skipped, has real inner padding, a collapsible compass, six milestone pips,
-live objective/reward copy, a locally smoothed server clock, stage-specific
-colors and sequenced reward effects. Minute five transforms the panel into a
+skipped, has real inner padding, a collapsible compass, eleven milestone pips,
+live objective/reward copy, one-click contextual action buttons, a locally
+smoothed server clock, stage-specific colors and sequenced reward effects.
+Minute three transforms the panel into a
 Solar rush state. The finale converges the real Earth/Shadow/Solar icon assets
 inside rotating rune rings, reveals the full cache, and hands the player back
 to normal play through **Begin Your Ascent**. Fast consecutive completions are
 queued, and the finale takes priority, so effects never pile into unreadable
 screen noise.
 
-The existing Robux interest-card loop and one-time favorite prompt now respect
-this arc too. Eligible newcomers do not receive either during minutes 1–8;
-the personalized interest card waits for both journey completion and a clear
-modal moment, while the favorite prompt leaves an additional 45-second
-breathing gap. Returning players keep their existing timing. This removes two
-competing calls-to-action from the most fragile part of the first session
-without deleting either conversion path.
+The Robux interest-card loop protects the learning window through minute six,
+then allows one low-pressure, contextual card during a clear moment; it never
+opens checkout itself. Returning players retain the two-card ceiling. The
+favorite prompt still waits until the journey is finished plus a breathing gap.
 
 The tutorial Skip button also now persists `SeenTutorial = true`. Previously
 Skip only hid the current dialogue; the entire tutorial returned after every
@@ -2561,7 +2565,7 @@ rejoin and any follow-up system waiting for tutorial completion remained
 blocked.
 
 Creator Hub receives a one-time start event, each stage reach, each retained
-minute from 1 through 8, the Rush, completion, and session-exit active time.
+minute from 1 through 12, the Rush, completion, and session-exit active time.
 Those calls are wrapped and observational only: analytics failure cannot block
 the clock, multiplier, save or reward. This makes the next retention pass
 answerable from real minute-by-minute drop-off instead of another guess.
@@ -2734,6 +2738,103 @@ lower risk in the near term, and the Tutorial backstop above means none of
 them can block the tutorial regardless -- but they carry the same latent
 bug this section describes and are worth the same fix if any of them turns
 out to be involved.
+
+## 55. Session retention + conversion overhaul
+
+This pass targets the reported 3.2-minute average session directly. The new
+first-session route is described in section 51; the surrounding loop now has
+automatic rewards at 1:30, 3:00, 5:00, 8:00, 12:00 and 15:00, then longer
+30/45-minute vaults and repeating caches. Rewards are server-timed and
+auto-granted, so onboarding, a hidden HUD pill or a missed click cannot make a
+player lose the payoff. The client still shows the next named reward and its
+countdown.
+
+The pre-play loading gate was shortened without replacing its authored tone:
+minimum hold is 0.8 seconds, fade/grace time is reduced, Skip arrives at two
+seconds, and preload filters to actual content-bearing instances instead of
+feeding the entire DataModel to `PreloadAsync`. Missing place-only loading
+music now falls back to a silent Sound instead of hanging before the UI and
+leaving every coordinated presentation permanently not-ready.
+
+One concrete paid-conversion failure was fixed in `PlayerDataHandler`: every
+two-minute autosave used to delete `EPMService.ActiveSessions[UserId]`. Both
+Time Warp developer products need that live session to calculate earnings, so
+after the first autosave their receipt handlers returned `NotProcessedYet`
+instead of granting. The live EPM window now survives autosaves and is retired
+only by the final leave save.
+
+`GameplaySignals.luau` is now the single server-only acceptance boundary for
+clicks and collections. First Journey, daily quests, Wheel tickets and session
+analytics consume those events only after OrbClickManager validates and applies
+the action. Directly firing a rejected client remote can no longer advance any
+of those secondary systems. Progression and Wheel also wait for the explicit
+`PlayerDataLoaded` mirror, rather than merely seeing the template ModuleScript
+before its DataStore merge and leaderstats are ready.
+
+Monetization remains optional and deliberate. A newcomer gets at most one
+interest card, no earlier than six active journey minutes and only during a
+clear presentation moment; the weighted choice favors the approachable Mini
+Essence Potion. The card leads to a truthful live-price catalog, never directly
+to checkout. The funnel now records store close, checkout cancellation, exit
+and reopen abandonment in addition to open/view/prompt/purchase, while keeping
+a prompted session alive long enough for a late receipt to complete it.
+
+`SessionAnalyticsService.server.luau` adds a `SessionDepthV2` funnel at 0, 1,
+3, 5, 8, 10, 12 and 15 minutes. It now uses exact first-join, resumed-journey,
+journey-graduate, legacy-returning and DataStore-fallback cohorts rather than
+treating every player who once qualified for the journey as new forever. It
+also records time to server-accepted milestones and emits aggregated session
+diagnostics at exit.
+These are wrapped, Studio-suppressed, observational calls: an analytics failure
+changes no reward, save, action or purchase outcome.
+
+## 56. Analytics that explain the 3.2-minute session, not just repeat it
+
+The first instrumentation pass established the retention checkpoints. This
+extension makes the results actionable without logging every click as a custom
+event. High-frequency actions are counted in server memory and emitted only
+when the player leaves; store counters are server-owned attributes, and a
+purchase only counts after a game-pass grant or developer-product receipt
+actually succeeds.
+
+| Creator Hub event | Value | CustomField01 | CustomField02 | CustomField03 |
+|---|---:|---|---|---|
+| `SessionDepthV2` funnel | Reached checkpoint | Entry cohort | Entry journey stage | Entry payer status |
+| `SessionCheckpointStageV2` | Current journey stage number | Entry cohort | Entry payer status | Depth checkpoint |
+| `FirstJourneyV2` funnel | Reached journey checkpoint | Fresh/resumed cohort | Entry stage | Entry payer status |
+| `SessionMilestoneSecondsV2` | Seconds from join | Entry cohort | Stage at milestone | Milestone name |
+| `SessionExitSummaryV2` | Session seconds | Entry cohort | Exit journey stage | Highest store outcome |
+| `SessionEngagementCountV2` | Accepted action count | Entry cohort | Session-duration bucket | Clicks/collections/crits/gold/upgrades/rewards/prophecies |
+| `SessionConversionCountV2` | Session count or Robux | Entry cohort | Session-duration bucket | Opens/views/spotlights/prompts/cancels/purchases/spend |
+| `SessionLoadTimeoutV2` / `SessionLoadExitV2` | Seconds waiting | Loading | Load state | Still-connected or exit-depth bucket |
+
+`FirstJourneyV2` is a compact ten-step ordered funnel: journey start, first
+collection goal, click goal, upgrade, Veil, Prophecy, Rush, the six-minute
+charge, eight-minute growth and final completion. Resumed players are kept in a
+separate cohort, so filtering `CustomField01 = FreshJourney` gives an honest
+first-ever-session funnel instead of mixing retries into the conversion rate.
+
+The quickest diagnosis workflow after a release is:
+
+1. Read `SessionDepthV2` to find the largest time cliff.
+2. Filter `FirstJourneyV2` to `FreshJourney` and identify the specific goal
+   immediately before that cliff.
+3. Break `SessionExitSummaryV2` down by its store outcome. `NoStoreExposure`
+   means presentation/timing failed; `ViewedNoPrompt` points at the offer;
+   `PromptedNoPurchase` or `CheckoutCancelled` points at price, trust or product
+   fit; `Purchased` is a completed server-confirmed conversion.
+4. Compare `SessionEngagementCountV2` by duration bucket. A near-zero count is
+   an input/tutorial problem; healthy action counts with an early exit indicate
+   weak rewards or unclear goals instead.
+5. Check `SessionMilestoneSecondsV2` for `FirstPlaytimeReward` around 90 seconds
+   and `FirstSpotlightShow` no earlier than the intended six-minute newcomer
+   gate. `FirstSpotlightClick` to `FirstCheckoutPrompt` then exposes the delay
+   between interest, catalog inspection and checkout intent.
+
+Creator Hub aggregates custom-event dashboards rather than updating them
+instantly, so judge a release only after a meaningful cohort has accumulated.
+The event names are versioned; change the suffix whenever step meanings or
+field semantics change so old and new populations are never silently mixed.
 
 ## What to check when you open Studio
 
@@ -3072,21 +3173,24 @@ out to be involved.
     than rebirth-scaled amounts. Finally rejoin after offline time: Solar may
     pay only after discovery and its saved EPM must remain inside 1–6/min.
 
-33. **Essence Awakening (section 51)** -- use a genuinely fresh DataStore key
-    (an old save is intentionally ineligible). Confirm the padded journey card
-    stays hidden during the tutorial, appears above the bottom relic bar after
-    finishing or skipping, and never covers the great orb or right navigation
-    at desktop and phone emulator widths. Complete each goal and verify its
-    exact reward lands once; rejoin midway and confirm the same stage, counters
-    and active-time clock resume rather than reset or advance offline. At 5:00,
-    collect before/after the transition and verify only the latter gain is 2×,
-    while an existing potion/prophecy still stacks. At 8:00, confirm the
-    Earth/Shadow/Solar convergence finale, exact 2,500/100/5 cache, and
-    ten-minute 1.5× potion. Finally, deliberately leave the last objective
-    unfinished at 8:00: the clock should hold, the Rush should remain, and the
-    finale should fire once the objective is completed. Rejoin after completion
-    and confirm neither the HUD nor any reward returns. Also skip the tutorial,
-    rejoin, and confirm the tutorial itself no longer comes back.
+33. **Essence Awakening + session ladder (sections 51/55)** -- use a genuinely
+    fresh DataStore key (an old save is intentionally ineligible). Confirm the
+    padded journey card stays hidden during the tutorial, appears afterward,
+    and fits desktop and phone widths. Each action button must open the correct
+    surface or collapse to expose the orb. Complete a goal, over-collect before
+    the next one, and verify that later stage starts at zero rather than using
+    lifetime progress. Rejoin midway and confirm the same stage, baseline and
+    active-time clock resume without offline advancement. At 3:00 verify the
+    personal 2× multiplier starts and stacks with an existing potion/prophecy.
+    Confirm playtime caches auto-grant once each near 1:30, 3:00, 5:00, 8:00,
+    12:00 and 15:00. At 12:00 confirm the Earth/Shadow/Solar finale, exact
+    5,000/200/10 cache and fifteen-minute 1.5× handoff potion. Leave the final
+    objective unfinished at 12:00: the clock should hold, the Rush should
+    remain, and the finale should fire exactly once after the action completes.
+    Rejoin after completion and confirm neither HUD nor reward returns. Finally,
+    cancel a Time Warp purchase after minute two, then complete one in a test
+    purchase environment and verify the live-session reward is still calculated
+    after multiple autosaves.
 
 ## ⚠️ One thing to be careful about
 
@@ -3107,7 +3211,7 @@ couldn't rebuild your game from scratch.
 ## Not done deliberately
 
 The loading screen's horror/ARG tone (screen shake, whispered "i see
-you", jump-scare eyes) clashes hard with the bright, cheerful tutorial
-and mascot that follow it, and it delays first play. I left it alone —
-it's clearly deliberate creative work and that's your call, not a bug.
-Worth deciding on though: it's the first thing every new player sees.
+you", jump-scare eyes) still contrasts sharply with the bright tutorial
+and mascot that follow it. This pass removes avoidable technical delay and
+the missing-music hang, but preserves that authored tone; changing the game's
+opening identity needs a deliberate creative decision and audience test.

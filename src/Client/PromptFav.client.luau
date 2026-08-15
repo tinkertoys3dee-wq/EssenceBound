@@ -38,8 +38,8 @@ if player:GetAttribute("SeenFavoritePrompt") then
 	return
 end
 
--- Minute five is now the new player's 2x Awakening Rush, followed by the
--- eight-minute convergence finale. A platform prompt on top of either beat
+-- Minute three is the new player's 2x Awakening Rush, followed by the
+-- twelve-minute convergence finale. A platform prompt on top of either beat
 -- would interrupt the exact session arc this prompt is meant to help retain.
 -- Existing/returning players keep the original five-minute timing; only an
 -- eligible, unfinished newcomer waits for the journey handoff plus a short

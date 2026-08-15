@@ -132,7 +132,7 @@ function EssenceMultiplier.CalculateMultiplier(plr, gold, crit, skipDoubleCritRo
 	)
 	multiplier *= forgeMultiplier
 
-	-- Minutes 5-8 of a genuinely new player's Essence Awakening journey
+	-- Minutes 3-12 of a genuinely new player's Essence Awakening journey
 	-- become a personal 2x rush. This lives on its own attribute so it can
 	-- overlap with potions, prophecies, the Forge and global Rush events
 	-- without one timer erasing another. FirstJourneyService is the only

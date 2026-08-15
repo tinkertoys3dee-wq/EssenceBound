@@ -1,11 +1,11 @@
 --[[
 	FirstJourneyHud (LocalScript -> StarterPlayerScripts)
 	=====================================================
-	A compact, cinematic companion for the first eight minutes. The HUD sits
+	A compact, cinematic companion for the first twelve minutes. The HUD sits
 	in the lower-center breathing room above the relic timer bar, away from
 	the main orb, left stats and right menu rail. It waits until the tutorial
 	is finished/skipped, then reveals the current objective, its next reward,
-	the full six-beat route and the eight-minute resonance timer.
+	the full action-gated route and the twelve-minute resonance timer.
 
 	Everything here is presentation. FirstJourneyService owns eligibility,
 	progress, time, multipliers and rewards.
@@ -305,7 +305,7 @@ local timerLabel = new("TextLabel", {
 	Size = UDim2.fromScale(1, 1),
 	BackgroundTransparency = 1,
 	Font = Enum.Font.GothamBlack,
-	Text = "✧ 0:00 / 8:00",
+	Text = "✧ 0:00 / 12:00",
 	TextColor3 = THEME.White,
 	TextScaled = true,
 	ZIndex = 106,
@@ -401,10 +401,32 @@ local progressGlow = new("Frame", {
 }, progressFill)
 corner(progressGlow, UDim.new(1, 0))
 
+local actionButton = new("TextButton", {
+	Name = "StageAction",
+	Position = UDim2.new(0, 0, 0, 74),
+	Size = UDim2.new(0.23, -4, 0, 20),
+	BackgroundColor3 = THEME.Earth,
+	BorderSizePixel = 0,
+	AutoButtonColor = false,
+	Font = Enum.Font.GothamBlack,
+	Text = "FIND ORBS",
+	TextColor3 = THEME.Void,
+	TextScaled = true,
+	ZIndex = 106,
+}, content)
+corner(actionButton, UDim.new(1, 0))
+local actionStroke = stroke(actionButton, THEME.White, 1, 0.56)
+new("UIPadding", {
+	PaddingLeft = UDim.new(0, 6),
+	PaddingRight = UDim.new(0, 6),
+}, actionButton)
+textConstraint(actionButton, 10, 6)
+Juice.ButtonFeel(actionButton, { HoverScale = 1.035 })
+
 local hintLabel = new("TextLabel", {
 	Name = "Hint",
-	Position = UDim2.new(0, 0, 0, 75),
-	Size = UDim2.new(0.57, -4, 0, 18),
+	Position = UDim2.new(0.24, 0, 0, 75),
+	Size = UDim2.new(0.34, -4, 0, 18),
 	BackgroundTransparency = 1,
 	Font = Enum.Font.Gotham,
 	Text = "Move your collection ring over falling essence.",
@@ -444,7 +466,7 @@ local milestoneLayout = new("UIListLayout", {
 	FillDirection = Enum.FillDirection.Horizontal,
 	HorizontalAlignment = Enum.HorizontalAlignment.Center,
 	VerticalAlignment = Enum.VerticalAlignment.Center,
-	Padding = UDim.new(0, 7),
+	Padding = UDim.new(0, 4),
 	SortOrder = Enum.SortOrder.LayoutOrder,
 }, milestoneRow)
 
@@ -453,7 +475,7 @@ for index, stage in ipairs(FirstJourneyConfig.Stages) do
 	local pip = new("Frame", {
 		Name = stage.Id,
 		LayoutOrder = index,
-		Size = UDim2.fromOffset(25, 8),
+		Size = UDim2.fromOffset(14, 8),
 		BackgroundColor3 = Color3.fromRGB(54, 58, 81),
 		BorderSizePixel = 0,
 		ZIndex = 106,
@@ -567,7 +589,7 @@ local collapsedTimer = new("TextLabel", {
 	Size = UDim2.fromOffset(88, 29),
 	BackgroundTransparency = 1,
 	Font = Enum.Font.GothamBlack,
-	Text = "0:00 / 8:00",
+	Text = "0:00 / 12:00",
 	TextColor3 = THEME.Earth,
 	TextScaled = true,
 	TextXAlignment = Enum.TextXAlignment.Right,
@@ -617,6 +639,8 @@ local function setAccent(accent: Color3)
 	progressFill.BackgroundColor3 = accent
 	progressGlow.BackgroundColor3 = accent
 	progressGradient.Color = ColorSequence.new(THEME.White, accent)
+	actionButton.BackgroundColor3 = accent
+	actionStroke.Color = THEME.White
 	collapsedStroke.Color = accent
 	collapsedIcon.BackgroundColor3 = accent
 	collapsedTimer.TextColor3 = accent
@@ -750,7 +774,32 @@ local function applyState(payload)
 	objectiveLabel.Text = tostring(stage.Objective or "Follow the resonance")
 	hintLabel.Text = tostring(stage.Hint or "Keep collecting essence.")
 	rewardLabel.Text = "NEXT  " .. tostring(stage.RewardText or payload.FinalRewardText or "Mystery reward")
-	countLabel.Text = formatProgress(stage.Progress, stage.Target)
+	countLabel.Text = tostring(stage.ProgressText or formatProgress(stage.Progress, stage.Target))
+	if stage.ProgressText then
+		countLabel.Size = UDim2.fromOffset(136, 18)
+		objectiveLabel.Size = UDim2.new(1, -144, 0, 20)
+	else
+		countLabel.Size = UDim2.fromOffset(76, 18)
+		objectiveLabel.Size = UDim2.new(1, -82, 0, 20)
+	end
+	actionButton.Visible = stage.Action ~= nil
+	actionButton.Active = stage.Locked ~= true
+	if stage.Locked then
+		actionButton.Text = "UNLOCKS " .. FirstJourneyConfig.FormatTime(stage.UnlockAt)
+		actionButton.BackgroundColor3 = THEME.Raised
+		actionButton.TextColor3 = THEME.Dim
+	else
+		actionButton.Text = tostring(stage.ActionLabel or "GO")
+		actionButton.BackgroundColor3 = accent
+		actionButton.TextColor3 = THEME.Void
+	end
+	if actionButton.Visible then
+		hintLabel.Position = UDim2.new(0.24, 0, 0, 75)
+		hintLabel.Size = UDim2.new(0.34, -4, 0, 18)
+	else
+		hintLabel.Position = UDim2.new(0, 0, 0, 75)
+		hintLabel.Size = UDim2.new(0.57, -4, 0, 18)
+	end
 	collapsedTitle.Text = (payload.RushActive and "2× RUSH  •  " or "")
 		.. tostring(stage.Name or "Essence Awakening")
 	collapsedIcon.Text = tostring(stage.Icon or "✦")
@@ -817,6 +866,29 @@ collapseButton.MouseButton1Click:Connect(function()
 end)
 collapsedButton.MouseButton1Click:Connect(function()
 	setCollapsed(false)
+end)
+
+actionButton.Activated:Connect(function()
+	local stage = currentState and currentState.Stage
+	if type(stage) ~= "table" or stage.Locked == true then
+		return
+	end
+
+	local action = stage.Action
+	if action == "Upgrades" then
+		local popupApi = rawget(_G, "PopupUI")
+		if popupApi and type(popupApi.Open) == "function" then
+			popupApi.Open("UpgradesPopup")
+		end
+	elseif action == "Prophecy" then
+		local prophecyApi = rawget(_G, "EssenceboundProphecy")
+		if prophecyApi and type(prophecyApi.Open) == "function" then
+			prophecyApi.Open()
+		end
+	else
+		-- Core-orb actions need screen space, not another modal.
+		setCollapsed(true)
+	end
 end)
 
 -- =========================================================================
@@ -925,12 +997,14 @@ local function rushCelebration(payload)
 end
 
 local MINUTE_BEATS = {
-	[1] = { Text = "RESONANCE 12%  •  THE BOND HOLDS", Color = THEME.Earth },
-	[2] = { Text = "RESONANCE 25%  •  FIRST CACHE READY", Color = THEME.Cyan },
-	[3] = { Text = "RESONANCE 37%  •  THE VEIL THINS", Color = THEME.Shadow },
-	[4] = { Text = "RESONANCE 50%  •  RUSH APPROACHING", Color = THEME.Solar },
-	[6] = { Text = "RESONANCE 75%  •  POWER CLIMBING", Color = THEME.SolarLight },
-	[7] = { Text = "RESONANCE 87%  •  FINAL MINUTE", Color = THEME.Solar },
+	[1] = { Text = "RESONANCE 8%  •  THE BOND HOLDS", Color = THEME.Earth },
+	[2] = { Text = "RESONANCE 17%  •  FIRST CACHE OPEN", Color = THEME.Cyan },
+	[4] = { Text = "RESONANCE 33%  •  SURGE STABILIZED", Color = THEME.Solar },
+	[5] = { Text = "RESONANCE 42%  •  BRONZE CACHE OPEN", Color = THEME.Cyan },
+	[6] = { Text = "RESONANCE 50%  •  SECOND PHASE", Color = THEME.Shadow },
+	[8] = { Text = "RESONANCE 67%  •  CHOOSE YOUR PATH", Color = THEME.Earth },
+	[10] = { Text = "RESONANCE 83%  •  FINAL RUN", Color = THEME.SolarLight },
+	[11] = { Text = "RESONANCE 92%  •  FINAL CHARGE", Color = THEME.Solar },
 }
 
 local function minuteCelebration(payload)
@@ -966,7 +1040,7 @@ local function minuteCelebration(payload)
 end
 
 -- =========================================================================
--- EIGHT-MINUTE FINALE
+-- TWELVE-MINUTE FINALE
 -- =========================================================================
 
 local function playFinale(payload)

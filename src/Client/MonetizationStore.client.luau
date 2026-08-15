@@ -11,8 +11,8 @@
 	  * retrieve live player-specific prices from MarketplaceService;
 	  * distinguish permanent passes from repeatable boosts clearly;
 	  * never open Roblox's checkout without a deliberate BUY click;
-	  * show at most two optional interest cards per session, only after the
-	    tutorial and several minutes of play, and stop once the store is used.
+	  * show one contextual newcomer card only after six minutes of understood
+	    play (returning players may see two), and stop once the store is used.
 ]]
 
 local Players = game:GetService("Players")
@@ -23,6 +23,7 @@ local UserInputService = game:GetService("UserInputService")
 local GuiService = game:GetService("GuiService")
 
 local MonetizationConfig = require(ReplicatedStorage:WaitForChild("MonetizationConfig"))
+local FirstJourneyConfig = require(ReplicatedStorage:WaitForChild("FirstJourneyConfig"))
 local Juice = require(ReplicatedStorage:WaitForChild("Juice"))
 local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
 local PresentationCoordinator = require(ReplicatedStorage:WaitForChild("PresentationCoordinator"))
@@ -957,6 +958,7 @@ local function closeStore()
 	if not storeOpen then
 		return
 	end
+	trackStoreAction("StoreClosed", selectedOfferId, currentOpenSource)
 	storeOpen = false
 	animationId += 1
 	local thisAnimation = animationId
@@ -1191,7 +1193,11 @@ do
 end
 
 MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(purchasedPlayer, gamePassId, purchased)
-	if purchasedPlayer ~= player or not purchased then
+	if purchasedPlayer ~= player then
+		return
+	end
+	if not purchased then
+		trackStoreAction("CheckoutCancelled", gamePassId, currentOpenSource)
 		pendingOfferId = nil
 		return
 	end
@@ -1221,6 +1227,7 @@ MarketplaceService.PromptProductPurchaseFinished:Connect(function(userId, produc
 		})
 		pendingOfferId = nil
 	elseif userId == player.UserId then
+		trackStoreAction("CheckoutCancelled", productId, currentOpenSource)
 		pendingOfferId = nil
 	end
 end)
@@ -1496,9 +1503,15 @@ local function showSpotlight(offer)
 	spotlightOffer = offer
 	spotlightAnimationId += 1
 	local thisAnimation = spotlightAnimationId
-	spotlightEyebrow.Text = firstPurchaseClaimed
-		and "OPTIONAL POWER-UP"
-		or "FIRST PURCHASE BONUS INCLUDED"
+	local journeyOngoing = player:GetAttribute("FirstJourneyEligible") == true
+		and player:GetAttribute("FirstJourneyCompleted") ~= true
+	if journeyOngoing then
+		spotlightEyebrow.Text = "OPTIONAL  •  EXTEND YOUR MOMENTUM"
+	else
+		spotlightEyebrow.Text = firstPurchaseClaimed
+			and "OPTIONAL POWER-UP"
+			or "FIRST PURCHASE BONUS INCLUDED"
+	end
 	spotlightAccent.BackgroundColor3 = offer.Accent
 	spotlightStroke.Color = offer.Accent
 	spotlightTitle.Text = offer.Headline
@@ -1556,12 +1569,13 @@ player:GetAttributeChangedSignal("FirstJourneyEligible"):Connect(noteJourneyComp
 player:GetAttributeChangedSignal("FirstJourneyCompleted"):Connect(noteJourneyCompletion)
 noteJourneyCompletion()
 
-local function newcomerJourneyIsActive()
+local function newcomerJourneyBlocksSpotlight()
 	if player:GetAttribute("FirstJourneyEligible") ~= true then
 		return false
 	end
 	if player:GetAttribute("FirstJourneyCompleted") ~= true then
-		return true
+		local activeSeconds = tonumber(player:GetAttribute("FirstJourneyActiveSeconds")) or 0
+		return activeSeconds < FirstJourneyConfig.MonetizationUnlockAt
 	end
 	-- The attribute flips just before the finale RemoteEvent arrives. This
 	-- grace closes the tiny race where a ten-second polling check could pass
@@ -1588,7 +1602,7 @@ local function modalIsBusy()
 		return true
 	end
 
-	-- Essence Awakening's eight-minute convergence is intentionally modal
+	-- Essence Awakening's twelve-minute convergence is intentionally modal
 	-- but is not named "Backdrop" like the regular panels below. Treat it
 	-- explicitly as busy so a Robux interest card can never slide over the
 	-- most important new-player payoff in the session.
@@ -1643,6 +1657,13 @@ local function chooseSpotlight(promptNumber)
 				if not firstPurchaseClaimed and offer.FirstPurchaseFriendly then
 					weight *= 1.35
 				end
+				-- During the first journey, favor a low-commitment boost that
+				-- directly extends the loop the player is currently enjoying.
+				local journeyOngoing = player:GetAttribute("FirstJourneyEligible") == true
+					and player:GetAttribute("FirstJourneyCompleted") ~= true
+				if journeyOngoing and offer.Title == "Mini Essence Potion" then
+					weight *= 2.5
+				end
 				-- The first interest card leans toward approachable live prices,
 				-- but still uses weighted randomness so one item isn't repeated.
 				if promptNumber == 1 and price and price > 0 then
@@ -1667,16 +1688,15 @@ local function chooseSpotlight(promptNumber)
 end
 
 local function waitForClearMoment()
-	-- The first attempt begins around minute 2. Give an eligible newcomer
-	-- enough runway to finish the eight-minute journey, then show the same
-	-- personalized card once they understand what its benefit means. Returning
-	-- players are unaffected and usually pass on the first iteration.
+	-- The first attempt begins around minute 2. A newcomer remains protected
+	-- until minute 6, then may see one contextual interest card during a truly
+	-- quiet moment. Returning players usually pass on the first iteration.
 	for _ = 1, 72 do
 		if storeOpenedThisSession then
 			return false
 		end
 		if player:GetAttribute("SeenTutorial") == true
-			and not newcomerJourneyIsActive()
+			and not newcomerJourneyBlocksSpotlight()
 			and not modalIsBusy()
 		then
 			return true
@@ -1689,8 +1709,11 @@ end
 task.spawn(function()
 	local rules = MonetizationConfig.Spotlights
 	task.wait(math.random(rules.FirstDelayMin, rules.FirstDelayMax))
+	local newcomerJourneyOngoing = player:GetAttribute("FirstJourneyEligible") == true
+		and player:GetAttribute("FirstJourneyCompleted") ~= true
+	local maximumPrompts = newcomerJourneyOngoing and 1 or rules.MaximumPerSession
 
-	for promptNumber = 1, rules.MaximumPerSession do
+	for promptNumber = 1, maximumPrompts do
 		if storeOpenedThisSession or not waitForClearMoment() then
 			break
 		end
@@ -1705,7 +1728,7 @@ task.spawn(function()
 
 		-- A manual action may have happened while this low-priority request was
 		-- queued. Re-check every eligibility condition before showing anything.
-		if storeOpenedThisSession or newcomerJourneyIsActive() or modalIsBusy() then
+		if storeOpenedThisSession or newcomerJourneyBlocksSpotlight() or modalIsBusy() then
 			PresentationCoordinator.Release(spotlightLease, 0.4)
 			break
 		end
@@ -1734,7 +1757,7 @@ task.spawn(function()
 		end
 		PresentationCoordinator.Release(spotlightLease, 0.8)
 
-		if promptNumber < rules.MaximumPerSession then
+		if promptNumber < maximumPrompts then
 			task.wait(math.random(rules.RepeatDelayMin, rules.RepeatDelayMax))
 		end
 	end

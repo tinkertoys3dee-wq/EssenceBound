@@ -8,33 +8,18 @@
 		2. Daily quests (3 shared goals, rotating each UTC day)
 		3. Playtime chests (session-length rewards)
 
-	DESIGN: PURELY ADDITIVE
-	------------------------
-	This script does not modify any existing gameplay system. It observes
-	them instead:
-
-		- Clicks / orb collections are counted by attaching ADDITIONAL
-		  OnServerEvent listeners to the existing ClickOrb and Collection
-		  remotes. Roblox fires every connected listener, so OrbClickManager
-		  keeps working exactly as before and neither script knows about
-		  the other.
+	DESIGN: ACCEPTED GAMEPLAY SIGNALS
+	---------------------------------
+	Clicks and collections are counted only after OrbClickManager accepts the
+	request and applies the gameplay result. GameplaySignals is server-only,
+	so rejected or forged client remotes can never advance a quest.
 		- Essence earned is measured from positive Quantity changes across
 		  the complete essence catalog.
 		- Upgrade purchases and rebirths are read from the player
 		  attributes those systems already set.
 
-	That means this file can be deleted wholesale and the game returns to
-	its previous behavior with no dangling references.
-
-	TRUST BOUNDARY
-	---------------
-	Orb/click counts come from client-fired remotes, which an exploiter
-	could spam -- exactly as they could before this script existed, since
-	those same remotes already grant currency. Quest progress is therefore
-	no more trusted than the existing economy, and deliberately no less:
-	rewards here are modest, counted per-event (never using a
-	client-supplied amount), and rate-limited below. All actual granting
-	happens here on the server; the client can only ever ask to claim.
+	All rewards, daily state, quest state and playtime gates remain
+	server-authoritative. The client can only ever ask to claim.
 ]]
 
 local Players = game:GetService("Players")
@@ -45,6 +30,7 @@ local ProgressionConfig = require(ReplicatedStorage:WaitForChild("ProgressionCon
 local TreeUpgrades = require(ReplicatedStorage:WaitForChild("TreeUpgrades"))
 local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
 local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
+local GameplaySignals = require(ServerScriptService:WaitForChild("GameplaySignals"))
 
 -- =========================================================================
 -- REMOTES
@@ -147,6 +133,10 @@ local function getData(player)
 		return nil
 	end
 	return data
+end
+
+local function isDataReady(player)
+	return player:GetAttribute("PlayerDataLoaded") == true
 end
 
 -- Guarantees the Progression sub-table exists and is shaped correctly,
@@ -328,10 +318,14 @@ local function buildChestState(player)
 		NextIcon = nextChest.Icon,
 		NextTitle = nextChest.Title,
 		Ready = elapsed >= nextChest.Seconds,
+		AutoClaim = ProgressionConfig.AutoClaimPlaytimeChests == true,
 	}
 end
 
 local function pushState(player)
+	if not isDataReady(player) then
+		return
+	end
 	local progression = getProgression(player)
 	if not progression then
 		return
@@ -444,6 +438,10 @@ local function withinBudget(player, stat, amount)
 end
 
 local function addStat(player, stat, amount)
+	if not isDataReady(player) then
+		return
+	end
+
 	amount = tonumber(amount) or 0
 	if amount <= 0 then
 		return
@@ -492,6 +490,15 @@ end
 
 ClaimDailyRemote.OnServerEvent:Connect(function(player)
 	if not passesDebounce(player) then
+		return
+	end
+	if not isDataReady(player) then
+		NotificationService.Send(player, {
+			Kind = "Info",
+			Title = "Rewards Still Loading",
+			Message = "Your daily streak is still loading. Try again in a moment.",
+			Key = "daily-loading",
+		})
 		return
 	end
 
@@ -586,6 +593,15 @@ ClaimQuestRemote.OnServerEvent:Connect(function(player, slot)
 	if not passesDebounce(player) then
 		return
 	end
+	if not isDataReady(player) then
+		NotificationService.Send(player, {
+			Kind = "Info",
+			Title = "Quests Still Loading",
+			Message = "Your daily quests are still loading. Try again in a moment.",
+			Key = "quest-loading",
+		})
+		return
+	end
 
 	slot = tonumber(slot)
 	if not slot or slot < 1 or slot > ProgressionConfig.QuestsPerDay or slot ~= math.floor(slot) then
@@ -646,43 +662,27 @@ ClaimQuestRemote.OnServerEvent:Connect(function(player, slot)
 	pushState(player)
 end)
 
-ClaimChestRemote.OnServerEvent:Connect(function(player)
-	if not passesDebounce(player) then
-		return
+local function grantReadyChest(player)
+	if not isDataReady(player) or not sessionStart[player] then
+		return false, "Loading"
 	end
-
-	if not sessionStart[player] then
-		NotificationService.Send(player, {
-			Kind = "Error",
-			Title = "Chest Still Loading",
-			Message = "Your playtime chest is still loading. Try again in a moment.",
-			Key = "chest-loading",
-		})
-		return
-	end
-
 	local claimed = chestsClaimed[player] or 0
 	local chest = ProgressionConfig.GetChest(claimed + 1)
 	local elapsed = os.clock() - sessionStart[player]
 
 	if elapsed < chest.Seconds then
-		NotificationService.Send(player, {
-			Kind = "Info",
-			Title = "Playtime Chest Charging",
-			Message = ("%s unlocks in %s."):format(
-				chest.Title,
-				ProgressionConfig.FormatDuration(chest.Seconds - elapsed)
-			),
-			Icon = chest.Icon,
-			Key = "chest-not-ready",
-		})
-		return -- not earned yet
+		return false, "Charging", chest, chest.Seconds - elapsed
 	end
 
 	chestsClaimed[player] = claimed + 1
 
 	local essence = ProgressionConfig.ScaleReward(chest.Essence, getRebirths(player))
-	grantEssence(player, essence)
+	if not grantEssence(player, essence) then
+		-- Do not consume the session reward when the live currency stat has not
+		-- appeared yet. The automatic tick will retry once loading completes.
+		chestsClaimed[player] = claimed
+		return false, "Loading"
+	end
 	if chest.Potion then
 		grantPotion(player, chest.Potion)
 	end
@@ -692,8 +692,41 @@ ClaimChestRemote.OnServerEvent:Connect(function(player)
 		subtitle ..= "  " .. chest.PotionLabel
 	end
 	toast(player, chest.Icon, chest.Title, subtitle)
+	player:SetAttribute("SessionPlaytimeChestsClaimed", claimed + 1)
 
 	pushState(player)
+	return true
+end
+
+ClaimChestRemote.OnServerEvent:Connect(function(player)
+	if not passesDebounce(player) then
+		return
+	end
+
+	local granted, reason, chest, remaining = grantReadyChest(player)
+	if granted then
+		return
+	end
+
+	if reason == "Loading" then
+		NotificationService.Send(player, {
+			Kind = "Error",
+			Title = "Chest Still Loading",
+			Message = "Your playtime chest is still loading. Try again in a moment.",
+			Key = "chest-loading",
+		})
+	elseif reason == "Charging" and chest then
+		NotificationService.Send(player, {
+			Kind = "Info",
+			Title = "Playtime Chest Charging",
+			Message = ("%s unlocks in %s."):format(
+				chest.Title,
+				ProgressionConfig.FormatDuration(remaining or 0)
+			),
+			Icon = chest.Icon,
+			Key = "chest-not-ready",
+		})
+	end
 end)
 
 -- Redemption is a RemoteFunction because the player needs to be told
@@ -703,6 +736,10 @@ local codeAttemptAt = {} -- [player] = os.clock() of last attempt
 local CODE_ATTEMPT_COOLDOWN = 1.5
 
 RedeemCodeFunction.OnServerInvoke = function(player, rawCode)
+	if not isDataReady(player) then
+		return false, "Still loading -- try again in a moment."
+	end
+
 	-- Throttled per player: without this, a client could brute-force the
 	-- code list by firing guesses in a tight loop.
 	local now = os.clock()
@@ -760,44 +797,22 @@ RedeemCodeFunction.OnServerInvoke = function(player, rawCode)
 end
 
 -- =========================================================================
--- OBSERVERS ON EXISTING SYSTEMS
+-- ACCEPTED GAMEPLAY + SERVER STATE OBSERVERS
 -- =========================================================================
--- Everything below attaches to remotes/attributes that already exist.
--- Nothing here is required for those systems to keep functioning.
+-- GameplaySignals fires only after an action has passed the core server's
+-- validation. Attribute observers below are also written by server systems.
 
-task.spawn(function()
-	local remotes = ReplicatedStorage:WaitForChild("Remotes", 30)
-	if not remotes then
-		warn("ProgressionService: Remotes folder never appeared; click/collect quests will not track.")
+GameplaySignals.OnClickAccepted(function(player, payload)
+	if type(payload) == "table" and payload.WasTrickle == true then
 		return
 	end
+	addStat(player, ProgressionConfig.Stats.Clicks, 1)
+end)
 
-	local clickOrb = remotes:WaitForChild("ClickOrb", 30)
-	if clickOrb then
-		clickOrb.OnServerEvent:Connect(function(player)
-			addStat(player, ProgressionConfig.Stats.Clicks, 1)
-		end)
-	end
-
-	local collection = remotes:WaitForChild("Collection", 30)
-	if collection then
-		-- Counted as one orb per event rather than using the client's
-		-- quantity value, so quest progress can't be inflated by a
-		-- forged amount. The orbName check closes a separate gap that
-		-- quantity-ignoring alone doesn't: without it, a client could
-		-- still farm quest progress by firing this remote directly with
-		-- a garbage orbName that OrbClickManager's own handler would
-		-- reject outright -- same validity bar that handler enforces
-		-- before granting anything, applied here too.
-		collection.OnServerEvent:Connect(function(player, orbName, _quantity, crit)
-			if not EssenceConfig.IsValidName(orbName) then
-				return
-			end
-			addStat(player, ProgressionConfig.Stats.OrbsCollected, 1)
-			if crit then
-				addStat(player, ProgressionConfig.Stats.CriticalOrbs, 1)
-			end
-		end)
+GameplaySignals.OnCollectionAccepted(function(player, payload)
+	addStat(player, ProgressionConfig.Stats.OrbsCollected, 1)
+	if type(payload) == "table" and payload.IsCritical == true then
+		addStat(player, ProgressionConfig.Stats.CriticalOrbs, 1)
 	end
 end)
 
@@ -886,9 +901,9 @@ task.spawn(function()
 		for _, player in ipairs(Players:GetPlayers()) do
 			if sessionStart[player] then
 				local chestState = buildChestState(player)
-				-- Only resync while a chest is pending or newly ready --
-				-- no point pushing state to someone with nothing changing.
-				if chestState.Ready then
+				if chestState.Ready and ProgressionConfig.AutoClaimPlaytimeChests then
+					grantReadyChest(player)
+				elseif chestState.Ready then
 					pushState(player)
 				end
 			end
@@ -904,12 +919,20 @@ local function onPlayerAdded(player)
 	sessionStart[player] = os.clock()
 	chestsClaimed[player] = 0
 	statBudget[player] = {}
+	player:SetAttribute("SessionPlaytimeChestsClaimed", 0)
 
-	-- PlayerData is created by PlayerDataHandler on its own PlayerAdded
-	-- connection, so it may not exist for a moment yet.
+	-- PlayerData is parented before GetAsync finishes. Wait for the explicit
+	-- loaded mirror so a slow DataStore read can never expose template quests
+	-- or consume a reward before the leaderstats it pays into exist.
 	task.spawn(function()
-		local dataModule = player:WaitForChild("PlayerData", 30)
-		if not dataModule or not player.Parent then
+		local deadline = os.clock() + 35
+		while player.Parent and not isDataReady(player) and os.clock() < deadline do
+			task.wait(0.1)
+		end
+		if not player.Parent or not isDataReady(player) then
+			if player.Parent then
+				warn("ProgressionService: timed out waiting for loaded data for " .. player.Name)
+			end
 			return
 		end
 

@@ -1,13 +1,13 @@
 --[[
 	FirstJourneyService (Script -> ServerScriptService)
 	==================================================
-	Server-authoritative eight-minute new-player journey. The client can
+	Server-authoritative twelve-minute new-player journey. The client can
 	display progress but cannot claim, skip, choose reward amounts or advance
-	a stage. Progress comes from the game's existing click/collection remotes
-	and server-written gameplay attributes; rewards are paid here exactly once.
+	a stage. Progress comes from accepted server gameplay signals and
+	server-written attributes; rewards are paid here exactly once.
 
 	Only saves proven brand-new by PlayerDataHandler are eligible. Active time
-	pauses offline, persists across rejoins and caps at eight minutes. If a
+	pauses offline, persists across rejoins and caps at twelve minutes. If a
 	player still needs an objective at that point, their personal 2x rush stays
 	active until they finish instead of punishing them for learning slowly.
 ]]
@@ -22,6 +22,7 @@ local EssenceConfig = require(ReplicatedStorage:WaitForChild("EssenceConfig"))
 local FirstJourneyConfig = require(ReplicatedStorage:WaitForChild("FirstJourneyConfig"))
 local NotificationService = require(ReplicatedStorage:WaitForChild("NotificationService"))
 local TreeUpgrades = require(ReplicatedStorage:WaitForChild("TreeUpgrades"))
+local GameplaySignals = require(ServerScriptService:WaitForChild("GameplaySignals"))
 
 -- =========================================================================
 -- REMOTES
@@ -105,6 +106,26 @@ local function getJourney(player: Player)
 	state.TotalClicks = normalizeCounter(state.TotalClicks)
 	state.TotalUpgrades = normalizeCounter(state.TotalUpgrades)
 	state.RushCollections = normalizeCounter(state.RushCollections)
+	if type(state.StageBaselines) ~= "table" then
+		state.StageBaselines = {}
+	end
+
+	-- Version 1 used lifetime counters for every stage, which allowed one
+	-- early burst to pre-complete several later beats. Preserve progress on
+	-- the player's current stage once, then use fresh per-stage baselines.
+	local savedVersion = math.floor(tonumber(state.Version) or 1)
+	if savedVersion < FirstJourneyConfig.Version then
+		local currentStage = FirstJourneyConfig.GetStage(state.StageIndex)
+		if currentStage and type(state.StageBaselines[currentStage.Id]) ~= "table" then
+			state.StageBaselines[currentStage.Id] = {
+				TotalCollections = 0,
+				TotalClicks = 0,
+				TotalUpgrades = 0,
+				RushCollections = 0,
+			}
+		end
+	end
+	state.Version = FirstJourneyConfig.Version
 	state.ShadowDiscovered = state.ShadowDiscovered == true
 	state.ProphecyRead = state.ProphecyRead == true
 	state.RushAnnounced = state.RushAnnounced == true
@@ -123,24 +144,80 @@ local function getJourney(player: Player)
 	return state, data
 end
 
+local function ensureStageBaseline(state, stage)
+	if not stage then
+		return nil
+	end
+	-- A locked stage is not active yet. Capturing its baseline early would let
+	-- actions during the waiting window pre-complete it before it appears.
+	if (stage.UnlockAt or 0) > state.ActiveSeconds then
+		return nil
+	end
+	local baseline = state.StageBaselines[stage.Id]
+	if type(baseline) ~= "table" then
+		baseline = {
+			TotalCollections = state.TotalCollections,
+			TotalClicks = state.TotalClicks,
+			TotalUpgrades = state.TotalUpgrades,
+			RushCollections = state.RushCollections,
+		}
+		state.StageBaselines[stage.Id] = baseline
+	end
+	return baseline
+end
+
+local function sinceBaseline(state, baseline, field)
+	return math.max(0, normalizeCounter(state[field]) - normalizeCounter(baseline[field]))
+end
+
 local function getStageProgress(state, stage)
 	if not stage then
 		return 0, 1
 	end
+	if (stage.UnlockAt or 0) > state.ActiveSeconds then
+		if stage.GoalType == "UpgradesOrCollections" then
+			return 0, stage.Target, ("↑ 0/%d  •  ✦ 0/%d"):format(
+				math.max(1, tonumber(stage.UpgradeTarget) or 1),
+				math.max(1, tonumber(stage.CollectionTarget) or 1)
+			)
+		end
+		return 0, stage.Target
+	end
 
+	local baseline = ensureStageBaseline(state, stage)
 	local progress = 0
 	if stage.GoalType == "Collections" then
-		progress = state.TotalCollections
+		progress = sinceBaseline(state, baseline, "TotalCollections")
 	elseif stage.GoalType == "Clicks" then
-		progress = state.TotalClicks
+		progress = sinceBaseline(state, baseline, "TotalClicks")
 	elseif stage.GoalType == "Upgrades" then
-		progress = state.TotalUpgrades
+		progress = sinceBaseline(state, baseline, "TotalUpgrades")
 	elseif stage.GoalType == "ShadowOrCollections" then
-		progress = state.ShadowDiscovered and stage.Target or state.TotalCollections
+		progress = state.ShadowDiscovered
+			and stage.Target
+			or sinceBaseline(state, baseline, "TotalCollections")
 	elseif stage.GoalType == "ProphecyOrCollections" then
-		progress = state.ProphecyRead and stage.Target or state.TotalCollections
+		progress = state.ProphecyRead
+			and stage.Target
+			or sinceBaseline(state, baseline, "TotalCollections")
 	elseif stage.GoalType == "RushCollections" then
-		progress = state.RushCollections
+		progress = sinceBaseline(state, baseline, "RushCollections")
+	elseif stage.GoalType == "UpgradesOrCollections" then
+		local upgrades = sinceBaseline(state, baseline, "TotalUpgrades")
+		local collections = sinceBaseline(state, baseline, "TotalCollections")
+		local upgradeTarget = math.max(1, tonumber(stage.UpgradeTarget) or 1)
+		local collectionTarget = math.max(1, tonumber(stage.CollectionTarget) or 1)
+		progress = math.floor(math.max(
+			upgrades / upgradeTarget,
+			collections / collectionTarget
+		) * stage.Target)
+		local progressText = ("↑ %d/%d  •  ✦ %d/%d"):format(
+			math.min(upgrades, upgradeTarget),
+			upgradeTarget,
+			math.min(collections, collectionTarget),
+			collectionTarget
+		)
+		return math.min(stage.Target, progress), stage.Target, progressText
 	end
 
 	return math.min(stage.Target, math.max(0, progress)), stage.Target
@@ -159,7 +236,7 @@ local function buildClientState(player: Player)
 	end
 
 	local stage = FirstJourneyConfig.GetStage(state.StageIndex)
-	local progress, target = getStageProgress(state, stage)
+	local progress, target, progressText = getStageProgress(state, stage)
 	local activeSeconds = math.floor(state.ActiveSeconds)
 	local stagePayload
 
@@ -173,8 +250,11 @@ local function buildClientState(player: Player)
 			RewardText = stage.RewardText,
 			Progress = progress,
 			Target = target,
+			ProgressText = progressText,
 			UnlockAt = stage.UnlockAt or 0,
 			Locked = (stage.UnlockAt or 0) > state.ActiveSeconds,
+			Action = stage.Action,
+			ActionLabel = stage.ActionLabel,
 		}
 	else
 		local waiting = math.max(0, MAX_ACTIVE_SECONDS - activeSeconds)
@@ -182,13 +262,17 @@ local function buildClientState(player: Player)
 			Id = "final_resonance",
 			Name = "Final Resonance",
 			Icon = "✧",
-			Objective = waiting > 0 and "Keep the resonance alive until 8:00" or "Your awakening is ready",
+			Objective = waiting > 0
+				and ("Keep the resonance alive until %s"):format(FirstJourneyConfig.FormatTime(MAX_ACTIVE_SECONDS))
+				or "Your awakening is ready",
 			Hint = "Keep collecting—your personal 2x rush remains active.",
 			RewardText = FirstJourneyConfig.FinalRewardText,
 			Progress = math.min(activeSeconds, MAX_ACTIVE_SECONDS),
 			Target = MAX_ACTIVE_SECONDS,
 			UnlockAt = 0,
 			Locked = false,
+			Action = "Orb",
+			ActionLabel = "KEEP GATHERING",
 		}
 	end
 
@@ -315,10 +399,12 @@ local function logMinuteMilestones(player: Player, state, announce: boolean?)
 	while state.LastMinuteLogged < reachedMinute do
 		state.LastMinuteLogged += 1
 		logEvent(player, ("FirstJourney_Minute%02d"):format(state.LastMinuteLogged), state.ActiveSeconds)
-		-- Minute 5 has the much larger Rush arrival and minute 8 has the
-		-- finale. The other timestamps get a restrained HUD pulse so the
-		-- eight-minute arc never goes visually silent between action goals.
-		if announce and state.LastMinuteLogged ~= 5 and state.LastMinuteLogged ~= 8 then
+		-- The rush arrival and finale have larger presentations. Other minute
+		-- marks get a restrained pulse so the twelve-minute arc stays alive.
+		if announce
+			and state.LastMinuteLogged ~= math.floor(FirstJourneyConfig.RushStartsAt / 60)
+			and state.LastMinuteLogged ~= math.floor(MAX_ACTIVE_SECONDS / 60)
+		then
 			EventRemote:FireClient(player, {
 				Type = "MinuteReached",
 				Minute = state.LastMinuteLogged,
@@ -384,6 +470,7 @@ local function completeStage(player: Player, state, stage, stageIndex: number)
 	-- the evaluation lock below prevents re-entrancy, and the advanced index
 	-- guarantees an observer can never pay this same stage again.
 	state.StageIndex = stageIndex + 1
+	ensureStageBaseline(state, FirstJourneyConfig.GetStage(state.StageIndex))
 	grantReward(player, stage.Reward)
 	mirrorAttributes(player, state)
 
@@ -490,7 +577,8 @@ local function beginRushIfReady(player: Player, state)
 	NotificationService.Send(player, {
 		Kind = "Success",
 		Title = "Awakening Rush!",
-		Message = "Your essence gains are doubled through the eight-minute finale.",
+		Message = ("Your essence gains are doubled through the %s finale.")
+			:format(FirstJourneyConfig.FormatTime(MAX_ACTIVE_SECONDS)),
 		Icon = "☀",
 		Duration = 4.5,
 		Priority = 4,
@@ -503,21 +591,10 @@ end
 -- GAMEPLAY OBSERVERS
 -- =========================================================================
 
-local function withinBudget(session, key: string, cap: number)
-	local now = os.clock()
-	local entry = session.Budgets[key]
-	if not entry or now - entry.Start >= 1 then
-		session.Budgets[key] = { Start = now, Count = 1 }
-		return true
-	end
-	if entry.Count >= cap then
-		return false
-	end
-	entry.Count += 1
-	return true
-end
-
 local function addCounter(player: Player, field: string, amount: number)
+	if not sessions[player] or player:GetAttribute("PlayerDataLoaded") ~= true then
+		return
+	end
 	local state = getJourney(player)
 	if not state or not state.Eligible or state.Completed then
 		return
@@ -526,51 +603,25 @@ local function addCounter(player: Player, field: string, amount: number)
 	evaluatePlayer(player)
 end
 
-task.spawn(function()
-	local remotes = ReplicatedStorage:WaitForChild("Remotes", 30)
-	if not remotes then
-		warn("FirstJourneyService: core Remotes folder missing; action goals disabled")
+GameplaySignals.OnClickAccepted(function(player, payload)
+	-- Automatic trickle clicks are useful progression, but an onboarding
+	-- objective that completes itself teaches nothing and feels unearned.
+	if type(payload) == "table" and payload.WasTrickle == true then
 		return
 	end
+	addCounter(player, "TotalClicks", 1)
+end)
 
-	local clickRemote = remotes:WaitForChild("ClickOrb", 30)
-	if clickRemote then
-		clickRemote.OnServerEvent:Connect(function(player)
-			local session = sessions[player]
-			if session and withinBudget(session, "Clicks", 25) then
-				addCounter(player, "TotalClicks", 1)
-			end
-		end)
+GameplaySignals.OnCollectionAccepted(function(player)
+	local state = getJourney(player)
+	if not sessions[player] or not state or not state.Eligible or state.Completed then
+		return
 	end
-
-	local collectionRemote = remotes:WaitForChild("Collection", 30)
-	if collectionRemote then
-		collectionRemote.OnServerEvent:Connect(function(player, orbName, quantity)
-			local session = sessions[player]
-			if not session
-				or not EssenceConfig.IsValidName(orbName)
-				-- Match OrbClickManager's real grant boundary. A forged event
-				-- that the economy rejects must not advance onboarding either.
-				or type(quantity) ~= "number"
-				or quantity ~= quantity
-				or quantity <= 0
-				or quantity > 5000
-				or not withinBudget(session, "Collections", 60)
-			then
-				return
-			end
-
-			local state = getJourney(player)
-			if not state or not state.Eligible or state.Completed then
-				return
-			end
-			state.TotalCollections = math.min(MAX_COUNTER, state.TotalCollections + 1)
-			if state.ActiveSeconds >= FirstJourneyConfig.RushStartsAt then
-				state.RushCollections = math.min(MAX_COUNTER, state.RushCollections + 1)
-			end
-			evaluatePlayer(player)
-		end)
+	state.TotalCollections = math.min(MAX_COUNTER, state.TotalCollections + 1)
+	if state.ActiveSeconds >= FirstJourneyConfig.RushStartsAt then
+		state.RushCollections = math.min(MAX_COUNTER, state.RushCollections + 1)
 	end
+	evaluatePlayer(player)
 end)
 
 local function watchAttributes(player: Player, session)
@@ -670,12 +721,12 @@ local function onPlayerAdded(player: Player)
 
 		local session = {
 			LastClock = os.clock(),
-			Budgets = {},
 			Evaluating = false,
 			EvaluateAgain = false,
 		}
 		sessions[player] = session
 		initializing[player] = nil
+		ensureStageBaseline(state, FirstJourneyConfig.GetStage(state.StageIndex))
 		watchAttributes(player, session)
 		if state.Eligible and not state.StartedLogged then
 			state.StartedLogged = true

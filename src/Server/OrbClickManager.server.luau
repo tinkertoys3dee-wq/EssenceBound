@@ -5,6 +5,7 @@ local OrbClick = Events:WaitForChild("ClickOrb")
 local collected = Events:WaitForChild("Collection")
 local PlayerDatas = {}
 local EssenceConfig = require(RP:WaitForChild("EssenceConfig"))
+local GameplaySignals = require(ServerScriptService:WaitForChild("GameplaySignals"))
 
 -- TODO: point this at wherever EssenceOrbController actually lives in your
 -- tree (it requires "EssenceUpgrades" as a sibling via script.Parent, so
@@ -176,6 +177,10 @@ OrbClick.OnServerEvent:Connect(function(plr)
 	-- regardless of this, so gate any reward difference here, not there).
 
 	bumpMomentum(plr)
+	GameplaySignals._FireClickAccepted(plr, {
+		WasTrickle = wasTrickle == true,
+		HpCost = tonumber(hpCostPaid) or 0,
+	})
 
 	-- rebirthshop_secondwind just triggered (HP already healed by Fire()
 	-- above) -- grant the boost and tell the client to play its effect.
@@ -303,6 +308,18 @@ collected.OnServerEvent:Connect(function(plr, orbName, quantity, crit, gold)
 	local newEssence = essenceGained + PlayerDatas[plr.UserId]["data"]["Essences"][temp]["Quantity"]
 	PlayerDatas[plr.UserId]["data"]["TotalEssenceGathered"] += essenceGained
 	PlayerDatas[plr.UserId][orbName.." leaderstat"]:SetAttribute("Quantity",newEssence)
+
+	-- Every downstream progression/analytics system observes this accepted
+	-- signal rather than racing the raw client remote. At this point validation,
+	-- multiplier calculation, PlayerData credit, and the live leaderstat write
+	-- have all succeeded, so "collected" finally means the same thing everywhere.
+	GameplaySignals._FireCollectionAccepted(plr, {
+		EssenceName = orbName,
+		BaseQuantity = quantity,
+		EssenceGained = essenceGained,
+		IsCritical = crit == true,
+		IsGolden = isGolden,
+	})
 
 	-- rebirthshop_shardrain: a rare chance for this SAME collection to also
 	-- drop a bonus Prestige Shard -- a new earn path for Rebirth Currency

@@ -17,6 +17,7 @@ local AnalyticsService = game:GetService("AnalyticsService")
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local MonetizationConfig = require(ReplicatedStorage:WaitForChild("MonetizationConfig"))
 
@@ -28,6 +29,35 @@ local MAX_REMOTE_EVENTS_PER_MINUTE = 24
 local sessions = {}
 local spotlightActivity = {}
 local remoteBudgets = {}
+
+-- These server-written, session-only counters let SessionAnalyticsService
+-- correlate retention with the exact commercial outcome without trusting a
+-- client summary at exit. They reset with the Player instance on every join.
+local sessionMetricAttributes = {
+	"SessionStoreOpens",
+	"SessionOfferViews",
+	"SessionSpotlightShows",
+	"SessionSpotlightClicks",
+	"SessionCheckoutPrompts",
+	"SessionCheckoutCancels",
+	"SessionPurchaseCount",
+	"SessionRobuxSpent",
+}
+
+local function initializeSessionMetrics(player)
+	for _, attribute in ipairs(sessionMetricAttributes) do
+		player:SetAttribute(attribute, 0)
+	end
+end
+
+local function bumpSessionMetric(player, attribute, amount)
+	if not player or not player:IsA("Player") then
+		return
+	end
+	local current = math.max(0, math.floor(tonumber(player:GetAttribute(attribute)) or 0))
+	local increment = math.max(0, math.floor(tonumber(amount) or 1))
+	player:SetAttribute(attribute, current + increment)
+end
 
 local allowedSources = {
 	ShopButton = true,
@@ -65,6 +95,9 @@ local function fieldsFor(offer, source)
 end
 
 local function safeFunnelLog(player, session, step, stepName, offer)
+	if RunService:IsStudio() then
+		return
+	end
 	local ok, err = pcall(function()
 		AnalyticsService:LogFunnelStepEvent(
 			player,
@@ -82,6 +115,9 @@ local function safeFunnelLog(player, session, step, stepName, offer)
 end
 
 local function safeCustomLog(player, eventName, value, offer, source)
+	if RunService:IsStudio() then
+		return
+	end
 	local ok, err = pcall(function()
 		AnalyticsService:LogCustomEvent(
 			player,
@@ -111,6 +147,10 @@ function MonetizationAnalytics.BeginStoreSession(player, offerId, source)
 		return
 	end
 
+	if sessions[player] then
+		MonetizationAnalytics.EndStoreSession(player, "Superseded")
+	end
+
 	local offer = getOffer(offerId)
 	local session = {
 		Id = newSessionId(player),
@@ -120,6 +160,7 @@ function MonetizationAnalytics.BeginStoreSession(player, offerId, source)
 		HighestStep = 1,
 	}
 	sessions[player] = session
+	bumpSessionMetric(player, "SessionStoreOpens", 1)
 	safeFunnelLog(player, session, 1, "Store Opened", offer)
 
 	if offer then
@@ -144,6 +185,7 @@ function MonetizationAnalytics.ViewOffer(player, offerId, source)
 
 	session.ViewedOffers[offer.Id] = true
 	session.OfferId = offer.Id
+	bumpSessionMetric(player, "SessionOfferViews", 1)
 	if session.HighestStep < 2 then
 		session.HighestStep = 2
 		safeFunnelLog(player, session, 2, "Offer Viewed", offer)
@@ -167,6 +209,7 @@ function MonetizationAnalytics.LogPrompt(player, offerId, source)
 		return
 	end
 	session.OfferId = offer.Id
+	bumpSessionMetric(player, "SessionCheckoutPrompts", 1)
 	if session.HighestStep < 3 then
 		session.HighestStep = 3
 		safeFunnelLog(player, session, 3, "Checkout Prompted", offer)
@@ -181,12 +224,47 @@ function MonetizationAnalytics.LogPurchase(player, offerId, robuxSpent)
 
 	local session = sessions[player]
 	local source = session and session.Source or "Unknown"
+	bumpSessionMetric(player, "SessionPurchaseCount", 1)
+	bumpSessionMetric(player, "SessionRobuxSpent", math.max(0, tonumber(robuxSpent) or 0))
 	safeCustomLog(player, "MonetizationPurchaseCompleted", math.max(0, tonumber(robuxSpent) or 0), offer, source)
 
 	if session and (session.OfferId == nil or session.OfferId == offer.Id) then
 		session.OfferId = offer.Id
 		session.HighestStep = 4
 		safeFunnelLog(player, session, 4, "Purchase Completed", offer)
+		sessions[player] = nil
+	end
+end
+
+function MonetizationAnalytics.EndStoreSession(player, reason)
+	local session = sessions[player]
+	if not session then
+		return
+	end
+	local offer = getOffer(session.OfferId)
+	local eventName = "MonetizationStoreClosed"
+	if reason == "Exit" then
+		eventName = "MonetizationStoreExit"
+	elseif reason == "CheckoutCancelled" then
+		eventName = "MonetizationCheckoutCancelled"
+	elseif reason == "Superseded" then
+		eventName = "MonetizationStoreReopened"
+	end
+	if reason == "CheckoutCancelled" then
+		bumpSessionMetric(player, "SessionCheckoutCancels", 1)
+	end
+	safeCustomLog(
+		player,
+		eventName,
+		session.HighestStep,
+		offer,
+		session.Source
+	)
+	-- A player can close the catalog while Roblox's checkout overlay is still
+	-- resolving. Keep that prompted session alive so a successful receipt can
+	-- still complete the same funnel; the explicit cancellation callback,
+	-- next store open, purchase, or player exit will close it definitively.
+	if reason ~= "Closed" or session.HighestStep < 3 then
 		sessions[player] = nil
 	end
 end
@@ -206,6 +284,11 @@ function MonetizationAnalytics.LogSpotlight(player, action, offerId)
 		return
 	end
 	state[action][offer.Id] = true
+	bumpSessionMetric(
+		player,
+		action == "Shown" and "SessionSpotlightShows" or "SessionSpotlightClicks",
+		1
+	)
 
 	safeCustomLog(player, "MonetizationSpotlight" .. action, 1, offer, "Spotlight")
 end
@@ -255,13 +338,22 @@ analyticsRemote.OnServerEvent:Connect(function(player, action, offerId, source)
 		MonetizationAnalytics.LogSpotlight(player, "Shown", offerId)
 	elseif action == "SpotlightClicked" then
 		MonetizationAnalytics.LogSpotlight(player, "Clicked", offerId)
+	elseif action == "StoreClosed" then
+		MonetizationAnalytics.EndStoreSession(player, "Closed")
+	elseif action == "CheckoutCancelled" then
+		MonetizationAnalytics.EndStoreSession(player, "CheckoutCancelled")
 	end
 end)
 
+Players.PlayerAdded:Connect(initializeSessionMetrics)
 Players.PlayerRemoving:Connect(function(player)
-	sessions[player] = nil
+	MonetizationAnalytics.EndStoreSession(player, "Exit")
 	spotlightActivity[player] = nil
 	remoteBudgets[player] = nil
 end)
+
+for _, player in ipairs(Players:GetPlayers()) do
+	initializeSessionMetrics(player)
+end
 
 return MonetizationAnalytics
